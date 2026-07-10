@@ -8,6 +8,10 @@ config.local.js
 *.local.md
 *.local.json
 
+# clasp 설정 (스크립트 ID) — 로컬 관리
+.clasp.json
+
 # OS / 에디터 / 의존성
 .DS_Store
+._*
 node_modules/
