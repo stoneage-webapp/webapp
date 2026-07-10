@@ -1,0 +1,13 @@
+# clasp — 인증 토큰은 절대 커밋 금지
+.clasprc.json
+
+# 민감 정보 / 실제 값
+.env
+*.key
+config.local.js
+*.local.md
+*.local.json
+
+# OS / 에디터 / 의존성
+.DS_Store
+node_modules/
