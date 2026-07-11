@@ -17,7 +17,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 
 | 파일 | 역할 |
 |---|---|
-| `Code.gs` | 웹앱 진입점 `doGet`/`doPost` + **action 라우팅** + `getInitData` + 공통 헬퍼 |
+| `Code.gs` | 웹앱 진입점 `doGet`/`doPost` + **action 레지스트리**(auth/bust/cache 플래그) + 조회 캐시 + `getInitData` |
 | `config.gs` | 전역 상수 `CONFIG` (실제 값은 커밋 금지 — `v3.0.2/Code.local.md` 참고) |
 | `auth.gs` | PIN 로그인, 서명 토큰, 요청 검증, 관리자 판별 |
 | `votes.gs` | 정기공격/자연재해 투표, 번개, 일정 확정, 마감 판정 |
@@ -40,28 +40,34 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 
 ## API 명세
 
-### 조회 (GET)
+### 조회 (GET) — 전부 CacheService 캐싱(2분, 쓰기 시 즉시 무효화)
 
 | action | params | 반환(data) |
 |---|---|---|
-| `getInitData` | — | `{ members, raidMonths, disaster, certified, month, shareUrl, notionUrl, driveApiKey, confirmed, admins, flashOwners }` |
+| `getInitData` | — | `{ members, months, raidMonths, disaster, certified, month, shareUrl, notionUrl, confirmed, admins, flashOwners }` |
+| `getVotes` | `month`(선택, `'2026-07'`) | `{ months, raidMonths, disaster, confirmed, flashOwners }` — month 지정 시 해당 월만 |
 | `getGallery` | `limit`(기본12), `offset`(기본0) | `{ items:[{when,actDate,loc,people,by,fileId,link}], hasMore }` |
 | `getHallData` | — | `{ ym, entries:[...], winner, winnerMonth }` |
+
+> - `driveApiKey`는 익명 `getInitData`에서 **제거됨** → `loginWithPin`/`changePin` 응답으로 이동.
+> - 투표 항목에는 `dateInfo` 필드가 붙는다:
+>   `{ iso:'2026-07-16', ym:'2026-07', weekday:'목', time:'20:00'|null, display:'2026-07-16 (목) 20:00' }`
+>   파싱 실패 시 `null` — 프론트는 원본 `date` 라벨로 폴백. 표기는 `dateInfo.display` 우선.
 
 ### 변경 (POST)
 
 | action | params | 반환(data) |
 |---|---|---|
-| `loginWithPin` | `name, pin` | `{ name, token, isAdmin, firstSet? }` |
-| `changePin` | `name, oldPin, newPin, token` | `{ name, token, isAdmin }` |
+| `loginWithPin` | `name, pin` | `{ name, token, isAdmin, driveApiKey, firstSet? }` — 실패 5회 → 10분 잠금 |
+| `changePin` | `name, oldPin, newPin, token` | `{ name, token, isAdmin, driveApiKey }` |
 | `toggleVote` | `category('raid'\|'disaster'), dateText, voter, token, month` | `{ date, voters }` |
 | `addFlash` | `dateText, loc, creator, token` | 자연재해 투표 배열 |
 | `deleteFlash` | `dateText, requester, token` | 자연재해 투표 배열 |
-| `confirmDate` | `month, dateText, loc, name, pin` | `raidMonths` 배열 (관리자 PIN 검증) |
-| `startUpload` | `fileName, mimeType, fileSize, ym` | Drive resumable 업로드 URL(문자열) |
-| `startHallUpload` | `fileName, mimeType, fileSize` | Drive resumable 업로드 URL(문자열) |
-| `uploadChunk` | `uploadUrl, b64, start, end, total` | `{ done, fileId? }` |
-| `checkUploadStatus` | `uploadUrl, total` | `{ done, fileId?, code? }` |
+| `confirmDate` | `month, dateText, loc, name, pin` | `raidMonths` 배열 (관리자 PIN — Script Properties `admin_pin`) |
+| `startUpload` | `fileName, mimeType, fileSize, ym, **name, token**` | Drive resumable 업로드 URL(문자열) |
+| `startHallUpload` | `fileName, mimeType, fileSize, **name, token**` | Drive resumable 업로드 URL(문자열) |
+| `uploadChunk` | `uploadUrl, b64, start, end, total, **name, token**` | `{ done, fileId? }` |
+| `checkUploadStatus` | `uploadUrl, total, **name, token**` | `{ done, fileId?, code? }` |
 | `finalizeProof` | `fileId, meta, token` | `{ link, photos }` |
 | `finalizeHallEntry` | `fileId, title, uploader, token` | `getHallData()` 결과 |
 | `deleteProof` | `fileId, requester, token` | `{ ok:true }` |
