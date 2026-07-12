@@ -258,12 +258,6 @@ function confirmDate(month, dateText, loc, name, pin) {
     confAll[month] = { date: dateText, loc: loc || '' };
     setRaidConfirmedAll_(confAll);
     sh.getRange(found + 1, 1, 1, Math.max(sh.getLastColumn(), 1)).setBackground('#3d2e1a');
-
-    // 노션 캘린더 기록 (실패해도 확정은 진행)
-    if (CONFIG.NOTION_TOKEN && CONFIG.NOTION_DB_ID) {
-      const voters = vals[found].slice(3).filter(String); // D열~ 투표자
-      try { addToNotion_(dateText, loc, voters); } catch (e) { Logger.log('Notion 기록 실패: ' + e); }
-    }
   }
   return readRaidByMonth_(ss_());
 }

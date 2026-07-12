@@ -3,7 +3,7 @@
  * Front(Netlify) → Back(Apps Script) → DB(Sheet/Drive/Photos)
  *
  * 이 파일은 웹앱 진입점(doGet/doPost)과 action 레지스트리만 담당한다.
- * 실제 로직은 auth.gs / votes.gs / photos.gs / hall.gs / settle.gs / notices.gs / notion.gs 에 있다.
+ * 실제 로직은 auth.gs / votes.gs / photos.gs / hall.gs / settle.gs / notices.gs 에 있다.
  * (Apps Script는 모든 .gs가 전역 스코프를 공유하므로 파일 분리는 순수 정리 목적이다.)
  *
  * ── 통신 규약 (docs/architecture.md 의 API 명세와 일치) ──
