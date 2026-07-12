@@ -11,10 +11,8 @@ const CONFIG = {
   SETTLE_FOLDER_ID: 'YOUR_SETTLE_FOLDER_ID',  // 정산 사진 저장 폴더 (별도)
   PHOTOS_ALBUM_ID: 'YOUR_PHOTOS_ALBUM_ID',           // setupPhotosAlbum() 실행 후 로그의 ALBUM_ID 입력. 비워두면 Photos 업로드 생략
   PHOTOS_SHARE_URL: 'YOUR_PHOTOS_SHARE_URL',          // 구글 포토에서 앨범 공유 후 받은 링크 (영상 탭 버튼용)
-  NOTION_URL: 'YOUR_NOTION_URL',                // 부족 안내문 노션 페이지 링크
+  NOTION_URL: 'YOUR_NOTION_URL',                // 부족 안내문 페이지 링크 (없으면 빈 문자열 — 홈 버튼이 안내만 띄움)
   DRIVE_API_KEY: 'YOUR_DRIVE_API_KEY',             // 전당 영상 인앱 재생용 API 키 (GCP → 사용자 인증 정보 → API 키)
-  NOTION_TOKEN: 'YOUR_NOTION_TOKEN',              // 노션 Integration 토큰 (ntn_... 또는 secret_...)
-  NOTION_DB_ID: 'YOUR_NOTION_DB_ID',  // 정기모임 캘린더 DB ID
   SHEETS: {
     members: '부족원',
     raid: '정기공격일자',
