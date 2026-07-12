@@ -10,8 +10,8 @@
  *  - 응답 : { ok:true, data } | { ok:false, error }  → run() 은 data 를 돌려주거나 throw
  */
 
-// ★ 실제 exec URL 은 배포 시 여기 한 곳만 교체 (값 관리: docs/env.md)
-const GAS_URL = 'YOUR_EXEC_URL';
+// ★ exec URL — 백엔드 재배포 시 반드시 기존 배포를 덮어써서(redeploy) 이 URL 을 유지할 것 (docs/deploy.md)
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxcMDmO6R6NHxHTBKrKbVoTcMUJaaFc7YileVOBErPDBfol3VD4Jsx_4VOOfZTRtx1J/exec';
 
 /* 액션별 positional 파라미터 이름 (백엔드 레지스트리와 1:1) */
 const API_GET = {
