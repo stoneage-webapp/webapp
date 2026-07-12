@@ -97,7 +97,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `js/app.js` | 화면 로직 (GAS 시절 코드 이식 + 월필터/D-day/더보기 탭) |
 | `js/mock.js` | `?mock=1` 로 열었을 때만 활성화되는 개발용 목데이터 |
 | `css/style.css` | 스타일 (기존 테마 이식) |
-| `manifest.json` / `icons/` | PWA. **아이콘은 플레이스홀더 — 실제 로고로 교체 필요 ([사람])** |
+| `manifest.json` / `icons/` | PWA. 아이콘은 실제 로고(석기시대 마스코트). 원본 `icons/logo-original.png` 보관 |
 
 - 개발 미리보기: `node .claude/preview-server.mjs` → `http://localhost:8787/?mock=1`
 
