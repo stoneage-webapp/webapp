@@ -34,6 +34,7 @@
     shareUrl: '', notionUrl: '',
     confirmed: { disaster: null },
     admins: ['김광훈'],
+    settlers: ['이희주'],
     flashOwners: { '7/19 14:00 @ 클라이밍파크': '최서연' }
   };
 
@@ -66,6 +67,8 @@
         postNotice: { items: [{ when: 'now', by: args[1], text: args[0], row: 3 }] },
         deleteNotice: { items: [] },
         resetPin: { name: args[0], reset: true },
+        runSettle: { ym: args[0], done: 2, total: 4, independent: 1, copied: 1, uncovered: ['박도윤'] },
+        setSettlers: { settlers: args[0] },
         voteHall: HALL, deleteHallEntry: HALL, finalizeHallEntry: HALL,
         deleteProof: { ok: true },
         startUpload: 'mock://upload', startHallUpload: 'mock://upload',

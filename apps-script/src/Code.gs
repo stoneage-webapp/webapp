@@ -61,7 +61,9 @@ const POST_ACTIONS = {
   // 관리자 기능
   resetPin:          { auth: 'requester', fn: function (d) { return resetPin(d.targetName, d.requester, d.token); } }, // #18 (관리자 검증은 함수 내부)
   postNotice:        { auth: 'name', bust: true, fn: function (d) { return postNotice(d.text, d.name, d.token); } },   // #24
-  deleteNotice:      { auth: 'name', bust: true, fn: function (d) { return deleteNotice(d.row, d.when, d.name, d.token); } } // #24
+  deleteNotice:      { auth: 'name', bust: true, fn: function (d) { return deleteNotice(d.row, d.when, d.name, d.token); } }, // #24
+  runSettle:         { auth: 'requester', bust: true, fn: function (d) { return runSettle(d.ym, d.requester, d.token); } },   // 웹 정산 (관리자/담당자)
+  setSettlers:       { auth: 'requester', bust: true, fn: function (d) { return setSettlers(d.names, d.requester, d.token); } } // 담당자 지정 (관리자)
 };
 
 /* ---------- 진입점 ---------- */
@@ -168,6 +170,7 @@ function getInitData() {
     notionUrl: CONFIG.NOTION_URL,
     confirmed: votes.confirmed,    // { disaster: {date,loc}|null }
     admins: CONFIG.ADMINS,
+    settlers: getSettlers_(),      // 정산 담당자 (관리자 페이지 노출 판단용)
     flashOwners: votes.flashOwners
   };
 }

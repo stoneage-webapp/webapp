@@ -165,11 +165,33 @@
     <div class="month-head" style="margin-top:22px">👑 역대 명예의 전당</div>
     <div id="archiveBox" class="loading">기록을 꺼내는 중…</div>
 
-    <div class="admin-only" style="display:none">
-      <div class="month-head" style="margin-top:22px">💰 정산 현황 (관리자)</div>
-      <div id="settleBox" class="loading">정산 현황을 여는 중…</div>
+  </section>
 
-      <div class="month-head" style="margin-top:22px">🔑 PIN 초기화 (관리자)</div>
+  <!-- 관리 (관리자 · 정산 담당자에게만 노출) -->
+  <section id="tab-admin" class="tab">
+
+    <div class="month-head">💰 월별 정산 실행</div>
+    <p class="dim" style="font-size:12.5px; margin-bottom:8px">
+      해당 월 사진 인증을 집계해 <b>인증현황</b> 시트를 갱신하고,<br>
+      정산 폴더에 최소 사진 묶음을 복사합니다.
+    </p>
+    <div class="field"><span>정산할 월</span><input type="month" id="settleYm"></div>
+    <button class="btn" id="settleRunBtn" onclick="runSettleClick()">💰 정산 실행</button>
+    <div class="status" id="settleRunStatus"></div>
+
+    <div class="month-head" style="margin-top:22px">📋 정산 현황</div>
+    <div id="settleBox" class="loading">정산 현황을 여는 중…</div>
+
+    <div class="admin-only" style="display:none">
+      <div class="month-head" style="margin-top:22px">👥 정산 담당자 설정</div>
+      <p class="dim" style="font-size:12.5px; margin-bottom:8px">
+        지정된 담당자는 관리자가 아니어도 이 페이지에서 정산을 실행할 수 있어요. (탭해서 선택)
+      </p>
+      <div class="chips" id="settlerChips" style="margin-bottom:10px"></div>
+      <button class="btn2" onclick="saveSettlers()">담당자 저장</button>
+      <div class="status" id="settlerStatus"></div>
+
+      <div class="month-head" style="margin-top:22px">🔑 PIN 초기화</div>
       <div class="field">
         <select id="resetPinName"><option value="">부족원 선택</option></select>
       </div>
@@ -187,6 +209,7 @@
   <button id="nav-gallery" onclick="setTab('gallery')"><span class="ico">🖼️</span>벽화</button>
   <button id="nav-hall" onclick="setTab('hall')"><span class="ico">🏆</span>전당</button>
   <button id="nav-more" onclick="setTab('more')"><span class="ico">📋</span>더보기</button>
+  <button id="nav-admin" style="display:none" onclick="setTab('admin')"><span class="ico">🛠️</span>관리</button>
 </nav>
 
 <script src="/js/mock.js"></script>

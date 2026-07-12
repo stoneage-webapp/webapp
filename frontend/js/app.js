@@ -230,13 +230,14 @@ async function changePinPrompt() {
 
 /* ---------- 탭 ---------- */
 function setTab(t) {
-  ['home','vote','photo','gallery','hall','more'].forEach(function(k) {
+  ['home','vote','photo','gallery','hall','more','admin'].forEach(function(k) {
     document.getElementById('tab-' + k).classList.toggle('on', k === t);
     document.getElementById('nav-' + k).classList.toggle('on', k === t);
   });
   if (t === 'gallery' && !galleryLoaded) loadGallery();
   if (t === 'hall' && !hallLoaded) loadHall();
   if (t === 'more' && !moreLoaded) loadMore();
+  if (t === 'admin' && !adminLoaded) loadAdmin();
 }
 
 function goVote(cat) {
@@ -1111,11 +1112,19 @@ function buildMonthFilter() {
 /* ==================== 더보기 탭 (#18 #20 #21 #23 #24) ==================== */
 let moreLoaded = false;
 
+// 정산 실행 권한: 관리자 또는 지정된 정산 담당자
+function canSettleMe() {
+  return ME.isAdmin || ((DATA.settlers || []).indexOf(ME.name) > -1);
+}
+
 function applyAdminUI() {
   // 관리자 전용 섹션 노출 제어
   document.querySelectorAll('.admin-only').forEach(function (el) {
     el.style.display = ME.isAdmin ? '' : 'none';
   });
+  // 관리 탭: 관리자 또는 정산 담당자에게만 노출
+  document.getElementById('nav-admin').style.display =
+    (ME.isAdmin || canSettleMe()) ? '' : 'none';
 }
 
 function loadMore() {
@@ -1123,10 +1132,6 @@ function loadMore() {
   loadNotices();
   loadStats();
   loadArchive();
-  if (ME.isAdmin) {
-    loadSettle();
-    buildResetPinSelect();
-  }
 }
 
 /* ---------- 공지사항 (#24) ---------- */
@@ -1298,4 +1303,76 @@ function buildGalleryFilters() {
     galleryLoaded = false;
     loadGallery(); // 필터 변경 시 첫 페이지부터 다시
   };
+}
+
+/* ==================== 관리 탭 (관리자/정산 담당자) ==================== */
+let adminLoaded = false;
+
+function loadAdmin() {
+  adminLoaded = true;
+  // 정산할 월 기본값 = 이번 달
+  const now = new Date();
+  document.getElementById('settleYm').value =
+    now.getFullYear() + '-' + pad2(now.getMonth() + 1);
+  loadSettle();
+  if (ME.isAdmin) {
+    buildSettlerChips();
+    buildResetPinSelect();
+  }
+}
+
+/* ---------- 웹 정산 실행 ---------- */
+async function runSettleClick() {
+  const ym = document.getElementById('settleYm').value; // 'yyyy-MM'
+  const st = document.getElementById('settleRunStatus');
+  const btn = document.getElementById('settleRunBtn');
+  if (!ym) return alert('정산할 월을 선택하세요.');
+  if (!confirm(ym + ' 정산을 실행할까요?\n인증현황 시트가 갱신되고 정산 폴더에 사진이 복사됩니다.')) return;
+  btn.disabled = true;
+  st.className = 'status';
+  st.textContent = '정산 중… (사진 수에 따라 수십 초 걸릴 수 있어요)';
+  try {
+    const r = await run('runSettle', ym, getMe(), ME.token);
+    st.className = 'status ok';
+    st.innerHTML = '✓ ' + esc(r.ym) + ' 정산 완료<br>' +
+      '인증(지원 대상): <b>' + r.done + '</b> / ' + r.total + '명 · 독립(제외): ' + r.independent + '명<br>' +
+      '추출 사진: ' + r.copied + '장' +
+      (r.uncovered && r.uncovered.length ? '<br>⚠ 사진 누락: ' + r.uncovered.map(esc).join(', ') : '');
+    loadSettle(); // 정산 현황 새로고침
+  } catch (e) {
+    st.className = 'status err';
+    st.textContent = '실패: ' + (e.message || e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ---------- 정산 담당자 설정 (관리자) ---------- */
+function buildSettlerChips() {
+  const box = document.getElementById('settlerChips');
+  box.innerHTML = '';
+  const cur = DATA.settlers || [];
+  DATA.members.forEach(function (m) {
+    const c = document.createElement('span');
+    c.className = 'chip' + (cur.indexOf(m) > -1 ? ' on' : '');
+    c.dataset.name = m;
+    c.textContent = m;
+    c.onclick = function () { c.classList.toggle('on'); };
+    box.appendChild(c);
+  });
+}
+
+async function saveSettlers() {
+  const names = Array.prototype.slice.call(document.querySelectorAll('#settlerChips .chip.on'))
+    .map(function (c) { return c.dataset.name; });
+  const st = document.getElementById('settlerStatus');
+  try {
+    const res = await run('setSettlers', names, getMe(), ME.token);
+    DATA.settlers = res.settlers;
+    st.className = 'status ok';
+    st.textContent = '✓ 저장됨: ' + (res.settlers.length ? res.settlers.join(', ') : '(없음)');
+  } catch (e) {
+    st.className = 'status err';
+    st.textContent = e.message || e;
+  }
 }

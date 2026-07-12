@@ -82,6 +82,8 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `resetPin` | `targetName, requester, token` | `{ name, reset:true }` — 관리자 전용. 대상자는 다음 로그인에서 새 PIN 설정 |
 | `postNotice` | `text, name, token` | `getNotices()` 결과 — 관리자 전용 |
 | `deleteNotice` | `row, when, name, token` | `getNotices()` 결과 — 관리자 전용. `when` 대조로 행 밀림 방지 |
+| `runSettle` | `ym('2026-07'), requester, token` | `{ ym, done, total, independent, copied, uncovered }` — **관리자 또는 정산 담당자** |
+| `setSettlers` | `names(배열), requester, token` | `{ settlers }` — 관리자 전용. Script Properties `settlers`에 저장 |
 
 > `meta`(finalizeProof) = `{ kind:'사진'|'영상', mimeType, fileSize, participants:[], location, uploader, activityLabel }`
 
@@ -110,7 +112,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 명예의전당 | `getHallData`, `getHallArchive`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |
 | 공지 | `getNotices`, `postNotice`/`deleteNotice`(관리자) |
 | 통계 | `getStats` |
-| 관리자(정산/PIN) | `getSettleStatus`, `resetPin` |
+| 관리 탭 (관리자·정산 담당자만 노출) | `runSettle`, `getSettleStatus`, `setSettlers`(관리자), `resetPin`(관리자) |
 
 ## AS-IS와의 차이 (참고)
 

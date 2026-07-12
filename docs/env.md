@@ -19,6 +19,7 @@
 | `DRIVE_API_KEY` | 전당 영상 인앱 재생용 API 키 | GCP → 사용자 인증 정보 → API 키 | 선택 (없으면 iframe 재생) |
 | `ADMINS` | 일정 확정 권한자, 쉼표 구분 (예: `김광훈,이희주`) | 부족원 시트 이름과 일치 | 선택 (기본 김광훈) |
 | `admin_pin` | 일정 확정 관리자 PIN | 직접 정함 | ✅ |
+| `settlers` | 정산 담당자 목록 — **웹 관리자 페이지에서 설정** (직접 편집 불필요) | 앱 관리 | 자동 |
 | `auth_secret` | 토큰 서명 비밀키 — **최초 로그인 시 자동 생성, 손대지 말 것** | 자동 | 자동 |
 | `flash_owners` / `confirmed_raid_months` / `confirmed_disaster` | 앱이 자동 관리 | 자동 | 자동 |
 

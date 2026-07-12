@@ -255,3 +255,37 @@ function getSettleStatus() {
     });
   return { ym: rows.length ? rows[0].ym : null, rows: rows };
 }
+
+/* ---------- 웹 정산 실행 + 정산 담당자 관리 ----------
+ * 담당자(settlers)는 관리자가 웹 관리자 페이지에서 지정 (Script Properties 'settlers'에 JSON 배열).
+ * 정산 실행 권한 = 관리자 또는 담당자.
+ */
+function getSettlers_() {
+  const v = PropertiesService.getScriptProperties().getProperty('settlers');
+  try { return v ? JSON.parse(v) : []; } catch (e) { return []; }
+}
+
+function setSettlers(names, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!isAdmin_(requester)) throw new Error('관리자만 정산 담당자를 설정할 수 있습니다.');
+  if (!Array.isArray(names)) throw new Error('이름 배열이 필요합니다.');
+  const clean = names.map(function (s) { return String(s).trim(); }).filter(String);
+  PropertiesService.getScriptProperties().setProperty('settlers', JSON.stringify(clean));
+  return { settlers: clean };
+}
+
+function canSettle_(name) {
+  return isAdmin_(name) || getSettlers_().indexOf(name) > -1;
+}
+
+// 웹에서 월별 정산 실행 (기존 settleMonth 재사용 — 시트 메뉴 없이도 정산 가능)
+function runSettle(ym, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!canSettle_(requester)) throw new Error('정산 권한이 없습니다. (관리자 또는 정산 담당자만)');
+  ym = String(ym || '').trim() ||
+    Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
+  if (!/^\d{4}-\d{2}$/.test(ym)) throw new Error('형식 오류: yyyy-MM (예: 2026-07)');
+  const r = settleMonth(ym);
+  r.ym = ym;
+  return r;
+}
