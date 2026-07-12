@@ -3,7 +3,7 @@
  * Front(Netlify) → Back(Apps Script) → DB(Sheet/Drive/Photos)
  *
  * 이 파일은 웹앱 진입점(doGet/doPost)과 action 레지스트리만 담당한다.
- * 실제 로직은 auth.gs / votes.gs / photos.gs / hall.gs / settle.gs / notion.gs 에 있다.
+ * 실제 로직은 auth.gs / votes.gs / photos.gs / hall.gs / settle.gs / notices.gs / notion.gs 에 있다.
  * (Apps Script는 모든 .gs가 전역 스코프를 공유하므로 파일 분리는 순수 정리 목적이다.)
  *
  * ── 통신 규약 (docs/architecture.md 의 API 명세와 일치) ──
@@ -23,10 +23,14 @@
 
 /* ---------- 조회 (GET) ---------- */
 const GET_ACTIONS = {
-  getInitData: { cache: true, fn: function (p) { return getInitData(); } },
-  getVotes:    { cache: true, fn: function (p) { return getVotes(p.month || ''); } },
-  getGallery:  { cache: true, fn: function (p) { return getGallery(Number(p.limit) || 12, Number(p.offset) || 0); } },
-  getHallData: { cache: true, fn: function (p) { return getHallData(); } }
+  getInitData:     { cache: true, fn: function (p) { return getInitData(); } },
+  getVotes:        { cache: true, fn: function (p) { return getVotes(p.month || ''); } },
+  getGallery:      { cache: true, fn: function (p) { return getGallery(Number(p.limit) || 12, Number(p.offset) || 0, p.month || '', p.person || ''); } },
+  getHallData:     { cache: true, fn: function (p) { return getHallData(); } },
+  getHallArchive:  { cache: true, fn: function (p) { return getHallArchive(); } },          // #23 역대 우승자
+  getStats:        { cache: true, fn: function (p) { return getStats(); } },                // #20 출석/인증 통계
+  getSettleStatus: { cache: true, fn: function (p) { return getSettleStatus(); } },         // #21 정산 현황
+  getNotices:      { cache: true, fn: function (p) { return getNotices(Number(p.limit) || 20); } } // #24 공지
 };
 
 /* ---------- 변경 (POST) ---------- */
@@ -52,7 +56,12 @@ const POST_ACTIONS = {
   finalizeHallEntry: { auth: 'uploader',  bust: true, fn: function (d) { return finalizeHallEntry(d.fileId, d.title, d.uploader, d.token); } },
   deleteProof:       { auth: 'requester', bust: true, fn: function (d) { return deleteProof(d.fileId, d.requester, d.token); } },
   deleteHallEntry:   { auth: 'requester', bust: true, fn: function (d) { return deleteHallEntry(d.fileId, d.requester, d.token); } },
-  voteHall:          { auth: 'voter',     bust: true, fn: function (d) { return voteHall(d.fileId, d.voter, d.token); } }
+  voteHall:          { auth: 'voter',     bust: true, fn: function (d) { return voteHall(d.fileId, d.voter, d.token); } },
+
+  // 관리자 기능
+  resetPin:          { auth: 'requester', fn: function (d) { return resetPin(d.targetName, d.requester, d.token); } }, // #18 (관리자 검증은 함수 내부)
+  postNotice:        { auth: 'name', bust: true, fn: function (d) { return postNotice(d.text, d.name, d.token); } },   // #24
+  deleteNotice:      { auth: 'name', bust: true, fn: function (d) { return deleteNotice(d.row, d.when, d.name, d.token); } } // #24
 };
 
 /* ---------- 진입점 ---------- */
@@ -120,7 +129,7 @@ function bumpCacheVer_() {
 }
 function cacheKey_(action, p) {
   return 'q:' + cacheVer_() + ':' + action + ':' +
-    ['month', 'limit', 'offset'].map(function (k) { return p[k] || ''; }).join(':');
+    ['month', 'limit', 'offset', 'person'].map(function (k) { return p[k] || ''; }).join(':');
 }
 function cacheGet_(key) {
   try {

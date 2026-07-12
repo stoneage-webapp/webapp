@@ -130,3 +130,24 @@ function verify_(name, token) {
 
 // 관리자 여부
 function isAdmin_(name) { return CONFIG.ADMINS.indexOf(name) > -1; }
+
+/* ---------- PIN 초기화 (관리자 전용, #18) ----------
+ * 대상자 PIN 셀을 비움 → 다음 로그인이 최초 설정(firstSet) 흐름을 탄다.
+ * PIN이 지워지면 대상자의 기존 토큰도 자동 무효(makeToken_ 이 PIN을 재료로 쓰므로).
+ */
+function resetPin(targetName, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!isAdmin_(requester)) throw new Error('관리자만 PIN을 초기화할 수 있습니다.');
+  targetName = String(targetName || '').trim();
+  if (!targetName) throw new Error('대상 이름이 없습니다.');
+  const sheet = ss_().getSheetByName(CONFIG.SHEETS.members);
+  const rows = sheet.getRange('A2:I').getDisplayValues();
+  for (let i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === targetName) {
+      sheet.getRange(i + 2, 9).setValue('');
+      clearPinFail_(targetName); // 실패 잠금도 함께 해제
+      return { name: targetName, reset: true };
+    }
+  }
+  throw new Error('명단에 없는 이름입니다: ' + targetName);
+}

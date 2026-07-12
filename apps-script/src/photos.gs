@@ -143,11 +143,15 @@ function uploadToPhotos_(fileId, name, mimeType, token) {
   }
 }
 
-/* ---------- 벽화 갤러리 ---------- */
+/* ---------- 벽화 갤러리 ----------
+ * month('2026-07') / person(이름) 선택 필터 (#22). 필터 후 페이징.
+ */
 
-function getGallery(limit, offset) {
+function getGallery(limit, offset, month, person) {
   limit = limit || 12;
   offset = offset || 0;
+  month = String(month || '').trim();
+  person = String(person || '').trim();
   const sh = ss_().getSheetByName(CONFIG.SHEETS.mural);
   if (!sh || sh.getLastRow() < 2) return { items: [], hasMore: false };
   const vals = sh.getDataRange().getDisplayValues();
@@ -155,6 +159,14 @@ function getGallery(limit, offset) {
   for (let i = vals.length - 1; i >= 1; i--) {
     const r = vals[i]; // [인증일시, 활동일자, 종류, 장소, 참여자, 업로더, 링크, Photos]
     if (r[2] !== '사진') continue;
+    if (month) {
+      const ym = parseYM_(r[1]) || parseYM_(r[0]); // 활동일자 우선, 없으면 인증일시
+      if (ym !== month) continue;
+    }
+    if (person) {
+      const people = String(r[4]).split(',').map(function (n) { return n.trim(); });
+      if (people.indexOf(person) < 0) continue;
+    }
     photos.push(r);
   }
   const slice = photos.slice(offset, offset + limit);
