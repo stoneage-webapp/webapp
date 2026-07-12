@@ -17,9 +17,19 @@
 | `NOTION_TOKEN` | 노션 Integration 토큰 | 노션 Integrations (**Phase 6에서 제거 예정**) |
 | `NOTION_DB_ID` | 정기모임 캘린더 DB ID | 노션 DB (**Phase 6에서 제거 예정**) |
 | `ADMINS` | 일정 확정 권한자 이름 배열 | 부족원 시트 이름과 일치 |
-| `ADMIN_PIN` | 확정 시 입력 PIN | **기본값에서 반드시 변경할 것** |
+| `ADMIN_PIN` | 확정 PIN **폴백값** — 실제 운영값은 아래 Script Properties에 | **기본값에서 반드시 변경할 것** |
 
 > `DRIVE_API_KEY`, `NOTION_TOKEN`은 살아있는 자격증명이다. 커밋 금지. 유출 시 즉시 회전(재발급).
+> `DRIVE_API_KEY`는 로그인 후에만 클라이언트에 전달되지만, 브라우저 노출 자체는 불가피하므로
+> **[사람] GCP 콘솔에서 HTTP 리퍼러 제한(Netlify 도메인)을 반드시 설정**할 것.
+
+## Script Properties (Apps Script 에디터 → 프로젝트 설정)
+
+| 키 | 설명 |
+|---|---|
+| `admin_pin` | 일정 확정 관리자 PIN (운영값 — 코드의 `CONFIG.ADMIN_PIN`은 폴백일 뿐) |
+| `auth_secret` | 토큰 서명 비밀키 — 최초 로그인 시 자동 생성, 손대지 말 것 |
+| `flash_owners` / `confirmed_raid_months` / `confirmed_disaster` | 앱이 자동 관리 (수동 편집 금지) |
 
 ## 프론트 (`frontend/js/api.js` — Phase 5에서 생성)
 

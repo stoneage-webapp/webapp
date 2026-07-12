@@ -72,7 +72,80 @@ function readVotes_(s, sheetName) {
   const vals = sh.getDataRange().getDisplayValues();
   return vals.slice(1)
     .filter(function(r) { return r[0]; })
-    .map(function(r) { return { date: r[0], voters: r.slice(1).filter(String) }; });
+    .map(function(r) {
+      // 번개 라벨 = '날짜 @ 위치' (addFlash 참고). date는 투표 키로 원본 유지.
+      const label = String(r[0]);
+      const parts = label.split(' @ ');
+      return {
+        date: r[0],
+        loc: parts.length > 1 ? parts.slice(1).join(' @ ') : '',
+        dateInfo: dateInfo_(parts[0], ''),   // 표준 표기 (파싱 실패 시 null → 원본 라벨 표시)
+        voters: r.slice(1).filter(String)
+      };
+    });
+}
+
+/* ---------- 날짜 라벨 표준화 ----------
+ * '7/16', '7/16(수) 20:00', '2026-07-16', '7월 16일' 등 → YYYY-MM-DD (요일) [HH:mm]
+ * monthHint('2026-07'): 연도 없는 라벨의 연도 보정 (정기공격 월 그룹). 없으면 올해로 추정.
+ * 반환: { iso, ym, weekday, time|null, display } 또는 파싱 실패 시 null (호출부는 원본 라벨 폴백)
+ */
+const WEEKDAY_KO_ = ['일', '월', '화', '수', '목', '금', '토'];
+
+function dateInfo_(label, monthHint) {
+  if (!label) return null;
+  label = String(label).trim();
+  let y, mo, da;
+  // 1) 연도 포함: 2026-07-16 / 2026.7.16 / 2026년 7월 16일
+  let m = label.match(/(\d{4})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})/);
+  if (m) { y = +m[1]; mo = +m[2]; da = +m[3]; }
+  else {
+    // 2) 월/일만: 7/16 · 7월 16일 · 7-16 (콜론(:)은 시각이므로 제외됨)
+    m = label.match(/(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})/);
+    if (!m) return null;
+    mo = +m[1]; da = +m[2];
+    y = (monthHint && /^\d{4}-\d{2}$/.test(monthHint)) ? +monthHint.slice(0, 4) : new Date().getFullYear();
+  }
+  if (mo < 1 || mo > 12 || da < 1 || da > 31) return null;
+  const d = new Date(y, mo - 1, da);
+  if (d.getMonth() !== mo - 1) return null; // 2/30 같은 무효 날짜
+  const iso = y + '-' + ('0' + mo).slice(-2) + '-' + ('0' + da).slice(-2);
+  const tm = label.match(/(\d{1,2}):(\d{2})/);
+  const time = tm ? ('0' + tm[1]).slice(-2) + ':' + tm[2] : null;
+  const weekday = WEEKDAY_KO_[d.getDay()];
+  return {
+    iso: iso,
+    ym: iso.slice(0, 7),
+    weekday: weekday,
+    time: time,
+    display: iso + ' (' + weekday + ')' + (time ? ' ' + time : '')
+  };
+}
+
+/* ---------- 투표 통합 조회 (월별 필터) ----------
+ * month('2026-07', 선택): 정기공격은 월 그룹, 번개는 dateInfo.ym 기준으로 필터.
+ * months: 존재하는 모든 월 목록 (프론트 필터 드롭다운용).
+ */
+function getVotes(month) {
+  const s = ss_();
+  let raidMonths = readRaidByMonth_(s);
+  let disaster = readVotes_(s, CONFIG.SHEETS.disaster);
+  const seen = {};
+  raidMonths.forEach(function (r) { seen[r.month] = true; });
+  disaster.forEach(function (d) { if (d.dateInfo) seen[d.dateInfo.ym] = true; });
+  const months = Object.keys(seen).sort();
+  month = String(month || '').trim();
+  if (month) {
+    raidMonths = raidMonths.filter(function (r) { return r.month === month; });
+    disaster = disaster.filter(function (d) { return d.dateInfo && d.dateInfo.ym === month; });
+  }
+  return {
+    months: months,
+    raidMonths: raidMonths,
+    disaster: disaster,
+    confirmed: getConfirmed_(),
+    flashOwners: getFlashOwners_()
+  };
 }
 
 /* ---------- 정기공격: 월별 투표 읽기 ----------
@@ -91,7 +164,11 @@ function readRaidByMonth_(s) {
     if (!month || !date) continue;
     if (!groups[month]) { groups[month] = []; order.push(month); }
     if (vals[i][2] && !deadlines[month]) deadlines[month] = String(vals[i][2]).trim();
-    groups[month].push({ date: date, voters: vals[i].slice(3).filter(String) });
+    groups[month].push({
+      date: date,
+      dateInfo: dateInfo_(date, month),  // 표준 표기 (월 그룹으로 연도 보정)
+      voters: vals[i].slice(3).filter(String)
+    });
   }
   order.sort();
   return order.map(function(m) {
@@ -147,9 +224,12 @@ function getConfirmed_() {
 // dateText가 빈 값이면 확정 취소 (투표 재개). loc = 확정 위치. 확정은 정기공격만 가능
 // 정기공격 월별 확정. dateText 빈값이면 해당 월 확정 취소. month = '2026-07'
 function confirmDate(month, dateText, loc, name, pin) {
-  if (CONFIG.ADMINS.indexOf(name) < 0 || String(pin) !== String(CONFIG.ADMIN_PIN)) {
+  assertNotLocked_('admin'); // 관리자 PIN도 무차별 대입 방어
+  if (CONFIG.ADMINS.indexOf(name) < 0 || String(pin) !== String(getAdminPin_())) {
+    recordPinFail_('admin');
     throw new Error('확정 권한이 없습니다.');
   }
+  clearPinFail_('admin');
   month = String(month || '').trim();
   if (!month) throw new Error('대상 월이 없습니다.');
 
