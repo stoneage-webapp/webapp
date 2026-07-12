@@ -84,7 +84,20 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 
 > `meta`(finalizeProof) = `{ kind:'사진'|'영상', mimeType, fileSize, participants:[], location, uploader, activityLabel }`
 
-## 화면 ↔ action 매핑 (프론트 재구축 #6 때 채움)
+## 프론트 구성 (`frontend/`)
+
+| 파일 | 역할 |
+|---|---|
+| `index.html` | 화면 마크업 + PWA 메타 (favicon/apple-touch-icon/manifest 절대경로) |
+| `js/api.js` | **GAS 호출의 유일한 창구** — `run('액션', 인자...)` 를 fetch 로 변환. exec URL 상수는 이 파일 상단 한 곳 |
+| `js/app.js` | 화면 로직 (GAS 시절 코드 이식 + 월필터/D-day/더보기 탭) |
+| `js/mock.js` | `?mock=1` 로 열었을 때만 활성화되는 개발용 목데이터 |
+| `css/style.css` | 스타일 (기존 테마 이식) |
+| `manifest.json` / `icons/` | PWA. **아이콘은 플레이스홀더 — 실제 로고로 교체 필요 ([사람])** |
+
+- 개발 미리보기: `node .claude/preview-server.mjs` → `http://localhost:8787/?mock=1`
+
+## 화면 ↔ action 매핑
 
 | 화면/탭 | 호출 action |
 |---|---|
@@ -101,5 +114,6 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 ## AS-IS와의 차이 (참고)
 
 - 기존 `v3.0.2/`는 `google.script.run`(GAS 네이티브 RPC) + `HtmlService` 템플릿으로 화면을 직접 렌더링했다.
-- 리팩터 후에는 `doGet`이 HTML 대신 JSON을 반환한다. `google.script.run` 호출은 프론트 재구축(#6)에서
-  `fetch(execUrl, ...)` 호출로 교체된다. **로직 함수 자체는 그대로 재사용**한다.
+- 현재는 `doGet`이 JSON을 반환하고, 프론트 `js/api.js`의 `run()`이 같은 호출 형태를 fetch 로 재구현했다
+  — **화면 코드의 호출부는 GAS 시절과 동일**하고, 백엔드 로직 함수도 그대로 재사용한다.
+- 브라우저→Drive 직접 업로드(resumable PUT)와 릴레이 폴백 구조는 변경 없음.

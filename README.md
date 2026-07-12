@@ -13,7 +13,7 @@ Front (Netlify)  ──JSON──▶  Back (Apps Script)  ──▶  DB (Google 
 | 경로 | 내용 |
 |---|---|
 | `apps-script/` | 백엔드 — JSON API (doGet/doPost 라우팅). [README](apps-script/README.md) |
-| `frontend/` | 프론트 — 정적 사이트 + PWA (Phase 5에서 구축) |
+| `frontend/` | 프론트 — 정적 사이트 + PWA (Netlify 배포 대상). 개발 미리보기: `node .claude/preview-server.mjs` → `localhost:8787/?mock=1` |
 | `docs/` | 인계 문서 |
 | `v3.0.2/` | AS-IS 원본 웹앱 (참고/아카이브) |
 

@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "/Volumes/SamsungSSD/stone/.claude/preview-server.mjs"
+      ],
+      "port": 8787
+    }
+  ]
+}
