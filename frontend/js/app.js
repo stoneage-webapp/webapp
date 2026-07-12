@@ -197,6 +197,7 @@ function applyLogin(session) {
   buildChips('photoChips');
   buildDateSelect('photo');
   buildMonthFilter();
+  buildGalleryFilters();
   applyAdminUI();
   renderCertLine();
   renderVotes();
@@ -838,7 +839,10 @@ async function loadGallery(more) {
     feed.textContent = '벽화를 불러오는 중…';
   }
   try {
-    const res = await run('getGallery', GALLERY_PAGE, galleryOffset);
+    const gm = document.getElementById('galleryMonth');
+    const gp = document.getElementById('galleryPerson');
+    const res = await run('getGallery', GALLERY_PAGE, galleryOffset,
+      gm ? gm.value : '', gp ? gp.value : ''); // 월/사람 필터 (#22)
     galleryLoaded = true;
     const oldBtn = document.getElementById('galleryMore');
     if (oldBtn) oldBtn.remove();
@@ -1279,4 +1283,19 @@ async function doResetPin() {
   } catch (e) {
     alert(e.message || e);
   }
+}
+
+/* ==================== 벽화 갤러리 필터 (#22) ==================== */
+function buildGalleryFilters() {
+  const gm = document.getElementById('galleryMonth');
+  const gp = document.getElementById('galleryPerson');
+  gm.innerHTML = ''; gp.innerHTML = '';
+  addOpt(gm, '', '전체 월');
+  (DATA.months || []).forEach(function (m) { addOpt(gm, m, '📆 ' + m); });
+  addOpt(gp, '', '전체 부족원');
+  (DATA.members || []).forEach(function (m) { addOpt(gp, m, '🧗 ' + m); });
+  gm.onchange = gp.onchange = function () {
+    galleryLoaded = false;
+    loadGallery(); // 필터 변경 시 첫 페이지부터 다시
+  };
 }
