@@ -1,0 +1,10 @@
+# Netlify 배포 설정 — UI에서 별도 설정 불필요 (repo 연결만 하면 됨)
+[build]
+  publish = "frontend"   # 정적 사이트 루트 (빌드 과정 없음)
+
+# PWA/보안 기본 헤더
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
