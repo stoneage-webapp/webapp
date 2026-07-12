@@ -1,7 +1,4 @@
 # clasp push 제외 목록
-# config.gs — 실제 값(시트 ID 등)은 웹에디터에만 존재. push 로 placeholder 가 덮어쓰지 않도록 제외.
-#   (config 구조를 바꿀 땐 이 줄을 잠시 주석 처리하고 push 후, 웹에디터에서 값 다시 채울 것)
-src/config.gs
 README.md
 .clasp.json
 **/._*
