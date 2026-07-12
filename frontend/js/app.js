@@ -54,6 +54,120 @@ function ddayText(d) {
   return diff > 0 ? 'D-' + diff : 'D+' + (-diff);
 }
 
+/* ---------- 인앱 UI: 토스트 & 모달 ----------
+ * 브라우저 기본 alert/confirm/prompt 대신 테마에 맞는 컴포넌트 사용.
+ */
+function toast(msg, ok) {
+  const root = document.getElementById('toastRoot');
+  const t = document.createElement('div');
+  t.className = 'toast' + (ok ? ' ok' : '');
+  t.textContent = msg;
+  root.appendChild(t);
+  setTimeout(function () { t.classList.add('show'); }, 10);
+  setTimeout(function () {
+    t.classList.remove('show');
+    setTimeout(function () { t.remove(); }, 300);
+  }, 2600);
+}
+
+/* modal(opts) → Promise
+ * opts: { title, message?, fields?: [{key,label,type,placeholder,value,inputmode}],
+ *         confirmText?, cancelText?, busyText?,
+ *         validate?(values) → 에러문자열|null,
+ *         onConfirm?(values) → Promise (throw 시 모달 안에 에러 표시, 닫히지 않음) }
+ * 취소/바깥탭 → null 로 resolve. 성공 → values 로 resolve.
+ */
+function modal(opts) {
+  return new Promise(function (resolve) {
+    const root = document.getElementById('modalRoot');
+    root.innerHTML = '';
+    const ov = document.createElement('div');
+    ov.className = 'modal-ov';
+    const card = document.createElement('div');
+    card.className = 'modal-card';
+    card.innerHTML = '<div class="modal-title">' + esc(opts.title || '') + '</div>' +
+      (opts.message ? '<p class="modal-msg">' + esc(opts.message).replace(/\n/g, '<br>') + '</p>' : '');
+    const inputs = {};
+    (opts.fields || []).forEach(function (f) {
+      const w = document.createElement('div');
+      w.className = 'field';
+      if (f.label) {
+        const s = document.createElement('span');
+        s.textContent = f.label;
+        w.appendChild(s);
+      }
+      const inp = document.createElement('input');
+      inp.type = f.type || 'text';
+      if (f.placeholder) inp.placeholder = f.placeholder;
+      if (f.value !== undefined) inp.value = f.value;
+      if (f.inputmode) inp.setAttribute('inputmode', f.inputmode);
+      inp.autocomplete = 'off';
+      inputs[f.key] = inp;
+      w.appendChild(inp);
+      card.appendChild(w);
+    });
+    const st = document.createElement('div');
+    st.className = 'status err';
+    card.appendChild(st);
+    const row = document.createElement('div');
+    row.className = 'modal-btns';
+    const cancel = document.createElement('button');
+    cancel.className = 'btn2';
+    cancel.textContent = opts.cancelText || '취소';
+    const okb = document.createElement('button');
+    okb.className = 'btn';
+    okb.textContent = opts.confirmText || '확인';
+    row.appendChild(cancel);
+    row.appendChild(okb);
+    card.appendChild(row);
+    ov.appendChild(card);
+    root.appendChild(ov);
+
+    function close(v) { root.innerHTML = ''; resolve(v); }
+    cancel.onclick = function () { close(null); };
+    ov.onclick = function (e) { if (e.target === ov) close(null); };
+    okb.onclick = async function () {
+      const values = {};
+      Object.keys(inputs).forEach(function (k) { values[k] = inputs[k].value; });
+      if (opts.validate) {
+        const err = opts.validate(values);
+        if (err) { st.className = 'status err'; st.textContent = err; return; }
+      }
+      if (opts.onConfirm) {
+        okb.disabled = true;
+        st.className = 'status';
+        st.textContent = opts.busyText || '처리 중…';
+        try {
+          await opts.onConfirm(values);
+          close(values);
+        } catch (e) {
+          okb.disabled = false;
+          st.className = 'status err';
+          st.textContent = e.message || String(e);
+        }
+      } else {
+        close(values);
+      }
+    };
+    // 첫 입력 포커스 + Enter 로 확인
+    const list = Object.keys(inputs).map(function (k) { return inputs[k]; });
+    list.forEach(function (inp) {
+      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') okb.click(); });
+    });
+    if (list[0]) setTimeout(function () { list[0].focus(); }, 60);
+  });
+}
+
+// 확인 다이얼로그: 확인 → true, 취소 → false
+function modalConfirm(message, opts) {
+  opts = opts || {};
+  return modal({
+    title: opts.title || '확인',
+    message: message,
+    confirmText: opts.confirmText || '확인'
+  }).then(function (v) { return v !== null; });
+}
+
 /* ---------- 업로드 코어 ----------
  * 1차: 브라우저 → Drive 직접 PUT (빠름, 진행률 정확)
  * 2차: 직접 업로드가 막히면 서버 릴레이 청크 방식으로 자동 폴백
@@ -210,22 +324,31 @@ function doLogout() {
   location.reload();
 }
 
-async function changePinPrompt() {
-  const oldPin = prompt('기존 PIN을 입력하세요');
-  if (oldPin === null) return;
-  const newPin = prompt('새 PIN을 입력하세요 (4자리 이상)');
-  if (newPin === null) return;
-  if (String(newPin).trim().length < 4) return alert('새 PIN은 4자리 이상이어야 해요.');
-  try {
-    const res = await run('changePin', getMe(), oldPin, newPin, ME.token);
-    localStorage.setItem('sga_session', JSON.stringify(res));
-    ME.token = res.token;
-    ME.driveApiKey = res.driveApiKey || ME.driveApiKey;
-    apiSetSession(res);
-    alert('✓ PIN이 변경되었어요.');
-  } catch (e) {
-    alert(e.message || e);
-  }
+function changePinPrompt() {
+  modal({
+    title: '🔑 PIN 변경',
+    fields: [
+      { key: 'oldPin', label: '기존 PIN', type: 'password', inputmode: 'numeric' },
+      { key: 'newPin', label: '새 PIN (4자리 이상)', type: 'password', inputmode: 'numeric' },
+      { key: 'newPin2', label: '새 PIN 확인', type: 'password', inputmode: 'numeric' }
+    ],
+    confirmText: '변경',
+    busyText: '변경 중…',
+    validate: function (v) {
+      if (!v.oldPin) return '기존 PIN을 입력하세요.';
+      if (String(v.newPin).trim().length < 4) return '새 PIN은 4자리 이상이어야 해요.';
+      if (v.newPin !== v.newPin2) return '새 PIN이 서로 달라요.';
+      return null;
+    },
+    onConfirm: async function (v) {
+      const res = await run('changePin', getMe(), v.oldPin, v.newPin, ME.token);
+      localStorage.setItem('sga_session', JSON.stringify(res));
+      ME.token = res.token;
+      ME.driveApiKey = res.driveApiKey || ME.driveApiKey;
+      apiSetSession(res);
+      toast('✓ PIN이 변경되었어요.', true);
+    }
+  });
 }
 
 /* ---------- 탭 ---------- */
@@ -247,7 +370,7 @@ function goVote(cat) {
 
 function openNotion() {
   if (DATA.notionUrl) window.open(DATA.notionUrl, '_blank');
-  else alert('안내문 링크가 아직 설정되지 않았어요. 추장에게 문의!');
+  else toast('안내문 링크가 아직 설정되지 않았어요. 추장에게 문의!');
 }
 
 /* ---------- 홈 ---------- */
@@ -502,31 +625,44 @@ function renderDisaster(list) {
 }
 
 /* ---------- 번개(자연재해) 등록/삭제 ---------- */
-async function openFlashPrompt() {
-  const date = prompt('⚡ 번개 날짜/시간 (예: 7/15(화) 20:00)');
-  if (date === null || !date.trim()) return;
-  const loc = prompt('📍 번개 위치 (예: 더클라임 강남)');
-  if (loc === null || !loc.trim()) return;
-  try {
-    DATA.disaster = await run('addFlash', date.trim(), loc.trim(), getMe(), ME.token);
-    if (!DATA.flashOwners) DATA.flashOwners = {};
-    DATA.flashOwners[date.trim() + ' @ ' + loc.trim()] = getMe();
-    renderVotes();
-    renderHome();
-  } catch (e) {
-    alert(e.message || e);
-  }
+function openFlashPrompt() {
+  const today = new Date();
+  modal({
+    title: '⚡ 번개 열기',
+    fields: [
+      { key: 'date', label: '날짜', type: 'date',
+        value: today.getFullYear() + '-' + pad2(today.getMonth() + 1) + '-' + pad2(today.getDate()) },
+      { key: 'time', label: '시간 (선택)', type: 'time' },
+      { key: 'loc', label: '위치', type: 'text', placeholder: '예: 더클라임 강남' }
+    ],
+    confirmText: '⚡ 번개 열기',
+    busyText: '여는 중…',
+    validate: function (v) {
+      if (!v.date) return '날짜를 선택하세요.';
+      if (!v.loc.trim()) return '위치를 입력하세요.';
+      return null;
+    },
+    onConfirm: async function (v) {
+      const dateText = v.date + (v.time ? ' ' + v.time : ''); // '2026-07-15 20:00' — 표준 표기로 표시됨
+      DATA.disaster = await run('addFlash', dateText, v.loc.trim(), getMe(), ME.token);
+      if (!DATA.flashOwners) DATA.flashOwners = {};
+      DATA.flashOwners[dateText + ' @ ' + v.loc.trim()] = getMe();
+      renderVotes();
+      renderHome();
+      toast('⚡ 번개를 열었어요! 같이 갈 사람을 모아보세요.', true);
+    }
+  });
 }
 
 async function deleteFlashClick(dateText) {
-  if (!confirm('이 번개를 취소할까요?')) return;
+  if (!(await modalConfirm('이 번개를 취소할까요?'))) return;
   try {
     DATA.disaster = await run('deleteFlash', dateText, getMe(), ME.token);
     if (DATA.flashOwners) delete DATA.flashOwners[dateText];
     renderVotes();
     renderHome();
   } catch (e) {
-    alert(e.message || e);
+    toast(e.message || e);
   }
 }
 
@@ -538,13 +674,13 @@ async function shareText(text, okMsg) {
   }
   try {
     await navigator.clipboard.writeText(text);
-    alert((okMsg || '복사됐어요!') + '\n\n카톡에 붙여넣기 하세요 📋');
+    toast((okMsg || '복사됐어요!') + '\n\n카톡에 붙여넣기 하세요 📋');
   } catch (e) {
     // clipboard API 실패 시 폴백
     const ta = document.createElement('textarea');
     ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
     document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); alert((okMsg || '복사됐어요!') + '\n\n카톡에 붙여넣기 하세요 📋'); }
+    try { document.execCommand('copy'); toast((okMsg || '복사됐어요!') + '\n\n카톡에 붙여넣기 하세요 📋'); }
     catch (e2) { prompt('아래 내용을 복사하세요', text); }
     ta.remove();
   }
@@ -580,7 +716,7 @@ function gcalUrl(conf) {
 function addToCalendar(conf) {
   if (!conf || !conf.date) return;
   const url = gcalUrl(conf);
-  if (!url) return alert('날짜 형식을 인식하지 못했어요 — 캘린더에 수동 등록 부탁!');
+  if (!url) return toast('날짜 형식을 인식하지 못했어요 — 캘린더에 수동 등록 부탁!');
   window.open(url, '_blank');
 }
 
@@ -674,24 +810,24 @@ function renderHall() {
 }
 
 async function deleteHall(fileId) {
-  if (!confirm('이 영상을 삭제할까요? 되돌릴 수 없어요.')) return;
+  if (!(await modalConfirm('이 영상을 삭제할까요? 되돌릴 수 없어요.'))) return;
   try {
     HALL = await run('deleteHallEntry', fileId, getMe(), ME.token);
     renderHall();
   } catch (e) {
-    alert(e.message || e);
+    toast(e.message || e);
   }
 }
 
 async function voteHallClick(fileId, btn) {
   const me = getMe();
-  if (!me) return alert('상단에서 이름을 먼저 선택하세요.');
+  if (!me) return toast('상단에서 이름을 먼저 선택하세요.');
   btn.disabled = true;
   try {
     HALL = await run('voteHall', fileId, me, ME.token);
     renderHall();
   } catch (e) {
-    alert(e.message || e);
+    toast(e.message || e);
     btn.disabled = false;
   }
 }
@@ -749,9 +885,9 @@ async function submitHall() {
   const fill = bar.querySelector('i');
   const st = document.getElementById('hallStatus');
 
-  if (!me) return alert('상단에서 이름을 먼저 선택하세요.');
-  if (!file) return alert('영상을 선택하세요.');
-  if (!title) return alert('제목을 입력하세요.');
+  if (!me) return toast('상단에서 이름을 먼저 선택하세요.');
+  if (!file) return toast('영상을 선택하세요.');
+  if (!title) return toast('제목을 입력하세요.');
 
   btn.disabled = true;
   bar.style.display = 'block';
@@ -782,7 +918,7 @@ async function submitHall() {
 
 /* ---------- 벽화 갤러리 ---------- */
 async function deleteGalleryItem(fileId, card) {
-  if (!confirm('이 사진을 삭제할까요? 되돌릴 수 없어요.')) return;
+  if (!(await modalConfirm('이 사진을 삭제할까요? 되돌릴 수 없어요.'))) return;
   card.style.opacity = '.4';
   try {
     await run('deleteProof', fileId, getMe(), ME.token);
@@ -790,7 +926,7 @@ async function deleteGalleryItem(fileId, card) {
     galleryLoaded = false;
     renderCertLine();
   } catch (e) {
-    alert(e.message || e);
+    toast(e.message || e);
     card.style.opacity = '1';
   }
 }
@@ -872,25 +1008,39 @@ async function loadGallery(more) {
   }
 }
 
-async function doConfirm(month, dateText) {
+function doConfirm(month, dateText) {
   const me = getMe();
-  let loc = '';
-  if (dateText) {
-    loc = prompt('📍 모임 위치 입력 (예: 더클라임 강남)') || '';
-    if (!loc.trim()) return alert('위치를 입력해야 확정할 수 있어요.');
-  }
-  if (!adminPin) {
-    adminPin = prompt(dateText ? '확정하려면 관리자 PIN 입력' : '확정을 취소하려면 관리자 PIN 입력') || '';
-    if (!adminPin) return;
-  }
-  try {
-    DATA.raidMonths = await run('confirmDate', month, dateText, loc.trim(), me, adminPin);
-    renderVotes();
-    renderHome();
-  } catch (e) {
-    adminPin = '';
-    alert(e.message || e);
-  }
+  const isCancel = !dateText;
+  const fields = isCancel ? [] : [
+    { key: 'loc', label: '모임 위치', type: 'text', placeholder: '예: 더클라임 강남' }
+  ];
+  fields.push({ key: 'pin', label: '관리자 PIN', type: 'password', inputmode: 'numeric', value: adminPin });
+  modal({
+    title: isCancel ? '📌 확정 취소' : '📌 일정 확정',
+    message: isCancel
+      ? month + ' 확정을 취소하고 투표를 다시 엽니다.'
+      : month + ' 모임을 아래 일정으로 확정합니다.\n' + dateText,
+    fields: fields,
+    confirmText: isCancel ? '확정 취소' : '📌 확정',
+    busyText: '처리 중…',
+    validate: function (v) {
+      if (!isCancel && !v.loc.trim()) return '위치를 입력해야 확정할 수 있어요.';
+      if (!v.pin) return '관리자 PIN을 입력하세요.';
+      return null;
+    },
+    onConfirm: async function (v) {
+      try {
+        DATA.raidMonths = await run('confirmDate', month, dateText, isCancel ? '' : v.loc.trim(), me, v.pin);
+      } catch (e) {
+        adminPin = ''; // 틀린 PIN 은 캐시하지 않음
+        throw e;       // 모달 안에 에러 표시
+      }
+      adminPin = v.pin; // 성공한 PIN 은 세션 동안 기억 (다음 확정 때 미리 채움)
+      renderVotes();
+      renderHome();
+      toast(isCancel ? '확정을 취소했어요. 투표가 다시 열렸습니다.' : '📌 확정 완료!', true);
+    }
+  });
 }
 
 async function voteRaid(month, dateText, card) {
@@ -903,7 +1053,7 @@ async function voteRaid(month, dateText, card) {
     renderVotes();
     renderHome();
   } catch (e) {
-    alert(e.message || e);
+    toast(e.message || e);
     card.style.opacity = '1';
   }
 }
@@ -918,7 +1068,7 @@ async function voteFlash(dateText, card) {
     renderVotes();
     renderHome();
   } catch (e) {
-    alert(e.message || e);
+    toast(e.message || e);
     card.style.opacity = '1';
   }
 }
@@ -994,7 +1144,7 @@ function openAlbum() {
   if (DATA.shareUrl) {
     window.open(DATA.shareUrl, '_blank');
   } else {
-    alert('앨범 링크가 아직 설정되지 않았어요. 추장에게 문의!');
+    toast('앨범 링크가 아직 설정되지 않았어요. 추장에게 문의!');
   }
 }
 
@@ -1025,10 +1175,10 @@ async function submitProof(kind) {
 
   const act = getActivityDate(kind);
 
-  if (!me) return alert('상단에서 이름을 먼저 선택하세요.');
-  if (!file) return alert('파일을 선택하세요.');
-  if (!act) return alert('참여 날짜를 선택하세요.');
-  if (!loc) return alert('장소를 입력하세요.');
+  if (!me) return toast('상단에서 이름을 먼저 선택하세요.');
+  if (!file) return toast('파일을 선택하세요.');
+  if (!act) return toast('참여 날짜를 선택하세요.');
+  if (!loc) return toast('장소를 입력하세요.');
   if (chips.indexOf(me) < 0) chips.unshift(me);
 
   btn.disabled = true;
@@ -1166,11 +1316,11 @@ function renderNotices(items) {
       del.className = 'mini-btn';
       del.textContent = '🗑️ 삭제';
       del.onclick = async function () {
-        if (!confirm('이 공지를 삭제할까요?')) return;
+        if (!(await modalConfirm('이 공지를 삭제할까요?'))) return;
         try {
           const res = await run('deleteNotice', n.row, n.when, getMe(), ME.token);
           renderNotices(res.items);
-        } catch (e) { alert(e.message || e); }
+        } catch (e) { toast(e.message || e); }
       };
       c.appendChild(del);
     }
@@ -1181,7 +1331,7 @@ function renderNotices(items) {
 async function submitNotice() {
   const ta = document.getElementById('noticeText');
   const text = ta.value.trim();
-  if (!text) return alert('공지 내용을 입력하세요.');
+  if (!text) return toast('공지 내용을 입력하세요.');
   const btn = document.getElementById('noticeBtn');
   btn.disabled = true;
   try {
@@ -1189,7 +1339,7 @@ async function submitNotice() {
     ta.value = '';
     renderNotices(res.items);
   } catch (e) {
-    alert(e.message || e);
+    toast(e.message || e);
   } finally {
     btn.disabled = false;
   }
@@ -1280,14 +1430,14 @@ function buildResetPinSelect() {
 
 async function doResetPin() {
   const target = document.getElementById('resetPinName').value;
-  if (!target) return alert('초기화할 부족원을 선택하세요.');
-  if (!confirm(target + ' 님의 PIN을 초기화할까요?\n다음 로그인 때 새 PIN을 직접 설정하게 됩니다.')) return;
+  if (!target) return toast('초기화할 부족원을 선택하세요.');
+  if (!(await modalConfirm(target + ' 님의 PIN을 초기화할까요?\n다음 로그인 때 새 PIN을 직접 설정하게 됩니다.'))) return;
   try {
     await run('resetPin', target, getMe(), ME.token);
-    alert('✓ ' + target + ' 님 PIN이 초기화되었어요.');
+    toast('✓ ' + target + ' 님 PIN이 초기화되었어요.');
     document.getElementById('resetPinName').value = '';
   } catch (e) {
-    alert(e.message || e);
+    toast(e.message || e);
   }
 }
 
@@ -1343,7 +1493,7 @@ async function saveSupports() {
   const names = Array.prototype.slice.call(document.querySelectorAll('#supportChips .chip.on'))
     .map(function (c) { return c.dataset.name; });
   const st = document.getElementById('supportStatus');
-  if (!confirm('지원 대상 ' + names.length + '명으로 저장할까요?\n(해제된 부족원은 정산에서 "지원 제외" 처리)')) return;
+  if (!(await modalConfirm('지원 대상 ' + names.length + '명으로 저장할까요?\n(해제된 부족원은 정산에서 "지원 제외" 처리)'))) return;
   try {
     const res = await run('setSupports', names, getMe(), ME.token);
     DATA.support = res.support;
@@ -1360,8 +1510,8 @@ async function runSettleClick() {
   const ym = document.getElementById('settleYm').value; // 'yyyy-MM'
   const st = document.getElementById('settleRunStatus');
   const btn = document.getElementById('settleRunBtn');
-  if (!ym) return alert('정산할 월을 선택하세요.');
-  if (!confirm(ym + ' 정산을 실행할까요?\n인증현황 시트가 갱신되고 정산 폴더에 사진이 복사됩니다.')) return;
+  if (!ym) return toast('정산할 월을 선택하세요.');
+  if (!(await modalConfirm(ym + ' 정산을 실행할까요?\n인증현황 시트가 갱신되고 정산 폴더에 사진이 복사됩니다.'))) return;
   btn.disabled = true;
   st.className = 'status';
   st.textContent = '정산 중… (사진 수에 따라 수십 초 걸릴 수 있어요)';

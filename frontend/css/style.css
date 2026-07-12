@@ -181,10 +181,12 @@
   /* 인증 폼 */
   .field { margin-bottom: 14px; }
   .field > span { display: block; font-size: 13px; color: var(--ink-dim); margin-bottom: 7px; }
-  input[type=text], input[type=date], .field select {
+  input[type=text], input[type=password], input[type=date], input[type=time],
+  input[type=month], input[type=number], .field select {
     width: 100%; background: var(--stone-hi); color: var(--ink);
     border: 1px solid var(--line); border-radius: 10px;
     padding: 12px; font-size: 16px;
+    color-scheme: dark; /* date/time 네이티브 피커도 다크로 */
   }
   .field input[type=date] { margin-top: 8px; }
   .drop {
@@ -261,3 +263,41 @@ textarea:focus { outline: none; border-color: var(--ember); }
 .stats-table tr.indep { opacity: .45; }
 
 .dim { color: var(--ink-dim); }
+
+/* ==================== 인앱 모달 & 토스트 (네이티브 prompt/alert 대체) ==================== */
+.modal-ov {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(0, 0, 0, .55);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--pad);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+}
+.modal-card {
+  background: var(--stone); border: 1px solid var(--line);
+  border-radius: var(--radius); width: 100%; max-width: 360px;
+  padding: 20px 18px 14px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
+  animation: modal-in .18s ease-out;
+}
+@keyframes modal-in { from { opacity: 0; transform: translateY(10px) scale(.98); } }
+.modal-title { font-weight: 800; font-size: 16.5px; margin-bottom: 6px; }
+.modal-msg { font-size: 13px; color: var(--ink-dim); line-height: 1.6; margin-bottom: 12px; }
+.modal-card .status { min-height: 18px; margin: 2px 0 8px; }
+.modal-btns { display: flex; gap: 8px; margin-top: 4px; }
+.modal-btns .btn, .modal-btns .btn2 { flex: 1; margin: 0; }
+
+#toastRoot {
+  position: fixed; left: 0; right: 0;
+  bottom: calc(84px + var(--safe-b)); z-index: 95;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  background: var(--stone-hi); border: 1px solid var(--line); color: var(--ink);
+  border-radius: 999px; padding: 10px 18px; font-size: 13.5px;
+  max-width: 86%; text-align: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  opacity: 0; transform: translateY(8px); transition: opacity .25s, transform .25s;
+}
+.toast.show { opacity: 1; transform: none; }
+.toast.ok { border-color: var(--moss); }

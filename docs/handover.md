@@ -8,8 +8,8 @@
 | 자산 | 소유 | 평소 작업 | 링크 |
 |---|---|---|---|
 | GitHub repo | 전용 Organization (`stoneage-webapp`) | 개인 계정 collaborator | https://github.com/stoneage-webapp/webapp |
-| Netlify site | 전용 계정 | `main` push 시 자동 배포 | _(Phase 7에서 기입)_ |
-| Apps Script | 전용 계정 | 웹에디터 or clasp | _(Phase 8에서 기입)_ |
+| Netlify site | 전용 계정 | `main` push 시 자동 배포 | https://strong-toffee-51ae6b.netlify.app |
+| Apps Script | 전용 계정 | 웹에디터 or clasp | script.google.com/d/18GNZwiecePbTqZVd4h3WfC3FbeyXiZyNXYZE9ZQtX-cFoBG2nyDXT1QX/edit |
 | Google Sheet | 전용 계정 | 이미 공용 | _(기입)_ |
 | Drive 폴더 | 전용 계정 | 이미 공용 | _(기입)_ |
 | Photos 앨범 | 전용 계정 | 이미 공용 | _(기입)_ |
