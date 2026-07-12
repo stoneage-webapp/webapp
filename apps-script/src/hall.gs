@@ -147,3 +147,26 @@ function deleteHallEntry(fileId, requester, authToken) {
     lock.releaseLock();
   }
 }
+
+/* ---------- 역대 우승자 아카이브 (#23) ----------
+ * 월별 최다득표 1건씩, 최신 월부터. 진행 중인 이번 달은 제외.
+ * 득표 0인 월은 우승자 없음 처리(목록에서 빠짐).
+ */
+function getHallArchive() {
+  const current = ymNow_();
+  const byMonth = {};
+  readHall_().forEach(function (e) {
+    if (!e.ym || e.ym >= current) return;
+    if (!byMonth[e.ym]) byMonth[e.ym] = [];
+    byMonth[e.ym].push(e);
+  });
+  const winners = [];
+  Object.keys(byMonth).sort().reverse().forEach(function (m) {
+    let w = null;
+    byMonth[m].forEach(function (e) {
+      if (e.voters.length && (!w || e.voters.length > w.voters.length)) w = e;
+    });
+    if (w) winners.push(w);
+  });
+  return { winners: winners };
+}

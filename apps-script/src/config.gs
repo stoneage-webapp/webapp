@@ -20,7 +20,9 @@ const CONFIG = {
     raid: '정기공격일자',
     disaster: '자연재해',
     mural: '벽화',
-    hall: '명예의전당'
+    hall: '명예의전당',
+    notices: '공지',        // 공지사항 (첫 등록 시 앱이 자동 생성)
+    status: '인증현황'      // settleMonth 가 생성/갱신하는 정산 결과
   },
   PHOTOS_MAX_BYTES: 45 * 1024 * 1024,  // 45MB 초과 파일은 Drive에만 저장 (Apps Script 응답 한도)
   ADMINS: ['김광훈'],            // 일정 확정 권한자 (부족원 시트의 이름과 동일하게)

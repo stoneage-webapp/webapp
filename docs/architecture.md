@@ -23,7 +23,8 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `votes.gs` | 정기공격/자연재해 투표, 번개, 일정 확정, 마감 판정 |
 | `photos.gs` | Drive 업로드(청크), Photos 업로드, 벽화 갤러리, 사진 삭제 |
 | `hall.gs` | 명예의전당 출품/투표/영상 삭제 |
-| `settle.gs` | 월별 인증 정산(시트 메뉴), 월 파싱, 인증현황 집계 |
+| `settle.gs` | 월별 인증 정산(시트 메뉴), 월 파싱, 인증현황 집계, 출석 통계(`getStats`)·정산 조회(`getSettleStatus`) |
+| `notices.gs` | 공지사항 — 목록/등록/삭제 (관리자). '공지' 시트 자동 생성 |
 | `notion.gs` | 정기모임 확정 시 노션 캘린더 기록 — **Phase 6에서 제거 예정** |
 
 > Apps Script는 모든 `.gs`가 전역 스코프를 공유한다. 파일 분리는 순수 정리 목적이며,
@@ -46,8 +47,12 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 |---|---|---|
 | `getInitData` | — | `{ members, months, raidMonths, disaster, certified, month, shareUrl, notionUrl, confirmed, admins, flashOwners }` |
 | `getVotes` | `month`(선택, `'2026-07'`) | `{ months, raidMonths, disaster, confirmed, flashOwners }` — month 지정 시 해당 월만 |
-| `getGallery` | `limit`(기본12), `offset`(기본0) | `{ items:[{when,actDate,loc,people,by,fileId,link}], hasMore }` |
+| `getGallery` | `limit`(기본12), `offset`(기본0), `month`(선택), `person`(선택) | `{ items:[{when,actDate,loc,people,by,fileId,link}], hasMore }` — 필터 후 페이징 |
 | `getHallData` | — | `{ ym, entries:[...], winner, winnerMonth }` |
+| `getHallArchive` | — | `{ winners:[...] }` — 월별 최다득표, 최신순, 이번 달 제외 |
+| `getStats` | — | `{ months, members:[{name,independent}], cert:{ym:{이름:true}}, votes:{ym:{이름:true}} }` |
+| `getSettleStatus` | — | `{ ym, rows:[{name,ym,status,actDate,loc,link}] }` — 인증현황 시트 |
+| `getNotices` | `limit`(기본20) | `{ items:[{when,by,text,row}] }` — 최신순 |
 
 > - `driveApiKey`는 익명 `getInitData`에서 **제거됨** → `loginWithPin`/`changePin` 응답으로 이동.
 > - 투표 항목에는 `dateInfo` 필드가 붙는다:
@@ -73,6 +78,9 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `deleteProof` | `fileId, requester, token` | `{ ok:true }` |
 | `deleteHallEntry` | `fileId, requester, token` | `getHallData()` 결과 |
 | `voteHall` | `fileId, voter, token` | `getHallData()` 결과 |
+| `resetPin` | `targetName, requester, token` | `{ name, reset:true }` — 관리자 전용. 대상자는 다음 로그인에서 새 PIN 설정 |
+| `postNotice` | `text, name, token` | `getNotices()` 결과 — 관리자 전용 |
+| `deleteNotice` | `row, when, name, token` | `getNotices()` 결과 — 관리자 전용. `when` 대조로 행 밀림 방지 |
 
 > `meta`(finalizeProof) = `{ kind:'사진'|'영상', mimeType, fileSize, participants:[], location, uploader, activityLabel }`
 
@@ -84,8 +92,11 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 로그인 | `loginWithPin`, `changePin` |
 | 투표(정기공격/번개) | `toggleVote`, `addFlash`, `deleteFlash`, `confirmDate` |
 | 사진 인증 | `startUpload` → `uploadChunk`/`checkUploadStatus` → `finalizeProof` |
-| 벽화 갤러리 | `getGallery`, `deleteProof` |
-| 명예의전당 | `getHallData`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |
+| 벽화 갤러리 | `getGallery`(월/사람 필터), `deleteProof` |
+| 명예의전당 | `getHallData`, `getHallArchive`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |
+| 공지 | `getNotices`, `postNotice`/`deleteNotice`(관리자) |
+| 통계 | `getStats` |
+| 관리자(정산/PIN) | `getSettleStatus`, `resetPin` |
 
 ## AS-IS와의 차이 (참고)
 
