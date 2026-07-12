@@ -143,7 +143,7 @@ function settleMonth(ym) {
   }
 
   // 인증현황 시트 갱신
-  const out = s.getSheetByName('인증현황') || s.insertSheet('인증현황');
+  const out = s.getSheetByName(CONFIG.SHEETS.status) || s.insertSheet(CONFIG.SHEETS.status);
   out.clear();
   const rows = [['이름', '대상월', '인증여부', '활동일자', '장소', 'Drive 링크']];
   members.forEach(function(m) {
@@ -177,4 +177,81 @@ function settleMonth(ym) {
     done: done, total: members.length, independent: independent.length,
     copied: copied, uncovered: uncovered
   };
+}
+
+/* ---------- 월별 출석/인증 통계 (웹 조회용, #20) ----------
+ * 반환: {
+ *   months : 데이터가 있는 월 목록 (정렬)
+ *   members: [{name, independent}]  — independent = 독립(퇴사) 부족원
+ *   cert   : { ym: { 이름: true } } — 해당 월 사진 인증자
+ *   votes  : { ym: { 이름: true } } — 해당 월 정기공격 투표 참여자
+ * }
+ * 시트 전체 스캔이지만 라우터 캐시(2분) 뒤에 있어 성능 무해.
+ */
+function getStats() {
+  const s = ss_();
+  const tz = Session.getScriptTimeZone();
+
+  // 부족원: A=이름, H=독립일
+  const members = [];
+  s.getSheetByName(CONFIG.SHEETS.members).getRange('A2:H').getDisplayValues()
+    .forEach(function (r) {
+      const name = String(r[0]).trim();
+      if (name) members.push({ name: name, independent: String(r[7]).trim() !== '' });
+    });
+
+  // 벽화: 월별 사진 인증자
+  const cert = {};
+  const msh = s.getSheetByName(CONFIG.SHEETS.mural);
+  if (msh && msh.getLastRow() > 1) {
+    const vals = msh.getDataRange().getValues();
+    for (let i = 1; i < vals.length; i++) {
+      const r = vals[i];
+      if (String(r[2]) !== '사진') continue;
+      const ym = parseYM_(r[1]) ||
+        (r[0] instanceof Date ? Utilities.formatDate(r[0], tz, 'yyyy-MM') : null);
+      if (!ym) continue;
+      if (!cert[ym]) cert[ym] = {};
+      String(r[4]).split(',').forEach(function (n) {
+        n = n.trim();
+        if (n) cert[ym][n] = true;
+      });
+    }
+  }
+
+  // 정기공격: 월별 투표 참여자 (A=대상월, D~=투표자)
+  const votes = {};
+  const rsh = s.getSheetByName(CONFIG.SHEETS.raid);
+  if (rsh) {
+    const rvals = rsh.getDataRange().getDisplayValues();
+    for (let i = 1; i < rvals.length; i++) {
+      const ym = String(rvals[i][0]).trim();
+      if (!ym) continue;
+      if (!votes[ym]) votes[ym] = {};
+      rvals[i].slice(3).filter(String).forEach(function (n) {
+        votes[ym][String(n).trim()] = true;
+      });
+    }
+  }
+
+  const seen = {};
+  Object.keys(cert).forEach(function (m) { seen[m] = true; });
+  Object.keys(votes).forEach(function (m) { seen[m] = true; });
+  return { months: Object.keys(seen).sort(), members: members, cert: cert, votes: votes };
+}
+
+/* ---------- 정산 현황 웹 조회 (#21) ----------
+ * settleMonth 가 만든 '인증현황' 시트를 읽기 전용으로 반환.
+ * 아직 정산한 적 없으면 { ym: null, rows: [] }.
+ */
+function getSettleStatus() {
+  const sh = ss_().getSheetByName(CONFIG.SHEETS.status);
+  if (!sh || sh.getLastRow() < 2) return { ym: null, rows: [] };
+  const vals = sh.getDataRange().getDisplayValues();
+  const rows = vals.slice(1)
+    .filter(function (r) { return r[0]; })
+    .map(function (r) {
+      return { name: r[0], ym: r[1], status: r[2], actDate: r[3], loc: r[4], link: r[5] };
+    });
+  return { ym: rows.length ? rows[0].ym : null, rows: rows };
 }

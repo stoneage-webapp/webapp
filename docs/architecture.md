@@ -23,7 +23,8 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `votes.gs` | 정기공격/자연재해 투표, 번개, 일정 확정, 마감 판정 |
 | `photos.gs` | Drive 업로드(청크), Photos 업로드, 벽화 갤러리, 사진 삭제 |
 | `hall.gs` | 명예의전당 출품/투표/영상 삭제 |
-| `settle.gs` | 월별 인증 정산(시트 메뉴), 월 파싱, 인증현황 집계 |
+| `settle.gs` | 월별 인증 정산(시트 메뉴), 월 파싱, 인증현황 집계, 출석 통계(`getStats`)·정산 조회(`getSettleStatus`) |
+| `notices.gs` | 공지사항 — 목록/등록/삭제 (관리자). '공지' 시트 자동 생성 |
 | `notion.gs` | 정기모임 확정 시 노션 캘린더 기록 — **Phase 6에서 제거 예정** |
 
 > Apps Script는 모든 `.gs`가 전역 스코프를 공유한다. 파일 분리는 순수 정리 목적이며,
@@ -46,8 +47,12 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 |---|---|---|
 | `getInitData` | — | `{ members, months, raidMonths, disaster, certified, month, shareUrl, notionUrl, confirmed, admins, flashOwners }` |
 | `getVotes` | `month`(선택, `'2026-07'`) | `{ months, raidMonths, disaster, confirmed, flashOwners }` — month 지정 시 해당 월만 |
-| `getGallery` | `limit`(기본12), `offset`(기본0) | `{ items:[{when,actDate,loc,people,by,fileId,link}], hasMore }` |
+| `getGallery` | `limit`(기본12), `offset`(기본0), `month`(선택), `person`(선택) | `{ items:[{when,actDate,loc,people,by,fileId,link}], hasMore }` — 필터 후 페이징 |
 | `getHallData` | — | `{ ym, entries:[...], winner, winnerMonth }` |
+| `getHallArchive` | — | `{ winners:[...] }` — 월별 최다득표, 최신순, 이번 달 제외 |
+| `getStats` | — | `{ months, members:[{name,independent}], cert:{ym:{이름:true}}, votes:{ym:{이름:true}} }` |
+| `getSettleStatus` | — | `{ ym, rows:[{name,ym,status,actDate,loc,link}] }` — 인증현황 시트 |
+| `getNotices` | `limit`(기본20) | `{ items:[{when,by,text,row}] }` — 최신순 |
 
 > - `driveApiKey`는 익명 `getInitData`에서 **제거됨** → `loginWithPin`/`changePin` 응답으로 이동.
 > - 투표 항목에는 `dateInfo` 필드가 붙는다:
@@ -73,10 +78,26 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `deleteProof` | `fileId, requester, token` | `{ ok:true }` |
 | `deleteHallEntry` | `fileId, requester, token` | `getHallData()` 결과 |
 | `voteHall` | `fileId, voter, token` | `getHallData()` 결과 |
+| `resetPin` | `targetName, requester, token` | `{ name, reset:true }` — 관리자 전용. 대상자는 다음 로그인에서 새 PIN 설정 |
+| `postNotice` | `text, name, token` | `getNotices()` 결과 — 관리자 전용 |
+| `deleteNotice` | `row, when, name, token` | `getNotices()` 결과 — 관리자 전용. `when` 대조로 행 밀림 방지 |
 
 > `meta`(finalizeProof) = `{ kind:'사진'|'영상', mimeType, fileSize, participants:[], location, uploader, activityLabel }`
 
-## 화면 ↔ action 매핑 (프론트 재구축 #6 때 채움)
+## 프론트 구성 (`frontend/`)
+
+| 파일 | 역할 |
+|---|---|
+| `index.html` | 화면 마크업 + PWA 메타 (favicon/apple-touch-icon/manifest 절대경로) |
+| `js/api.js` | **GAS 호출의 유일한 창구** — `run('액션', 인자...)` 를 fetch 로 변환. exec URL 상수는 이 파일 상단 한 곳 |
+| `js/app.js` | 화면 로직 (GAS 시절 코드 이식 + 월필터/D-day/더보기 탭) |
+| `js/mock.js` | `?mock=1` 로 열었을 때만 활성화되는 개발용 목데이터 |
+| `css/style.css` | 스타일 (기존 테마 이식) |
+| `manifest.json` / `icons/` | PWA. **아이콘은 플레이스홀더 — 실제 로고로 교체 필요 ([사람])** |
+
+- 개발 미리보기: `node .claude/preview-server.mjs` → `http://localhost:8787/?mock=1`
+
+## 화면 ↔ action 매핑
 
 | 화면/탭 | 호출 action |
 |---|---|
@@ -84,11 +105,15 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 로그인 | `loginWithPin`, `changePin` |
 | 투표(정기공격/번개) | `toggleVote`, `addFlash`, `deleteFlash`, `confirmDate` |
 | 사진 인증 | `startUpload` → `uploadChunk`/`checkUploadStatus` → `finalizeProof` |
-| 벽화 갤러리 | `getGallery`, `deleteProof` |
-| 명예의전당 | `getHallData`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |
+| 벽화 갤러리 | `getGallery`(월/사람 필터), `deleteProof` |
+| 명예의전당 | `getHallData`, `getHallArchive`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |
+| 공지 | `getNotices`, `postNotice`/`deleteNotice`(관리자) |
+| 통계 | `getStats` |
+| 관리자(정산/PIN) | `getSettleStatus`, `resetPin` |
 
 ## AS-IS와의 차이 (참고)
 
 - 기존 `v3.0.2/`는 `google.script.run`(GAS 네이티브 RPC) + `HtmlService` 템플릿으로 화면을 직접 렌더링했다.
-- 리팩터 후에는 `doGet`이 HTML 대신 JSON을 반환한다. `google.script.run` 호출은 프론트 재구축(#6)에서
-  `fetch(execUrl, ...)` 호출로 교체된다. **로직 함수 자체는 그대로 재사용**한다.
+- 현재는 `doGet`이 JSON을 반환하고, 프론트 `js/api.js`의 `run()`이 같은 호출 형태를 fetch 로 재구현했다
+  — **화면 코드의 호출부는 GAS 시절과 동일**하고, 백엔드 로직 함수도 그대로 재사용한다.
+- 브라우저→Drive 직접 업로드(resumable PUT)와 릴레이 폴백 구조는 변경 없음.

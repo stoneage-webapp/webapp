@@ -5,6 +5,7 @@
 
 ## 프론트 (Netlify — 자동)
 
+0. **배포 전 확인**: `frontend/js/api.js` 상단 `GAS_URL`이 실제 exec URL인지 (placeholder `YOUR_EXEC_URL`이면 앱이 동작하지 않음).
 1. `main`에 merge → Netlify가 자동 빌드/배포.
 2. Base directory = `frontend/`, Production branch = `main`. (Phase 7에서 설정)
 3. HTTPS 자동 적용 (PWA/홈화면 추가에 필수 — Netlify 기본 제공).

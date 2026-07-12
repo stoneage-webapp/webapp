@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>석기시대</title>
+
+<!-- PWA / 홈 화면 아이콘 (절대경로 필수 — CLAUDE.md 함정 6) -->
+<link rel="icon" href="/favicon.ico">
+<link rel="apple-touch-icon" href="/icons/icon-180.png">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#1c1a17">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="석기시대">
+
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div id="kakaoOverlay" style="display:none; position:fixed; inset:0; z-index:99; background:var(--bg); padding:56px 26px; text-align:center;">
+  <div style="font-size:44px">🗿</div>
+  <h2 style="margin:16px 0 10px; font-size:18px;">브라우저에서 열어주세요</h2>
+  <p style="font-size:13.5px; color:var(--ink-dim); line-height:1.8;">
+    카카오톡 안에서는 사진·영상 업로드가<br>느리거나 실패할 수 있어요.<br>
+    사파리/크롬으로 열고, <b style="color:var(--ink)">홈 화면에 추가</b>하면<br>다음부터 앱처럼 바로 열 수 있어요.
+  </p>
+  <button class="btn" style="margin-top:22px" onclick="openExternal()">🚀 브라우저로 열기</button>
+  <button class="btn2" style="margin-top:10px" onclick="dismissKakao()">그냥 카톡에서 볼게요</button>
+</div>
+
+<header>
+  <h1>🪨석기시대</h1>
+  <p>부족 공동 기록소</p>
+</header>
+
+<div id="loginScreen" style="display:none; position:fixed; inset:0; z-index:50; background:var(--bg); padding:calc(60px + var(--safe-t)) var(--pad) 0; text-align:center;">
+  <div style="font-size:52px">🗿</div>
+  <h2 style="margin:18px 0 6px; font-size:clamp(18px,5vw,22px);">부족원 확인</h2>
+  <p style="font-size:13px; color:var(--ink-dim); margin-bottom:26px;">이름을 고르고 PIN을 입력하세요<br><span style="font-size:12px">처음이면 입력한 PIN으로 자동 등록돼요 (4자리 이상)</span></p>
+  <div style="max-width:340px; margin:0 auto; text-align:left;">
+    <div class="field"><span>이름</span>
+      <select id="loginName"><option value="">이름 선택</option></select>
+    </div>
+    <div class="field"><span>PIN</span>
+      <input type="password" id="loginPin" inputmode="numeric" placeholder="개인 PIN" autocomplete="off">
+    </div>
+    <button class="btn" id="loginBtn" onclick="doLogin()">🔥 입장</button>
+    <div class="status" id="loginStatus"></div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="me">
+    <label>부족원</label>
+    <span id="myNameLabel" style="flex:1; font-weight:800; font-size:16px;"></span>
+    <select id="myName" style="display:none"></select>
+    <button class="mini-btn" style="margin:0" onclick="changePinPrompt()">PIN</button>
+    <button class="mini-btn" style="margin:0" onclick="doLogout()">로그아웃</button>
+  </div>
+
+  <div id="loading" class="loading">동굴에서 기록을 꺼내는 중…</div>
+
+  <!-- 홈 -->
+  <section id="tab-home" class="tab">
+    <div id="ddayBanner"></div>
+    <div id="homeCards"></div>
+    <div class="cert-line" id="homeCertLine"></div>
+    <button class="btn2" onclick="openAlbum()">🔥 부족 영상 앨범 (구글 포토)</button>
+    <button class="btn2" onclick="openNotion()">📜 부족 안내문</button>
+  </section>
+
+  <!-- 투표 -->
+  <section id="tab-vote" class="tab">
+    <div class="seg">
+      <button id="segRaid" class="on" onclick="setCategory('raid')">⚔️ 정기공격일자</button>
+      <button id="segDisaster" onclick="setCategory('disaster')">🌋 자연재해</button>
+    </div>
+    <div class="field" style="margin-bottom:10px">
+      <select id="voteMonth"></select>
+    </div>
+    <div class="deadline-line" id="deadlineLine"></div>
+    <div id="voteList"></div>
+  </section>
+
+  <!-- 벽화 갤러리 -->
+  <section id="tab-gallery" class="tab">
+    <div style="display:flex; gap:8px; margin-bottom:10px">
+      <div class="field" style="flex:1; margin:0"><select id="galleryMonth"></select></div>
+      <div class="field" style="flex:1; margin:0"><select id="galleryPerson"></select></div>
+    </div>
+    <div id="galleryFeed" class="loading">벽화를 불러오는 중…</div>
+  </section>
+
+  <!-- 명예의전당 -->
+  <section id="tab-hall" class="tab">
+    <div id="hallWinner"></div>
+    <button class="btn2" onclick="toggleHallForm()">🏆 내 영상 출품하기</button>
+    <div id="hallForm" style="display:none; margin-top:12px">
+      <div class="field">
+        <label class="drop" id="hallDrop">
+          🎥 영상 선택
+          <input type="file" id="hallFile" accept="video/*">
+        </label>
+        <div class="sel-row" id="hallSel" onclick="document.getElementById('hallFile').click()">
+          <div class="sel-meta">
+            <div class="sel-name" id="hallName"></div>
+            <div class="sel-sub" id="hallSub"></div>
+          </div>
+        </div>
+      </div>
+      <div class="field"><span>제목</span><input type="text" id="hallTitle" placeholder="예: 보라 문제 첫 완등 순간"></div>
+      <button class="btn" id="hallBtn" onclick="submitHall()">전당에 올리기</button>
+      <div class="bar" id="hallBar"><i></i></div>
+      <div class="status" id="hallStatus"></div>
+    </div>
+    <div id="hallFeed" class="loading" style="margin-top:14px">전당을 불러오는 중…</div>
+    <button class="btn2" onclick="openAlbum()">🔥 일상 영상은 포토 앨범에</button>
+  </section>
+
+  <!-- 사진 인증 -->
+  <section id="tab-photo" class="tab">
+    <div class="cert-line" id="certLine"></div>
+    <div class="field">
+      <label class="drop" id="photoDrop">
+        📸 사진 선택 / 촬영
+        <input type="file" id="photoFile" accept="image/*">
+      </label>
+      <div class="sel-row" id="photoSel" onclick="document.getElementById('photoFile').click()">
+        <img id="photoThumb" alt="">
+        <div class="sel-meta">
+          <div class="sel-name" id="photoName"></div>
+          <div class="sel-sub" id="photoSub"></div>
+        </div>
+      </div>
+    </div>
+    <div class="field"><span>언제 참여했나?</span>
+      <select id="photoDate"></select>
+      <input type="date" id="photoDateCustom" style="display:none">
+    </div>
+    <div class="field"><span>어디에서? (암장/장소)</span><input type="text" id="photoLoc" placeholder="예: 더클라임 강남"></div>
+    <div class="field"><span>누가 참여했나? (탭해서 선택)</span><div class="chips" id="photoChips"></div></div>
+    <button class="btn" id="photoBtn" onclick="submitProof('photo')">벽화에 새기기</button>
+    <div class="bar" id="photoBar"><i></i></div>
+    <div class="status" id="photoStatus"></div>
+  </section>
+
+  <!-- 더보기: 공지 · 통계 · 역대 우승자 · (관리자) 정산/PIN -->
+  <section id="tab-more" class="tab">
+
+    <div class="month-head">📢 공지사항</div>
+    <div class="admin-only" style="display:none; margin-bottom:10px">
+      <div class="field">
+        <textarea id="noticeText" rows="3" placeholder="부족원에게 알릴 내용"></textarea>
+      </div>
+      <button class="btn2" id="noticeBtn" onclick="submitNotice()">공지 올리기</button>
+    </div>
+    <div id="noticeList" class="loading">공지를 불러오는 중…</div>
+
+    <div class="month-head" style="margin-top:22px">📊 출석 통계</div>
+    <div id="statsBox" class="loading">통계를 내는 중…</div>
+
+    <div class="month-head" style="margin-top:22px">👑 역대 명예의 전당</div>
+    <div id="archiveBox" class="loading">기록을 꺼내는 중…</div>
+
+    <div class="admin-only" style="display:none">
+      <div class="month-head" style="margin-top:22px">💰 정산 현황 (관리자)</div>
+      <div id="settleBox" class="loading">정산 현황을 여는 중…</div>
+
+      <div class="month-head" style="margin-top:22px">🔑 PIN 초기화 (관리자)</div>
+      <div class="field">
+        <select id="resetPinName"><option value="">부족원 선택</option></select>
+      </div>
+      <button class="btn2" onclick="doResetPin()">선택한 부족원 PIN 초기화</button>
+    </div>
+
+  </section>
+
+</div>
+
+<nav>
+  <button id="nav-home" class="on" onclick="setTab('home')"><span class="ico">🗿</span>홈</button>
+  <button id="nav-vote" onclick="setTab('vote')"><span class="ico">🗳️</span>투표</button>
+  <button id="nav-photo" onclick="setTab('photo')"><span class="ico">📸</span>인증</button>
+  <button id="nav-gallery" onclick="setTab('gallery')"><span class="ico">🖼️</span>벽화</button>
+  <button id="nav-hall" onclick="setTab('hall')"><span class="ico">🏆</span>전당</button>
+  <button id="nav-more" onclick="setTab('more')"><span class="ico">📋</span>더보기</button>
+</nav>
+
+<script src="/js/mock.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
