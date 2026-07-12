@@ -1209,8 +1209,9 @@ async function loadStats() {
     months.forEach(function (m) { html += '<th>' + esc(m.slice(2)) + '</th>'; }); // '26-07'
     html += '</tr></thead><tbody>';
     s.members.forEach(function (mb) {
-      html += '<tr' + (mb.independent ? ' class="indep"' : '') + '><td>' +
-        esc(mb.name) + (mb.independent ? ' <span class="dim">(독립)</span>' : '') + '</td>';
+      const off = mb.supported === false; // 지원 제외 (J열)
+      html += '<tr' + (off ? ' class="indep"' : '') + '><td>' +
+        esc(mb.name) + (off ? ' <span class="dim">(지원 제외)</span>' : '') + '</td>';
       months.forEach(function (m) {
         const c = s.cert[m] && s.cert[m][mb.name];
         const v = s.votes[m] && s.votes[m][mb.name];
@@ -1316,8 +1317,41 @@ function loadAdmin() {
     now.getFullYear() + '-' + pad2(now.getMonth() + 1);
   loadSettle();
   if (ME.isAdmin) {
+    buildSupportChips();
     buildSettlerChips();
     buildResetPinSelect();
+  }
+}
+
+/* ---------- 지원(정산) 대상 설정 (관리자) ---------- */
+function buildSupportChips() {
+  const box = document.getElementById('supportChips');
+  box.innerHTML = '';
+  DATA.members.forEach(function (m) {
+    // 지원여부: J열 기준. 맵에 없거나 true 면 지원 (빈칸 = 지원)
+    const on = !DATA.support || DATA.support[m] !== false;
+    const c = document.createElement('span');
+    c.className = 'chip' + (on ? ' on' : '');
+    c.dataset.name = m;
+    c.textContent = m;
+    c.onclick = function () { c.classList.toggle('on'); };
+    box.appendChild(c);
+  });
+}
+
+async function saveSupports() {
+  const names = Array.prototype.slice.call(document.querySelectorAll('#supportChips .chip.on'))
+    .map(function (c) { return c.dataset.name; });
+  const st = document.getElementById('supportStatus');
+  if (!confirm('지원 대상 ' + names.length + '명으로 저장할까요?\n(해제된 부족원은 정산에서 "지원 제외" 처리)')) return;
+  try {
+    const res = await run('setSupports', names, getMe(), ME.token);
+    DATA.support = res.support;
+    st.className = 'status ok';
+    st.textContent = '✓ 저장됨 — 지원 ' + names.length + '명 / 제외 ' + (DATA.members.length - names.length) + '명';
+  } catch (e) {
+    st.className = 'status err';
+    st.textContent = e.message || e;
   }
 }
 
@@ -1335,7 +1369,7 @@ async function runSettleClick() {
     const r = await run('runSettle', ym, getMe(), ME.token);
     st.className = 'status ok';
     st.innerHTML = '✓ ' + esc(r.ym) + ' 정산 완료<br>' +
-      '인증(지원 대상): <b>' + r.done + '</b> / ' + r.total + '명 · 독립(제외): ' + r.independent + '명<br>' +
+      '인증(지원 대상): <b>' + r.done + '</b> / ' + r.total + '명 · 지원 제외: ' + r.independent + '명<br>' +
       '추출 사진: ' + r.copied + '장' +
       (r.uncovered && r.uncovered.length ? '<br>⚠ 사진 누락: ' + r.uncovered.map(esc).join(', ') : '');
     loadSettle(); // 정산 현황 새로고침

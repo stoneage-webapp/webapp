@@ -35,6 +35,7 @@
     confirmed: { disaster: null },
     admins: ['김광훈'],
     settlers: ['이희주'],
+    support: { '김광훈': true, '이희주': true, '박도윤': true, '최서연': true, '정민재': false },
     flashOwners: { '7/19 14:00 @ 클라이밍파크': '최서연' }
   };
 
@@ -54,7 +55,7 @@
         getNotices: { items: [{ when: '2026. 7. 1', by: '김광훈', text: '7월 회비는 15일까지!', row: 2 }] },
         getStats: {
           months: ['2026-06', ym],
-          members: MEMBERS.map(function (m, i) { return { name: m, independent: i === 4 }; }),
+          members: MEMBERS.map(function (m, i) { return { name: m, supported: i !== 4 }; }),
           cert: (function () { const o = {}; o['2026-06'] = { '김광훈': true }; o[ym] = { '김광훈': true, '이희주': true }; return o; })(),
           votes: (function () { const o = {}; o[ym] = { '김광훈': true, '이희주': true, '박도윤': true }; return o; })()
         },
@@ -69,6 +70,7 @@
         resetPin: { name: args[0], reset: true },
         runSettle: { ym: args[0], done: 2, total: 4, independent: 1, copied: 1, uncovered: ['박도윤'] },
         setSettlers: { settlers: args[0] },
+        setSupports: (function () { const s = {}; MEMBERS.forEach(function (m) { s[m] = (args[0] || []).indexOf(m) > -1; }); return { support: s }; })(),
         voteHall: HALL, deleteHallEntry: HALL, finalizeHallEntry: HALL,
         deleteProof: { ok: true },
         startUpload: 'mock://upload', startHallUpload: 'mock://upload',

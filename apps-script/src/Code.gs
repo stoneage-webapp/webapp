@@ -63,7 +63,8 @@ const POST_ACTIONS = {
   postNotice:        { auth: 'name', bust: true, fn: function (d) { return postNotice(d.text, d.name, d.token); } },   // #24
   deleteNotice:      { auth: 'name', bust: true, fn: function (d) { return deleteNotice(d.row, d.when, d.name, d.token); } }, // #24
   runSettle:         { auth: 'requester', bust: true, fn: function (d) { return runSettle(d.ym, d.requester, d.token); } },   // 웹 정산 (관리자/담당자)
-  setSettlers:       { auth: 'requester', bust: true, fn: function (d) { return setSettlers(d.names, d.requester, d.token); } } // 담당자 지정 (관리자)
+  setSettlers:       { auth: 'requester', bust: true, fn: function (d) { return setSettlers(d.names, d.requester, d.token); } }, // 담당자 지정 (관리자)
+  setSupports:       { auth: 'requester', bust: true, fn: function (d) { return setSupports(d.names, d.requester, d.token); } }  // 지원 대상 지정 (관리자, J열)
 };
 
 /* ---------- 진입점 ---------- */
@@ -155,12 +156,15 @@ function ss_() {
  */
 function getInitData() {
   const s = ss_();
-  const members = s.getSheetByName(CONFIG.SHEETS.members)
-    .getRange('A2:A').getDisplayValues().flat().filter(String);
+  const split = splitBySupport_(s); // 부족원 + 지원여부(J열)
+  const members = split.all.map(function (m) { return m.name; });
+  const support = {};
+  split.all.forEach(function (m) { support[m.name] = m.supported; });
   const cert = getCertified_(s);
   const votes = getVotes('');
   return {
     members: members,
+    support: support,              // { 이름: true/false } — 지원(정산) 대상 여부 (J열)
     months: votes.months,          // 존재하는 투표 월 목록 (필터 드롭다운용)
     raidMonths: votes.raidMonths,  // [{month, deadline, closed, confirmed, options:[{date,dateInfo,voters}]}]
     disaster: votes.disaster,      // [{date, loc, dateInfo, voters}]

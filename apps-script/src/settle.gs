@@ -54,12 +54,30 @@ function getCertified_(s) {
   return { ym: nowYM, map: map };
 }
 
-/* ---------- 월별 인증 정산 (시트 메뉴에서 실행) ----------
- * 시트 상단 메뉴 [🗿 석기시대 → 월별 인증 정산]
- * - 부족원 시트 B열 '독립일'에 날짜가 있으면 지원금 제외 (독립 부족원)
+/* ---------- 월별 인증 정산 ----------
+ * 웹 관리 탭(runSettle) 또는 시트 메뉴에서 실행.
+ * - 부족원 시트 J열 '지원여부'가 FALSE 면 지원(정산) 제외. 빈칸/TRUE = 지원 대상.
+ *   (지원여부는 웹 관리자 페이지에서 설정)
  * - 사람마다 해당 월 첫 사진 1장을 [정산/yyyy-MM] 폴더에 이름으로 복사
  * - 인증현황 시트도 함께 갱신
  */
+
+// 부족원 명단을 지원/제외로 분리 (J열 기준).
+// 반환: { members:[지원], excluded:[제외], all:[{name,supported}] (시트 순서) }
+function splitBySupport_(s) {
+  const sh = s.getSheetByName(CONFIG.SHEETS.members);
+  const last = sh.getLastRow();
+  const members = [], excluded = [], all = [];
+  if (last < 2) return { members: members, excluded: excluded, all: all };
+  sh.getRange('A2:J' + last).getDisplayValues().forEach(function (r) {
+    const name = String(r[0]).trim();
+    if (!name) return;
+    const supported = String(r[9]).trim().toUpperCase() !== 'FALSE';
+    (supported ? members : excluded).push(name);
+    all.push({ name: name, supported: supported });
+  });
+  return { members: members, excluded: excluded, all: all };
+}
 
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -79,7 +97,7 @@ function settleMonthPrompt() {
   const r = settleMonth(ym);
   ui.alert(ym + ' 정산 완료\n\n' +
     '인증 (지원 대상): ' + r.done + ' / ' + r.total + '명\n' +
-    '독립 (제외): ' + r.independent + '명\n' +
+    '지원 제외: ' + r.independent + '명\n' +
     '추출 사진: 정산 폴더 / ' + ym + ' 하위에 ' + r.copied + '장 (중복 제거 최소 집합)' +
     (r.uncovered.length ? '\n\n⚠ 사진 누락: ' + r.uncovered.join(', ') : ''));
 }
@@ -88,15 +106,9 @@ function settleMonth(ym) {
   const tz = Session.getScriptTimeZone();
   const s = ss_();
 
-  // 부족원: A=이름, H=독립일 (공백 아닌 값이 있으면 독립=퇴사자 → 제외)
-  const mvals = s.getSheetByName(CONFIG.SHEETS.members).getRange('A2:H').getDisplayValues();
-  const members = [], independent = [], indepSet = {};
-  mvals.forEach(function(r) {
-    const name = String(r[0]).trim();
-    if (!name) return;
-    if (String(r[7]).trim() !== '') { independent.push(name); indepSet[name] = true; }
-    else members.push(name);
-  });
+  // 부족원: J열 지원여부 기준 분리 (FALSE = 지원 제외)
+  const split = splitBySupport_(s);
+  const members = split.members, independent = split.excluded;
   const memberSet = {};
   members.forEach(function(m) { memberSet[m] = true; });
 
@@ -151,7 +163,7 @@ function settleMonth(ym) {
     rows.push(f ? [m, ym, 'O', f.date, f.loc, f.link] : [m, ym, 'X', '', '', '']);
   });
   independent.forEach(function(m) {
-    rows.push([m, ym, '독립(제외)', '', '', '']);
+    rows.push([m, ym, '지원 제외', '', '', '']);
   });
   out.getRange(1, 1, rows.length, 6).setValues(rows);
 
@@ -182,7 +194,7 @@ function settleMonth(ym) {
 /* ---------- 월별 출석/인증 통계 (웹 조회용, #20) ----------
  * 반환: {
  *   months : 데이터가 있는 월 목록 (정렬)
- *   members: [{name, independent}]  — independent = 독립(퇴사) 부족원
+ *   members: [{name, supported}]  — supported=false 면 지원(정산) 제외 (J열)
  *   cert   : { ym: { 이름: true } } — 해당 월 사진 인증자
  *   votes  : { ym: { 이름: true } } — 해당 월 정기공격 투표 참여자
  * }
@@ -192,13 +204,7 @@ function getStats() {
   const s = ss_();
   const tz = Session.getScriptTimeZone();
 
-  // 부족원: A=이름, H=독립일
-  const members = [];
-  s.getSheetByName(CONFIG.SHEETS.members).getRange('A2:H').getDisplayValues()
-    .forEach(function (r) {
-      const name = String(r[0]).trim();
-      if (name) members.push({ name: name, independent: String(r[7]).trim() !== '' });
-    });
+  const members = splitBySupport_(s).all; // [{name, supported}] 시트 순서
 
   // 벽화: 월별 사진 인증자
   const cert = {};
@@ -288,4 +294,36 @@ function runSettle(ym, requester, authToken) {
   const r = settleMonth(ym);
   r.ym = ym;
   return r;
+}
+
+/* ---------- 지원(정산) 대상 설정 ----------
+ * 관리자가 웹 관리 탭에서 지정. 부족원 시트 J열에 TRUE/FALSE 기록.
+ * names = 지원 대상 이름 배열 (목록에 없는 부족원은 FALSE = 지원 제외).
+ */
+function setSupports(names, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!isAdmin_(requester)) throw new Error('관리자만 지원 여부를 설정할 수 있습니다.');
+  if (!Array.isArray(names)) throw new Error('이름 배열이 필요합니다.');
+  const on = {};
+  names.forEach(function (n) { on[String(n).trim()] = true; });
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = ss_().getSheetByName(CONFIG.SHEETS.members);
+    const last = sh.getLastRow();
+    if (last < 2) throw new Error('부족원 명단이 비어 있습니다.');
+    const rows = sh.getRange('A2:A' + last).getDisplayValues();
+    const out = [];
+    const support = {};
+    rows.forEach(function (r) {
+      const name = String(r[0]).trim();
+      if (!name) { out.push(['']); return; }
+      support[name] = !!on[name];
+      out.push([on[name] ? 'TRUE' : 'FALSE']);
+    });
+    sh.getRange(2, 10, out.length, 1).setValues(out); // J열
+    return { support: support };
+  } finally {
+    lock.releaseLock();
+  }
 }

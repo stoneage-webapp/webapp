@@ -183,6 +183,14 @@
     <div id="settleBox" class="loading">정산 현황을 여는 중…</div>
 
     <div class="admin-only" style="display:none">
+      <div class="month-head" style="margin-top:22px">💸 지원(정산) 대상 설정</div>
+      <p class="dim" style="font-size:12.5px; margin-bottom:8px">
+        선택된 부족원만 정산(지원금) 대상에 포함돼요. 해제하면 통계·정산에서 "지원 제외"로 표시. (탭해서 선택)
+      </p>
+      <div class="chips" id="supportChips" style="margin-bottom:10px"></div>
+      <button class="btn2" onclick="saveSupports()">지원 대상 저장</button>
+      <div class="status" id="supportStatus"></div>
+
       <div class="month-head" style="margin-top:22px">👥 정산 담당자 설정</div>
       <p class="dim" style="font-size:12.5px; margin-bottom:8px">
         지정된 담당자는 관리자가 아니어도 이 페이지에서 정산을 실행할 수 있어요. (탭해서 선택)
