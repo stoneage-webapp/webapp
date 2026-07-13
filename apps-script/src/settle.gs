@@ -327,3 +327,32 @@ function setSupports(names, requester, authToken) {
     lock.releaseLock();
   }
 }
+
+/* ---------- 암장별 방문 통계 (#1) ----------
+ * 벽화 시트의 장소(D열)를 집계. 전체 기간 + 이번 달 방문 횟수.
+ * 반환: { total:[{loc,count}], thisMonth:[{loc,count}], month }
+ */
+function getVenueStats() {
+  const s = ss_();
+  const tz = Session.getScriptTimeZone();
+  const nowYM = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
+  const total = {}, month = {};
+  const sh = s.getSheetByName(CONFIG.SHEETS.mural);
+  if (sh && sh.getLastRow() > 1) {
+    const vals = sh.getDataRange().getValues();
+    for (let i = 1; i < vals.length; i++) {
+      const r = vals[i]; // [인증일시, 활동일자, 종류, 장소, ...]
+      const loc = String(r[3]).trim();
+      if (!loc) continue;
+      total[loc] = (total[loc] || 0) + 1;
+      const ym = parseYM_(r[1]) ||
+        (r[0] instanceof Date ? Utilities.formatDate(r[0], tz, 'yyyy-MM') : null);
+      if (ym === nowYM) month[loc] = (month[loc] || 0) + 1;
+    }
+  }
+  function sorted(o) {
+    return Object.keys(o).map(function (k) { return { loc: k, count: o[k] }; })
+      .sort(function (a, b) { return b.count - a.count; });
+  }
+  return { total: sorted(total), thisMonth: sorted(month), month: nowYM };
+}

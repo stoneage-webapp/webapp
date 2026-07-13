@@ -223,7 +223,7 @@ function getConfirmed_() {
 
 // dateText가 빈 값이면 확정 취소 (투표 재개). loc = 확정 위치. 확정은 정기공격만 가능
 // 정기공격 월별 확정. dateText 빈값이면 해당 월 확정 취소. month = '2026-07'
-function confirmDate(month, dateText, loc, name, pin) {
+function confirmDate(month, dateText, loc, name, pin, note) {
   assertNotLocked_('admin'); // 관리자 PIN도 무차별 대입 방어
   if (CONFIG.ADMINS.indexOf(name) < 0 || String(pin) !== String(getAdminPin_())) {
     recordPinFail_('admin');
@@ -255,7 +255,7 @@ function confirmDate(month, dateText, loc, name, pin) {
       }
     }
     if (found < 0) throw new Error('해당 일자를 찾을 수 없습니다: ' + dateText);
-    confAll[month] = { date: dateText, loc: loc || '' };
+    confAll[month] = { date: dateText, loc: loc || '', note: String(note || '').trim() };
     setRaidConfirmedAll_(confAll);
     sh.getRange(found + 1, 1, 1, Math.max(sh.getLastColumn(), 1)).setBackground('#3d2e1a');
   }

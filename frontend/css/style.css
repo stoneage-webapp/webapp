@@ -311,3 +311,34 @@ textarea:focus { outline: none; border-color: var(--ember); }
   vertical-align: -6px; margin-right: 4px;
   border-radius: 26%;
 }
+
+/* ==================== v2 기능: 개인요약 · 확정설명 · 암장통계 ==================== */
+/* 개인 활동 요약 (홈) */
+.my-card {
+  background: linear-gradient(135deg, var(--stone-hi), var(--stone));
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 13px 15px; margin-bottom: 12px;
+}
+.my-card .my-title { font-size: 14px; font-weight: 800; margin-bottom: 9px; }
+.my-card .my-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+.my-card .badge {
+  font-size: 12.5px; padding: 5px 11px; border-radius: 999px;
+  background: var(--stone); border: 1px solid var(--line); color: var(--ink-dim);
+}
+.my-card .badge.on { border-color: var(--moss); color: var(--ink); }
+.my-card .my-hint { margin-top: 9px; font-size: 12px; color: var(--ember); }
+
+/* 확정 배너 설명 */
+.confirm-banner .cnote {
+  font-size: 12.5px; color: var(--ink); background: rgba(0,0,0,.2);
+  border-radius: 8px; padding: 7px 10px; margin: 4px 0 8px; line-height: 1.55;
+}
+
+/* 암장별 방문 통계 */
+.vs-row { margin-bottom: 11px; }
+.vs-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.vs-loc { font-size: 13.5px; font-weight: 700; }
+.vs-cnt { font-size: 12px; color: var(--ink-dim); }
+.vs-tm { color: var(--ember); font-weight: 700; }
+.vs-bar { height: 7px; background: var(--stone); border-radius: 999px; overflow: hidden; }
+.vs-bar i { display: block; height: 100%; background: var(--ember); border-radius: 999px; }

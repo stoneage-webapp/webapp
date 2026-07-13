@@ -54,6 +54,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `getStats` | — | `{ months, members:[{name,independent}], cert:{ym:{이름:true}}, votes:{ym:{이름:true}} }` |
 | `getSettleStatus` | — | `{ ym, rows:[{name,ym,status,actDate,loc,link}] }` — 인증현황 시트 |
 | `getNotices` | `limit`(기본20) | `{ items:[{when,by,text,row}] }` — 최신순 |
+| `getVenueStats` | — | `{ total:[{loc,count}], thisMonth:[{loc,count}], month }` — 암장별 방문 집계 |
 
 > - `driveApiKey`는 익명 `getInitData`에서 **제거됨** → `loginWithPin`/`changePin` 응답으로 이동.
 > - 투표 항목에는 `dateInfo` 필드가 붙는다:
@@ -69,7 +70,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `toggleVote` | `category('raid'\|'disaster'), dateText, voter, token, month` | `{ date, voters }` |
 | `addFlash` | `dateText, loc, creator, token` | 자연재해 투표 배열 |
 | `deleteFlash` | `dateText, requester, token` | 자연재해 투표 배열 |
-| `confirmDate` | `month, dateText, loc, name, pin` | `raidMonths` 배열 (관리자 PIN — Script Properties `admin_pin`) |
+| `confirmDate` | `month, dateText, loc, name, pin, note?` | `raidMonths` 배열 (관리자 PIN — Script Properties `admin_pin`). `note`=확정 설명(선택) |
 | `startUpload` | `fileName, mimeType, fileSize, ym, **name, token**` | Drive resumable 업로드 URL(문자열) |
 | `startHallUpload` | `fileName, mimeType, fileSize, **name, token**` | Drive resumable 업로드 URL(문자열) |
 | `uploadChunk` | `uploadUrl, b64, start, end, total, **name, token**` | `{ done, fileId? }` |
