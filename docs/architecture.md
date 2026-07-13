@@ -55,6 +55,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `getSettleStatus` | — | `{ ym, rows:[{name,ym,status,actDate,loc,link}] }` — 인증현황 시트 |
 | `getNotices` | `limit`(기본20) | `{ items:[{when,by,text,row}] }` — 최신순 |
 | `getVenueStats` | — | `{ total:[{loc,count}], thisMonth:[{loc,count}], month }` — 암장별 방문 집계 |
+| (getInitData에 `openchatUrl` 추가 — 오픈카톡방 링크) | | |
 
 > - `driveApiKey`는 익명 `getInitData`에서 **제거됨** → `loginWithPin`/`changePin` 응답으로 이동.
 > - 투표 항목에는 `dateInfo` 필드가 붙는다:
@@ -85,7 +86,9 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `deleteNotice` | `row, when, name, token` | `getNotices()` 결과 — 관리자 전용. `when` 대조로 행 밀림 방지 |
 | `runSettle` | `ym('2026-07'), requester, token` | `{ ym, done, total, independent, copied, uncovered }` — **관리자 또는 정산 담당자** |
 | `setSettlers` | `names(배열), requester, token` | `{ settlers }` — 관리자 전용. Script Properties `settlers`에 저장 |
-| `setSupports` | `names(지원 대상 배열), requester, token` | `{ support: {이름:bool} }` — 관리자 전용. 부족원 시트 **J열(지원여부)** 기록. 목록에 없는 부족원 = FALSE |
+| `setSupports` | `names(지원 대상 배열), requester, token` | `{ support: {이름:bool} }` — 관리자 전용. 부족원 시트 **J열(지원여부)** 기록 |
+| `cancelSettle` | `ym, targetName, requester, token` | `getSettleStatus()` — 인원별 이번 달 정산 취소/복구 토글 (관리자·담당자) |
+| `resetSettle` | `ym, requester, token` | `{ reset:true, ym }` — 이번 달 정산 초기화 (인증현황 비움) |
 
 > `meta`(finalizeProof) = `{ kind:'사진'|'영상', mimeType, fileSize, participants:[], location, uploader, activityLabel }`
 

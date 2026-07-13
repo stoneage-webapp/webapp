@@ -18,6 +18,7 @@ const CONFIG = {
   PHOTOS_ALBUM_ID: prop_('PHOTOS_ALBUM_ID'),   // setupPhotosAlbum() 로그의 ID. 비우면 Photos 업로드 생략
   PHOTOS_SHARE_URL: prop_('PHOTOS_SHARE_URL'), // Photos 앨범 공유 링크 (영상 탭 버튼용)
   NOTION_URL: prop_('NOTION_URL'),             // 부족 안내문 링크 (없으면 홈 버튼이 안내만 띄움)
+  OPENCHAT_URL: prop_('OPENCHAT_URL', 'https://open.kakao.com/o/g5IQRRBi'), // 오픈카톡방
   DRIVE_API_KEY: prop_('DRIVE_API_KEY'),       // 전당 영상 인앱 재생용 API 키 (GCP)
 
   SHEETS: {

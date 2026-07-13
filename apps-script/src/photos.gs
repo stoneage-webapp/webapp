@@ -121,8 +121,11 @@ function uploadToPhotos_(fileId, name, mimeType, token) {
         'X-Goog-Upload-Content-Type': mimeType,
         'X-Goog-Upload-Protocol': 'raw'
       },
-      payload: blob.getBytes()
+      payload: blob.getBytes(),
+      muteHttpExceptions: true
     });
+    // 업로드 토큰 대신 에러 JSON 이 오면(API 미활성/권한) 조용히 미연동 처리
+    if (up.getResponseCode() >= 300) { Logger.log('Photos upload err: ' + up.getContentText()); return '미연동'; }
     const uploadToken = up.getContentText();
 
     const create = UrlFetchApp.fetch('https://photoslibrary.googleapis.com/v1/mediaItems:batchCreate', {
@@ -137,9 +140,12 @@ function uploadToPhotos_(fileId, name, mimeType, token) {
     });
     const r = JSON.parse(create.getContentText());
     const st = r.newMediaItemResults && r.newMediaItemResults[0] && r.newMediaItemResults[0].status;
-    return (st && st.message === 'Success') ? '완료' : '실패: ' + JSON.stringify(st || r);
+    if (st && st.message === 'Success') return '완료';
+    Logger.log('Photos create err: ' + create.getContentText());
+    return '미연동'; // 앨범 불일치/권한 등 — 상세는 로그, 사용자에겐 깔끔하게
   } catch (e) {
-    return '실패: ' + e.message;
+    Logger.log('Photos exception: ' + e.message);
+    return '미연동';
   }
 }
 

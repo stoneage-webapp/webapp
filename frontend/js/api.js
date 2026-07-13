@@ -46,7 +46,9 @@ const API_POST = {
   deleteNotice:      ['row', 'when', 'name', 'token'],
   runSettle:         ['ym', 'requester', 'token'],
   setSettlers:       ['names', 'requester', 'token'],
-  setSupports:       ['names', 'requester', 'token']
+  setSupports:       ['names', 'requester', 'token'],
+  cancelSettle:      ['ym', 'targetName', 'requester', 'token'],
+  resetSettle:       ['ym', 'requester', 'token']
 };
 // 업로드 계열은 파라미터에 토큰이 없으므로 세션의 name/token 을 자동 주입 (백엔드가 검증)
 const API_NEEDS_SESSION = { startUpload: 1, startHallUpload: 1, uploadChunk: 1, checkUploadStatus: 1 };

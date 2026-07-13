@@ -1,15 +1,41 @@
-/* ---------- 카카오톡 인앱브라우저 탈출 ---------- */
-function isKakao() { return /KAKAOTALK/i.test(navigator.userAgent); }
+/* ---------- 인앱 브라우저 → 기본 브라우저 자동 탈출 (#1) ----------
+ * 카톡/기타 인앱에서 열리면 Safari·Chrome 등 기본 브라우저로 즉시 넘긴다.
+ * 성공하면 사용자는 오버레이를 볼 일이 없고, 실패(자동 탈출 불가)할 때만 안내 오버레이 노출.
+ */
+function inAppKind() {
+  const ua = navigator.userAgent || '';
+  if (/KAKAOTALK/i.test(ua)) return 'kakao';
+  if (/(Instagram|FBAN|FBAV|FB_IAB|Line\/|NAVER|DaumApps|Snapchat|everytimeApp)/i.test(ua)) return 'other';
+  return null;
+}
+function isAndroid() { return /Android/i.test(navigator.userAgent); }
+
 function openExternal() {
-  location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
+  const url = location.href;
+  if (/KAKAOTALK/i.test(navigator.userAgent)) {
+    // 카카오 공식 스킴 — 기본 브라우저로 URL 오픈 (iOS/Android 공통)
+    location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(url);
+  } else if (isAndroid()) {
+    // 안드로이드 기타 인앱: intent 로 크롬 강제
+    location.href = 'intent://' + url.replace(/^https?:\/\//, '') +
+      '#Intent;scheme=https;package=com.android.chrome;end';
+  }
 }
 function dismissKakao() {
+  sessionStorage.setItem('stay_inapp', '1'); // 이 세션 동안 다시 권하지 않음
   document.getElementById('kakaoOverlay').style.display = 'none';
 }
-if (isKakao()) {
-  document.getElementById('kakaoOverlay').style.display = 'block';
-  setTimeout(openExternal, 300); // 자동 전환 시도, 막히면 오버레이 버튼으로
-}
+
+(function escapeInApp() {
+  if (!inAppKind() || sessionStorage.getItem('stay_inapp')) return;
+  openExternal(); // 즉시 탈출 시도
+  // 1.4초 뒤에도 이 화면이 살아있으면(=탈출 실패) 안내 오버레이 표시
+  setTimeout(function () {
+    if (document.hidden) return; // 이미 기본 브라우저로 넘어감
+    const ov = document.getElementById('kakaoOverlay');
+    if (ov && !sessionStorage.getItem('stay_inapp')) ov.style.display = 'block';
+  }, 1400);
+})();
 
 const CHUNK = 8 * 1024 * 1024; // 릴레이 폴백용 8MB (Drive resumable: 256KB 배수 필수)
 let DATA = { members: [], raid: [], disaster: [] };
@@ -192,15 +218,27 @@ function uploadDirect(uploadUrl, file, onProgress) {
   });
 }
 
-async function uploadFileSmart(startFnName, startArgs, file, st, fill) {
-  st.textContent = '업로드 준비 중…';
+/* ---------- 업로드 진행 오버레이 (#3) ---------- */
+function upShow(text) {
+  upProgress(0, text || '업로드 준비 중…');
+  document.getElementById('uploadOverlay').style.display = 'flex';
+}
+function upHide() { document.getElementById('uploadOverlay').style.display = 'none'; }
+function upProgress(pct, text) {
+  pct = Math.max(0, Math.min(100, Math.round(pct)));
+  document.getElementById('upPct').textContent = pct + '%';
+  document.getElementById('upFill').style.width = pct + '%';
+  if (text != null) document.getElementById('upText').textContent = text;
+}
+
+async function uploadFileSmart(startFnName, startArgs, file) {
+  upProgress(0, '업로드 준비 중…');
   const uploadUrl = await run.apply(null, [startFnName].concat(startArgs));
 
   // 1차: 브라우저 → Drive 직접 업로드
   try {
     const id = await uploadDirect(uploadUrl, file, function(p) {
-      st.textContent = '업로드 중 ' + Math.round(p * 100) + '% — 화면을 켜둔 채 기다려주세요';
-      fill.style.width = (p * 90) + '%';
+      upProgress(p * 92, '업로드 중… ' + Math.round(p * 100) + '%');
     });
     return id; // 성공 시 여기서 종료 (폴백 실행 안 함)
   } catch (e) {
@@ -219,8 +257,7 @@ async function uploadFileSmart(startFnName, startArgs, file, st, fill) {
   for (let start = 0; start < file.size; start += CHUNK) {
     const end = Math.min(start + CHUNK, file.size);
     const b64 = toB64(buf.slice(start, end));
-    st.textContent = '업로드 중 ' + Math.round(end / file.size * 100) + '% — 화면을 켜둔 채 기다려주세요';
-    fill.style.width = (end / file.size * 90) + '%';
+    upProgress(end / file.size * 92, '업로드 중… ' + Math.round(end / file.size * 100) + '%');
     const r = await run('uploadChunk', relayUrl, b64, start, end - 1, file.size);
     if (r.done) fileId = r.fileId;
   }
@@ -373,6 +410,11 @@ function openNotion() {
   else toast('안내문 링크가 아직 설정되지 않았어요. 추장에게 문의!');
 }
 
+function openChat() {
+  if (DATA.openchatUrl) window.open(DATA.openchatUrl, '_blank');
+  else toast('오픈카톡방 링크가 아직 설정되지 않았어요.');
+}
+
 /* ---------- 홈 ---------- */
 
 // 다음 모임 D-day 배너 (#19): 확정된 정기공격 중 가장 가까운 미래 일정
@@ -498,8 +540,73 @@ function renderVotes() {
   const list = document.getElementById('voteList');
   document.getElementById('deadlineLine').textContent = '';
   list.innerHTML = '';
+  renderCalendar();
   if (category === 'raid') renderRaid(list);
   else renderDisaster(list);
+}
+
+/* ---------- 투표 달력 (#6) ----------
+ * 선택 월(없으면 이번 달)의 일정을 한눈에. 정기공격 후보=점, 확정=꽉찬 원, 번개=주황 테두리.
+ * 날짜 탭 → 아래 목록에서 해당 항목으로 스크롤.
+ */
+function renderCalendar() {
+  const el = document.getElementById('voteCalendar');
+  const now = new Date();
+  const sel = voteMonthValue();
+  const ym = /^\d{4}-\d{2}$/.test(sel) ? sel : (now.getFullYear() + '-' + pad2(now.getMonth() + 1));
+  const y = +ym.slice(0, 4), mo = +ym.slice(5, 7);
+
+  // 날짜별 마킹 수집
+  const marks = {}; // iso → {raid, confirmed, flash, top}
+  function mark(iso, key) { if (!iso) return; (marks[iso] = marks[iso] || {})[key] = true; }
+  (DATA.raidMonths || []).forEach(function (g) {
+    if (g.month !== ym) return;
+    g.options.forEach(function (o) { if (o.dateInfo) mark(o.dateInfo.iso, 'raid'); });
+    if (g.confirmed) {
+      const ci = g.options.find(function (x) { return x.date === g.confirmed.date; });
+      if (ci && ci.dateInfo) mark(ci.dateInfo.iso, 'confirmed');
+    }
+  });
+  (DATA.disaster || []).forEach(function (r) { if (r.dateInfo && r.dateInfo.ym === ym) mark(r.dateInfo.iso, 'flash'); });
+
+  const first = new Date(y, mo - 1, 1).getDay();
+  const days = new Date(y, mo, 0).getDate();
+  const todayIso = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
+  const wd = ['일', '월', '화', '수', '목', '금', '토'];
+
+  let html = '<div class="cal-head">' + mo + '월</div><div class="cal-grid">';
+  wd.forEach(function (d, i) { html += '<div class="cal-wd' + (i === 0 ? ' sun' : '') + '">' + d + '</div>'; });
+  for (let i = 0; i < first; i++) html += '<div></div>';
+  for (let d = 1; d <= days; d++) {
+    const iso = ym + '-' + pad2(d);
+    const m = marks[iso] || {};
+    const cls = ['cal-day'];
+    if (m.confirmed) cls.push('confirmed');
+    else if (m.raid) cls.push('raid');
+    if (m.flash) cls.push('flash');
+    if (iso === todayIso) cls.push('today');
+    const dot = (m.raid || m.confirmed || m.flash) ? '<span class="cal-dot"></span>' : '';
+    html += '<div class="' + cls.join(' ') + '" data-iso="' + iso + '">' + d + dot + '</div>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+
+  // 날짜 탭 → 해당 항목으로 스크롤 (표시된 카드 중 날짜 일치)
+  el.querySelectorAll('.cal-day').forEach(function (c) {
+    if (!c.querySelector('.cal-dot')) return;
+    c.onclick = function () {
+      const iso = c.dataset.iso;
+      // 번개 표시면 disaster 탭으로, 아니면 raid 유지
+      const m = marks[iso] || {};
+      if (m.flash && !m.raid && !m.confirmed && category !== 'disaster') { setCategory('disaster'); }
+      else if ((m.raid || m.confirmed) && category !== 'raid') { setCategory('raid'); }
+      setTimeout(function () {
+        const card = Array.prototype.find.call(document.querySelectorAll('#voteList .vote-card .date'),
+          function (e) { return e.textContent.indexOf(iso) > -1 || (e.textContent.match(/\d{4}-\d{2}-\d{2}/) || [''])[0] === iso; });
+        if (card) card.closest('.vote-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 30);
+    };
+  });
 }
 
 /* ---------- 정기공격 (월별) ---------- */
@@ -569,6 +676,12 @@ function renderRaid(list) {
       };
       b.appendChild(sbtn);
       if (isAdmin) {
+        // 확정 상태에서도 위치·설명 수정 (#2): 같은 날짜로 다시 확정
+        const ed = document.createElement('button');
+        ed.className = 'mini-btn';
+        ed.textContent = '📝 위치·설명 수정';
+        ed.onclick = function() { doConfirm(g.month, g.confirmed.date); };
+        b.appendChild(ed);
         const u = document.createElement('button');
         u.className = 'mini-btn';
         u.textContent = '확정 취소';
@@ -955,17 +1068,16 @@ async function submitHall() {
   if (!title) return toast('제목을 입력하세요.');
 
   btn.disabled = true;
-  bar.style.display = 'block';
-  st.className = 'status';
+  upShow();
   try {
     const mime = file.type || 'application/octet-stream';
     const fileId = await uploadFileSmart('startHallUpload',
-      [file.name, mime, file.size], file, st, fill);
-    st.textContent = '전당에 새기는 중…';
+      [file.name, mime, file.size], file);
+    upProgress(96, '전당에 새기는 중…');
     HALL = await run('finalizeHallEntry', fileId, title, me, ME.token);
-    fill.style.width = '100%';
-    st.className = 'status ok';
-    st.textContent = '✓ 출품 완료!';
+    upProgress(100, '완료!');
+    setTimeout(upHide, 400);
+    toast('✓ 전당에 출품했어요!', true);
     document.getElementById('hallFile').value = '';
     document.getElementById('hallTitle').value = '';
     document.getElementById('hallSel').style.display = 'none';
@@ -973,8 +1085,8 @@ async function submitHall() {
     document.getElementById('hallForm').style.display = 'none';
     renderHall();
   } catch (e) {
-    st.className = 'status err';
-    st.textContent = '실패: ' + (e.message || e);
+    upHide();
+    toast('실패: ' + (e.message || e));
   } finally {
     btn.disabled = false;
   }
@@ -1257,22 +1369,22 @@ async function submitProof(kind) {
   if (chips.indexOf(me) < 0) chips.unshift(me);
 
   btn.disabled = true;
-  bar.style.display = 'block';
-  st.className = 'status';
+  upShow();
   try {
     const mime = file.type || 'application/octet-stream';
     const fileId = await uploadFileSmart('startUpload',
-      [file.name, mime, file.size, act.ym], file, st, fill);
-    st.textContent = '벽화에 새기는 중…';
+      [file.name, mime, file.size, act.ym], file);
+    upProgress(96, '벽화에 새기는 중…');
     const result = await run('finalizeProof', fileId, {
       kind: kind === 'photo' ? '사진' : '영상',
       mimeType: mime, fileSize: file.size,
       participants: chips, location: loc, uploader: me,
       activityLabel: act.label
     }, ME.token);
-    fill.style.width = '100%';
-    st.className = 'status ok';
-    st.textContent = '✓ 완료! Drive 저장 · Photos: ' + result.photos;
+    upProgress(100, '완료!');
+    setTimeout(upHide, 400);
+    // Photos 앨범 연동 안 됐어도 Drive 저장은 성공 → 사용자에겐 깔끔하게
+    toast(result.photos === '완료' ? '✓ 벽화에 새겼어요! (Drive + 포토 앨범)' : '✓ 벽화에 새겼어요! (Drive 저장 완료)', true);
     if (kind === 'photo') {
       chips.forEach(function(n) { DATA.certified[n] = true; });
       buildChips('photoChips');
@@ -1282,8 +1394,8 @@ async function submitProof(kind) {
     }
     resetForm(kind);
   } catch (e) {
-    st.className = 'status err';
-    st.textContent = '실패: ' + (e.message || e);
+    upHide();
+    toast('실패: ' + (e.message || e));
   } finally {
     btn.disabled = false;
   }
@@ -1501,23 +1613,61 @@ async function loadArchive() {
 }
 
 /* ---------- 정산 현황 (#21, 관리자) ---------- */
+function renderSettle(res) {
+  const box = document.getElementById('settleBox');
+  if (!res.rows.length) { box.className = 'loading'; box.textContent = '아직 정산 기록이 없어요 (위에서 정산 실행)'; return; }
+  box.className = '';
+  const canManage = canSettleMe();
+  const ym = res.ym || '';
+  const table = document.createElement('div');
+  table.className = 'stats-scroll';
+  let html = '<table class="stats-table"><thead><tr><th>이름</th><th>인증</th><th>장소</th>' +
+    (canManage ? '<th></th>' : '') + '</tr></thead><tbody>';
+  res.rows.forEach(function (r) {
+    const canceled = r.status === '정산 취소';
+    const isSupport = r.status !== '지원 제외'; // 지원 제외는 영구(J열) — 여기선 건드리지 않음
+    const btn = (canManage && isSupport)
+      ? '<td><button class="mini-btn stx" data-name="' + esc(r.name) + '" data-on="' + (canceled ? '1' : '0') +
+        '" style="margin:0;padding:4px 9px">' + (canceled ? '↩ 복구' : '취소') + '</button></td>'
+      : (canManage ? '<td></td>' : '');
+    html += '<tr' + (canceled ? ' class="indep"' : '') + '><td>' + esc(r.name) + '</td><td>' +
+      esc(r.status) + '</td><td>' + esc(r.loc) + '</td>' + btn + '</tr>';
+  });
+  html += '</tbody></table>';
+  table.innerHTML = html;
+  box.innerHTML = '<div class="dim" style="margin-bottom:6px">대상월: <b>' + esc(ym) + '</b></div>';
+  box.appendChild(table);
+  // 인원별 취소/복구
+  box.querySelectorAll('.stx').forEach(function (b) {
+    b.onclick = async function () {
+      b.disabled = true;
+      try { renderSettle(await run('cancelSettle', ym, b.dataset.name, getMe(), ME.token)); }
+      catch (e) { b.disabled = false; toast(e.message || e); }
+    };
+  });
+  // 이번 달 정산 초기화
+  if (canManage) {
+    const rst = document.createElement('button');
+    rst.className = 'btn2';
+    rst.style.marginTop = '10px';
+    rst.textContent = '🗑️ ' + ym + ' 정산 초기화';
+    rst.onclick = async function () {
+      if (!(await modalConfirm(ym + ' 정산 기록을 초기화할까요?\n인증현황이 비워지고 이번 달 취소 내역도 리셋됩니다.'))) return;
+      try { await run('resetSettle', ym, getMe(), ME.token); loadSettle(); toast('정산을 초기화했어요.', true); }
+      catch (e) { toast(e.message || e); }
+    };
+    box.appendChild(rst);
+  }
+}
+
 async function loadSettle() {
   const box = document.getElementById('settleBox');
   box.className = 'loading';
   box.textContent = '정산 현황을 여는 중…';
   try {
-    const res = await run('getSettleStatus');
-    if (!res.rows.length) { box.textContent = '아직 정산 기록이 없어요 (시트 메뉴에서 정산 실행)'; return; }
-    box.className = '';
-    let html = '<div class="dim" style="margin-bottom:6px">대상월: <b>' + esc(res.ym || '') + '</b></div>' +
-      '<div class="stats-scroll"><table class="stats-table"><thead><tr><th>이름</th><th>인증</th><th>활동일</th><th>장소</th></tr></thead><tbody>';
-    res.rows.forEach(function (r) {
-      html += '<tr><td>' + esc(r.name) + '</td><td>' + esc(r.status) + '</td><td>' +
-        esc(r.actDate) + '</td><td>' + esc(r.loc) + '</td></tr>';
-    });
-    html += '</tbody></table></div>';
-    box.innerHTML = html;
+    renderSettle(await run('getSettleStatus'));
   } catch (e) {
+    box.className = 'loading';
     box.textContent = '불러오기 실패: ' + (e.message || e);
   }
 }
