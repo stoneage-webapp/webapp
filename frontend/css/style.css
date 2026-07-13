@@ -415,3 +415,17 @@ nav { padding-bottom: var(--safe-b); }
 
 /* 이미지가 컨테이너를 넘겨 늘어나지 않도록 */
 img { max-width: 100%; }
+
+/* ==================== 짧은 화면 빈 공간 채우기 (하단 브랜드 푸터) ==================== */
+/* body/.wrap 을 flex 컬럼으로 → header·nav·safe-area 높이에 무관하게 푸터가 하단에 자동 정렬 */
+body { min-height: var(--app-h); display: flex; flex-direction: column; }
+body > header { flex-shrink: 0; }
+.wrap { flex: 1 0 auto; display: flex; flex-direction: column; }
+.wrap > * { flex-shrink: 0; }
+.tab-footer {
+  margin-top: auto; padding: 30px 0 6px; text-align: center;
+  color: var(--ink-dim); opacity: .5;
+}
+.tab-footer img { border-radius: 26%; display: block; margin: 0 auto 8px; filter: grayscale(.25); }
+.tab-footer > div { font-size: 12.5px; }
+.tab-footer .tf-sub { font-size: 12px; letter-spacing: 3px; margin-top: 3px; }
