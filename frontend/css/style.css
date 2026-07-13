@@ -389,3 +389,29 @@ textarea:focus { outline: none; border-color: var(--ember); }
   width: 4px; height: 4px; border-radius: 50%; background: var(--ember);
 }
 .cal-day.confirmed .cal-dot { background: #fff; }
+
+/* ==================== 모바일 뷰포트/세이프에어리어 견고화 ==================== */
+/* 동적 뷰포트 높이 변수 (주소창 유무에 딱 맞음). dvh 미지원 시 vh 폴백 */
+:root { --app-h: 100vh; }
+@supports (height: 100dvh) { :root { --app-h: 100dvh; } }
+
+/* 전체화면 오버레이: 보이는 영역에 정확히 맞추고, 넘치면 스크롤 (아래 잘림 방지) */
+.fs-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: auto;
+  height: var(--app-h); background: var(--bg);
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+}
+
+/* 모달: 화면보다 크면(작은 폰/키보드) 내부 스크롤 */
+.modal-ov { overflow-y: auto; }
+.modal-card { max-height: calc(var(--app-h) - 24px); overflow-y: auto; }
+
+/* 업로드 오버레이도 동적 높이 */
+#uploadOverlay { height: var(--app-h); }
+
+/* 하단 네비 가림 방지: 본문 하단 여백을 넉넉히(네비 실측치 + 세이프에어리어) */
+body { padding-bottom: calc(64px + var(--safe-b)); }
+nav { padding-bottom: var(--safe-b); }
+
+/* 이미지가 컨테이너를 넘겨 늘어나지 않도록 */
+img { max-width: 100%; }
