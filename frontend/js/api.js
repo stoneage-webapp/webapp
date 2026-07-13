@@ -21,7 +21,7 @@ const API_GET = {
   getHallData:     [],
   getHallArchive:  [],
   getStats:        [],
-  getSettleStatus: [],
+  getSettleStatus: ['ym'],
   getNotices:      ['limit'],
   getVenueStats:   []
 };

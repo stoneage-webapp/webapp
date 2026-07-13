@@ -62,20 +62,28 @@ function getCertified_(s) {
  * - 인증현황 시트도 함께 갱신
  */
 
-// 부족원 명단을 지원/제외로 분리 (J열 기준).
-// 반환: { members:[지원], excluded:[제외], all:[{name,supported}] (시트 순서) }
+// 이름 배열을 오름차순(가나다순)으로. 한글 완성형은 코드값 비교가 자모 순서와 일치.
+function sortNames_(arr) {
+  return arr.slice().sort(function (a, b) { return a < b ? -1 : a > b ? 1 : 0; });
+}
+
+// 부족원 명단을 지원/제외로 분리 (J열 기준). 항상 이름 오름차순.
+// 반환: { members:[지원], excluded:[제외], all:[{name,supported}] }
 function splitBySupport_(s) {
   const sh = s.getSheetByName(CONFIG.SHEETS.members);
   const last = sh.getLastRow();
-  const members = [], excluded = [], all = [];
-  if (last < 2) return { members: members, excluded: excluded, all: all };
+  if (last < 2) return { members: [], excluded: [], all: [] };
+  const bySupport = {}; const names = [];
   sh.getRange('A2:J' + last).getDisplayValues().forEach(function (r) {
     const name = String(r[0]).trim();
     if (!name) return;
-    const supported = String(r[9]).trim().toUpperCase() !== 'FALSE';
-    (supported ? members : excluded).push(name);
-    all.push({ name: name, supported: supported });
+    names.push(name);
+    bySupport[name] = String(r[9]).trim().toUpperCase() !== 'FALSE';
   });
+  const sorted = sortNames_(names);
+  const members = sorted.filter(function (n) { return bySupport[n]; });
+  const excluded = sorted.filter(function (n) { return !bySupport[n]; });
+  const all = sorted.map(function (n) { return { name: n, supported: bySupport[n] }; });
   return { members: members, excluded: excluded, all: all };
 }
 
@@ -157,21 +165,12 @@ function settleMonth(ym) {
     chosen.push(best);
   }
 
-  // 인증현황 시트 갱신
-  const out = s.getSheetByName(CONFIG.SHEETS.status) || s.insertSheet(CONFIG.SHEETS.status);
-  out.clear();
-  const rows = [['이름', '대상월', '인증여부', '활동일자', '장소', 'Drive 링크']];
-  members.forEach(function(m) {
-    const f = firstCertRow[m];
-    rows.push(f ? [m, ym, 'O', f.date, f.loc, f.link] : [m, ym, 'X', '', '', '']);
-  });
-  independent.forEach(function(m) {
-    rows.push([m, ym, '지원 제외', '', '', '']);
-  });
-  canceled.forEach(function(m) {
-    rows.push([m, ym, '정산 취소', '', '', '']);
-  });
-  out.getRange(1, 1, rows.length, 6).setValues(rows);
+  // 인증현황 시트 갱신 (열=월 누적, 행=이름 오름차순 — writeStatusColumn_ 참고)
+  const statusMap = {};
+  members.forEach(function (m) { statusMap[m] = firstCertRow[m] ? 'O' : 'X'; });
+  independent.forEach(function (m) { statusMap[m] = '지원 제외'; });
+  canceled.forEach(function (m) { statusMap[m] = '정산 취소'; });
+  writeStatusColumn_(ym, statusMap);
 
   // 최소 집합 사진을 [정산폴더/ym] 하위에 복사 (파일당 커버 인원을 파일명에)
   const root = DriveApp.getFolderById(CONFIG.SETTLE_FOLDER_ID);
@@ -195,6 +194,55 @@ function settleMonth(ym) {
     done: done, total: members.length, independent: independent.length,
     canceled: canceled.length, copied: copied, uncovered: uncovered
   };
+}
+
+/* ---------- 인증현황 시트: 열=월 누적 포맷 ----------
+ * A1='이름', B1~=월(yyyy-MM) 헤더. 행=이름(오름차순). 셀=O/X/지원 제외/정산 취소.
+ * 매번 시트 전체를 지우고 다시 쓰지만, 쓰기 전 기존 내용을 읽어 병합하므로
+ * 과거 달의 열은 그대로 보존된다(누적). 같은 달을 다시 정산하면 그 열만 갱신.
+ */
+function writeStatusColumn_(ym, statusMap) {
+  const s = ss_();
+  const sh = s.getSheetByName(CONFIG.SHEETS.status) || s.insertSheet(CONFIG.SHEETS.status);
+  const existing = {}; // { 이름: { 월: 상태 } }
+  let months = [];
+  if (sh.getLastRow() > 0 && sh.getLastColumn() > 0) {
+    const vals = sh.getDataRange().getDisplayValues();
+    // 헤더 중 'yyyy-MM' 형식만 월로 인정 (예전 스키마의 다른 헤더는 무시하고 자연 이관)
+    months = vals[0].slice(1).filter(function (h) { return /^\d{4}-\d{2}$/.test(h); });
+    for (let r = 1; r < vals.length; r++) {
+      const name = String(vals[r][0]).trim();
+      if (!name) continue;
+      existing[name] = existing[name] || {};
+      vals[0].slice(1).forEach(function (h, i) {
+        if (/^\d{4}-\d{2}$/.test(h) && vals[r][i + 1]) existing[name][h] = vals[r][i + 1];
+      });
+    }
+  }
+  Object.keys(statusMap).forEach(function (name) {
+    existing[name] = existing[name] || {};
+    existing[name][ym] = statusMap[name];
+  });
+  if (months.indexOf(ym) < 0) months.push(ym);
+  months.sort(); // 'yyyy-MM' 문자열 정렬 = 시간순
+
+  const names = sortNames_(Object.keys(existing));
+  const rows = [['이름'].concat(months)];
+  names.forEach(function (name) {
+    rows.push([name].concat(months.map(function (m) { return existing[name][m] || ''; })));
+  });
+  sh.clear();
+  sh.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+}
+
+// 특정 월의 열 값만 비움 (다른 달 기록은 보존)
+function clearStatusColumn_(ym) {
+  const sh = ss_().getSheetByName(CONFIG.SHEETS.status);
+  if (!sh || sh.getLastRow() < 1) return;
+  const header = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
+  const idx = header.indexOf(ym);
+  if (idx < 0) return; // 그 달 열이 없으면 할 일 없음
+  if (sh.getLastRow() > 1) sh.getRange(2, idx + 1, sh.getLastRow() - 1, 1).clearContent();
 }
 
 /* ---------- 인원별 이번 달 정산 취소 / 초기화 (#4) ----------
@@ -221,11 +269,11 @@ function cancelSettle(ym, targetName, requester, authToken) {
   if (cur[targetName]) delete cur[targetName]; else cur[targetName] = true;
   all[ym] = cur;
   setSettleExcluded_(all);
-  settleMonth(ym); // 인증현황 즉시 재생성
-  return getSettleStatus();
+  settleMonth(ym); // 해당 월 열만 재계산(다른 달 열은 보존)
+  return getSettleStatus(ym);
 }
 
-// 이번 달 정산 초기화: 인증현황 시트 비우고 이번 달 취소 명단도 리셋
+// 이번 달 정산 초기화: 해당 월 열만 비움(다른 달 기록은 보존) + 이번 달 취소 명단 리셋
 function resetSettle(ym, requester, authToken) {
   requester = verify_(requester, authToken);
   if (!canSettle_(requester)) throw new Error('정산 권한이 없습니다.');
@@ -233,8 +281,7 @@ function resetSettle(ym, requester, authToken) {
   const all = getSettleExcluded_();
   delete all[ym];
   setSettleExcluded_(all);
-  const sh = ss_().getSheetByName(CONFIG.SHEETS.status);
-  if (sh) sh.clear();
+  clearStatusColumn_(ym);
   return { reset: true, ym: ym };
 }
 
@@ -294,19 +341,22 @@ function getStats() {
 }
 
 /* ---------- 정산 현황 웹 조회 (#21) ----------
- * settleMonth 가 만든 '인증현황' 시트를 읽기 전용으로 반환.
- * 아직 정산한 적 없으면 { ym: null, rows: [] }.
+ * '인증현황' 시트(열=월 누적)에서 지정한 월(ym) 한 열만 읽기 전용으로 반환.
+ * ym 생략 시 이번 달. 그 달 열이 아직 없으면 { ym, months, rows: [] }.
  */
-function getSettleStatus() {
+function getSettleStatus(ym) {
+  ym = String(ym || '').trim() ||
+    Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
   const sh = ss_().getSheetByName(CONFIG.SHEETS.status);
-  if (!sh || sh.getLastRow() < 2) return { ym: null, rows: [] };
+  if (!sh || sh.getLastRow() < 1) return { ym: ym, months: [], rows: [] };
   const vals = sh.getDataRange().getDisplayValues();
-  const rows = vals.slice(1)
-    .filter(function (r) { return r[0]; })
-    .map(function (r) {
-      return { name: r[0], ym: r[1], status: r[2], actDate: r[3], loc: r[4], link: r[5] };
-    });
-  return { ym: rows.length ? rows[0].ym : null, rows: rows };
+  const header = vals[0];
+  const months = header.slice(1).filter(function (h) { return /^\d{4}-\d{2}$/.test(h); });
+  const col = header.indexOf(ym);
+  const rows = col < 0 ? [] : vals.slice(1)
+    .filter(function (r) { return r[0] && r[col]; })
+    .map(function (r) { return { name: r[0], status: r[col] }; });
+  return { ym: ym, months: months, rows: rows };
 }
 
 /* ---------- 웹 정산 실행 + 정산 담당자 관리 ----------
