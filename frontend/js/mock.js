@@ -53,7 +53,10 @@
         getInitData: DATA,
         getHallData: HALL,
         getHallArchive: { winners: [{ ym: '2026-06', title: '보라 완등', by: '이희주', voters: ['김광훈', '박도윤'], link: '#', fileId: 'x', when: '' }] },
-        getGallery: { items: [], hasMore: false },
+        getGallery: { items: [
+          { when: ym + '-05', actDate: ym + '-05', loc: '더클라임 강남', people: '김광훈, 이희주', by: '김광훈', fileId: 'mk1', link: '#' },
+          { when: ym + '-02', actDate: ym + '-02', loc: '클라이밍파크', people: '김광훈', by: '김광훈', fileId: 'mk2', link: '#' }
+        ], hasMore: false },
         getNotices: { items: [{ when: '2026. 7. 1', by: '김광훈', text: '7월 회비는 15일까지!', row: 2 }] },
         getStats: {
           months: ['2026-06', ym],

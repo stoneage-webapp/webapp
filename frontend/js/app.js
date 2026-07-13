@@ -398,6 +398,67 @@ function setTab(t) {
   if (t === 'hall' && !hallLoaded) loadHall();
   if (t === 'more' && !moreLoaded) loadMore();
   if (t === 'admin' && !adminLoaded) loadAdmin();
+  if (t === 'photo') renderMyProofs(); // 내 인증 목록(취소용) 갱신
+}
+
+/* ---------- 내 인증 취소 (인증 탭) ----------
+ * 이번 달 내가 업로더인 인증을 나열, 취소(삭제) 시 사진·기록이 지워지고
+ * 참여자 전원의 이번 달 인증 여부가 갱신된다 (기존 deleteProof 재사용).
+ */
+async function renderMyProofs() {
+  const box = document.getElementById('myProofs');
+  if (!box || !getMe()) return;
+  try {
+    const res = await run('getGallery', 30, 0, DATA.month, getMe());
+    const mine = res.items.filter(function (it) { return it.by === getMe(); });
+    box.innerHTML = '';
+    if (!mine.length) return;
+    const head = document.createElement('div');
+    head.className = 'myproof-head';
+    head.textContent = '🧾 내가 올린 이번 달 인증 — 잘못 올렸으면 취소';
+    box.appendChild(head);
+    mine.forEach(function (it) {
+      const row = document.createElement('div');
+      row.className = 'myproof-row';
+      const txt = document.createElement('span');
+      txt.className = 'mp-txt';
+      txt.textContent = (it.actDate || it.when) + ' · 📍 ' + it.loc + ' · 🧗 ' + it.people;
+      row.appendChild(txt);
+      const del = document.createElement('button');
+      del.className = 'mini-btn';
+      del.style.margin = '0';
+      del.textContent = '취소';
+      del.onclick = async function () {
+        if (!(await modalConfirm('이 인증을 취소할까요?\n' + (it.actDate || '') + ' @ ' + it.loc +
+          '\n\n사진과 기록이 삭제되고, 함께 태그된 참여자의 인증에서도 빠집니다.',
+          { title: '🧾 인증 취소', confirmText: '취소하기' }))) return;
+        del.disabled = true;
+        try {
+          await run('deleteProof', it.fileId, getMe(), ME.token);
+          toast('인증을 취소했어요.', true);
+          galleryLoaded = false;
+          refreshCertified();
+          renderMyProofs();
+        } catch (e) {
+          del.disabled = false;
+          toast(e.message || e);
+        }
+      };
+      row.appendChild(del);
+      box.appendChild(row);
+    });
+  } catch (e) { /* 목록 실패는 조용히 — 인증 제출 기능엔 영향 없음 */ }
+}
+
+// 인증 취소/추가 후 서버 기준으로 인증 현황 재동기화
+async function refreshCertified() {
+  try {
+    const d = await run('getInitData');
+    DATA.certified = d.certified;
+    buildChips('photoChips');
+    renderCertLine();
+    renderHome();
+  } catch (e) {}
 }
 
 function goVote(cat) {
@@ -752,9 +813,12 @@ function renderDisaster(list) {
     const mine = me && r.voters.indexOf(me) > -1;
     const card = document.createElement('div');
     card.className = 'vote-card' + (mine ? ' mine' : '');
+    // 날짜는 윗줄, 위치는 아랫줄 — 정기공격 카드와 폭/리듬 통일
+    const dateTxt = r.dateInfo ? r.dateInfo.display : r.date;
     card.innerHTML =
-      '<div class="top"><span class="date">' + esc(fmtVoteDate(r)) + '</span>' +
+      '<div class="top"><span class="date">' + esc(dateTxt) + '</span>' +
       '<span class="count">' + r.voters.length + '명</span></div>' +
+      (r.loc ? '<div class="vloc">📍 ' + esc(r.loc) + '</div>' : '') +
       (r.voters.length ? '<div class="voters">' + r.voters.map(esc).join(' · ') + '</div>' : '') +
       (mine ? '<div class="hint">✓ 참여 중 — 탭하면 취소</div>' : '');
     card.onclick = function() { voteFlash(r.date); };
@@ -1391,6 +1455,7 @@ async function submitProof(kind) {
       renderCertLine();
       renderHome();
       galleryLoaded = false;
+      renderMyProofs(); // 방금 올린 인증이 취소 목록에 바로 보이게
     }
     resetForm(kind);
   } catch (e) {
