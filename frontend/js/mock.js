@@ -19,13 +19,15 @@
   const DATA = {
     members: MEMBERS,
     months: ['2026-06', ym],
-    raidMonths: [{
-      month: ym, deadline: ym + '-10', closed: false, confirmed: { date: '7/16(수) 20:00', loc: '더클라임 강남' },
-      options: [
-        { date: '7/16(수) 20:00', dateInfo: DI(d1, '20:00'), voters: ['김광훈', '이희주'] },
-        { date: '7/23(수) 20:00', dateInfo: DI(d2, '20:00'), voters: ['박도윤'] }
-      ]
-    }],
+    raidMonths: [
+      { month: '2026-06', deadline: '2026-06-05', closed: true, confirmed: { date: '2026-06-18', loc: '클라이밍파크', note: '' },
+        options: [{ date: '2026-06-18', dateInfo: DI('2026-06-18', ''), voters: ['김광훈'] }] },
+      { month: ym, deadline: ym + '-10', closed: false, confirmed: { date: '7/16(수) 20:00', loc: '더클라임 강남', note: '20시 정각 로비 집합, 회비 1만원' },
+        options: [
+          { date: '7/16(수) 20:00', dateInfo: DI(d1, '20:00'), voters: ['김광훈', '이희주'] },
+          { date: '7/23(수) 20:00', dateInfo: DI(d2, '20:00'), voters: ['박도윤'] }
+        ] }
+    ],
     disaster: [
       { date: '7/19 14:00 @ 클라이밍파크', loc: '클라이밍파크', dateInfo: DI(ym + '-19', '14:00'), voters: ['최서연'] }
     ],
@@ -60,17 +62,19 @@
           votes: (function () { const o = {}; o[ym] = { '김광훈': true, '이희주': true, '박도윤': true }; return o; })()
         },
         getSettleStatus: { ym: '2026-06', rows: [{ name: '김광훈', ym: '2026-06', status: 'O', actDate: '6/18', loc: '더클라임', link: '' }] },
+        getVenueStats: { month: ym, total: [{loc:'더클라임 강남',count:8},{loc:'클라이밍파크',count:5},{loc:'볼더링존',count:2}], thisMonth: [{loc:'더클라임 강남',count:3}] },
         loginWithPin: { name: args[0], token: 'mock-token', isAdmin: args[0] === '김광훈', driveApiKey: '' },
         changePin: { name: args[0], token: 'mock-token', isAdmin: args[0] === '김광훈', driveApiKey: '' },
         toggleVote: { date: args[1], voters: [args[2]] },
         addFlash: DATA.disaster, deleteFlash: DATA.disaster,
         confirmDate: DATA.raidMonths,
+        // note 반영은 서버가 하므로 mock은 기존 데이터 반환
         postNotice: { items: [{ when: 'now', by: args[1], text: args[0], row: 3 }] },
         deleteNotice: { items: [] },
         resetPin: { name: args[0], reset: true },
         runSettle: { ym: args[0], done: 2, total: 4, independent: 1, copied: 1, uncovered: ['박도윤'] },
         setSettlers: { settlers: args[0] },
-        setSupports: (function () { const s = {}; MEMBERS.forEach(function (m) { s[m] = (args[0] || []).indexOf(m) > -1; }); return { support: s }; })(),
+        setSupports: (function () { const on = Array.isArray(args[0]) ? args[0] : []; const s = {}; MEMBERS.forEach(function (m) { s[m] = on.indexOf(m) > -1; }); return { support: s }; })(),
         voteHall: HALL, deleteHallEntry: HALL, finalizeHallEntry: HALL,
         deleteProof: { ok: true },
         startUpload: 'mock://upload', startHallUpload: 'mock://upload',

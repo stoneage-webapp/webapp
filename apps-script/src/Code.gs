@@ -30,7 +30,8 @@ const GET_ACTIONS = {
   getHallArchive:  { cache: true, fn: function (p) { return getHallArchive(); } },          // #23 역대 우승자
   getStats:        { cache: true, fn: function (p) { return getStats(); } },                // #20 출석/인증 통계
   getSettleStatus: { cache: true, fn: function (p) { return getSettleStatus(); } },         // #21 정산 현황
-  getNotices:      { cache: true, fn: function (p) { return getNotices(Number(p.limit) || 20); } } // #24 공지
+  getNotices:      { cache: true, fn: function (p) { return getNotices(Number(p.limit) || 20); } }, // #24 공지
+  getVenueStats:   { cache: true, fn: function (p) { return getVenueStats(); } }             // 암장별 방문 통계
 };
 
 /* ---------- 변경 (POST) ---------- */
@@ -43,7 +44,7 @@ const POST_ACTIONS = {
   toggleVote:        { auth: 'voter',     bust: true, fn: function (d) { return toggleVote(d.category, d.dateText, d.voter, d.token, d.month); } },
   addFlash:          { auth: 'creator',   bust: true, fn: function (d) { return addFlash(d.dateText, d.loc, d.creator, d.token); } },
   deleteFlash:       { auth: 'requester', bust: true, fn: function (d) { return deleteFlash(d.dateText, d.requester, d.token); } },
-  confirmDate:       { bust: true, fn: function (d) { return confirmDate(d.month, d.dateText, d.loc, d.name, d.pin); } }, // 관리자 PIN은 함수 내부 검증
+  confirmDate:       { bust: true, fn: function (d) { return confirmDate(d.month, d.dateText, d.loc, d.name, d.pin, d.note); } }, // 관리자 PIN은 함수 내부 검증
 
   // 업로드 (요청자 토큰 필수 — 익명 업로드 차단)
   startUpload:       { auth: 'name', fn: function (d) { return startUpload(d.fileName, d.mimeType, d.fileSize, d.ym); } },

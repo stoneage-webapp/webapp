@@ -397,8 +397,32 @@ function renderDday() {
   el.firstChild.onclick = function () { goVote('raid'); };
 }
 
+// 개인 활동 요약 (#2): 로그인한 나의 이번 달 인증/투표 상태
+function renderMySummary() {
+  const el = document.getElementById('mySummary');
+  if (!el) return;
+  const me = getMe();
+  const certed = !!(DATA.certified && DATA.certified[me]);
+  const mm = parseInt((DATA.month || '').split('-')[1], 10);
+  // 이번 달 정기공격에 내가 투표했는지
+  const nowYM = DATA.month;
+  let voted = false;
+  (DATA.raidMonths || []).forEach(function (g) {
+    if (g.month !== nowYM) return;
+    g.options.forEach(function (o) { if (o.voters.indexOf(me) > -1) voted = true; });
+  });
+  el.innerHTML =
+    '<div class="my-title">🙋 ' + esc(me) + ' 님의 ' + mm + '월</div>' +
+    '<div class="my-badges">' +
+      '<span class="badge ' + (certed ? 'on' : '') + '">' + (certed ? '✅' : '⬜') + ' 사진 인증</span>' +
+      '<span class="badge ' + (voted ? 'on' : '') + '">' + (voted ? '✅' : '⬜') + ' 정기공격 투표</span>' +
+    '</div>' +
+    (!certed ? '<div class="my-hint">이번 달 벽화 인증을 아직 안 했어요 📸</div>' : '');
+}
+
 function renderHome() {
   renderDday();
+  renderMySummary();
   const box = document.getElementById('homeCards');
   box.innerHTML = '';
 
@@ -483,11 +507,18 @@ function renderRaid(list) {
   const me = getMe();
   const isAdmin = ME.isAdmin;
   const sel = voteMonthValue();
-  const months = (DATA.raidMonths || []).filter(function (g) { return !sel || g.month === sel; });
-  if (!months.length) {
+  const all = (DATA.raidMonths || []).filter(function (g) { return !sel || g.month === sel; });
+  if (!all.length) {
     list.insertAdjacentHTML('beforeend', '<div class="loading">' +
       (sel ? sel + ' 정기공격 일정이 없어요' : '등록된 정기공격 일정이 없어요') + '</div>');
     return;
+  }
+  // 마감 자동 정리(#3): 특정 월 선택 시 전부 표시, '전체'면 지난 달은 접기
+  const past = sel ? [] : all.filter(function (g) { return isPastMonth_(g.month); });
+  const active = sel ? all : all.filter(function (g) { return !isPastMonth_(g.month); });
+  const months = showPastVotes ? active.concat(past) : active;
+  if (!months.length && past.length) {
+    list.insertAdjacentHTML('beforeend', '<div class="loading">진행 중인 정기공격이 없어요</div>');
   }
   months.forEach(function(g) {
     const mm = parseInt((g.month || '').split('-')[1], 10);
@@ -513,8 +544,12 @@ function renderRaid(list) {
     if (g.confirmed) {
       const b = document.createElement('div');
       b.className = 'confirm-banner';
-      b.innerHTML = '📌 ' + mm + '월 확정<div class="cdate">' + esc(g.confirmed.date) + '</div>' +
-        (g.confirmed.loc ? '📍 ' + esc(g.confirmed.loc) + '<br>' : '') + '투표 마감';
+      const cinfo = g.options.find(function (x) { return x.date === g.confirmed.date; });
+      const cdisp = cinfo ? fmtVoteDate(cinfo) : g.confirmed.date;
+      b.innerHTML = '📌 ' + mm + '월 확정<div class="cdate">' + esc(cdisp) + '</div>' +
+        (g.confirmed.loc ? '📍 ' + esc(g.confirmed.loc) + '<br>' : '') +
+        (g.confirmed.note ? '<div class="cnote">📝 ' + esc(g.confirmed.note).replace(/\n/g, '<br>') + '</div>' : '') +
+        '투표 마감';
       const cal = document.createElement('button');
       cal.className = 'mini-btn';
       cal.textContent = '📅 캘린더 추가';
@@ -526,8 +561,9 @@ function renderRaid(list) {
       sbtn.textContent = '💬 카톡 공유';
       sbtn.onclick = function() {
         const opt = g.options.find(function(x){return x.date===g.confirmed.date;}) || {voters:[]};
-        shareText('⚔️ ' + mm + '월 정기공격 확정!\n📅 ' + g.confirmed.date +
+        shareText('⚔️ ' + mm + '월 정기공격 확정!\n📅 ' + (opt.dateInfo ? opt.dateInfo.display : g.confirmed.date) +
           (g.confirmed.loc ? '\n📍 ' + g.confirmed.loc : '') +
+          (g.confirmed.note ? '\n📝 ' + g.confirmed.note : '') +
           (opt.voters.length ? '\n🧗 참여(' + opt.voters.length + '): ' + opt.voters.join(', ') : ''),
           '확정 소식 복사 완료!');
       };
@@ -555,7 +591,7 @@ function renderRaid(list) {
         (r.voters.length ? '<div class="voters">' + r.voters.map(esc).join(' · ') + '</div>' : '') +
         (!blocked && mine ? '<div class="hint">✓ 참여 중 — 탭하면 취소</div>' : '');
       if (!blocked) {
-        card.onclick = function() { voteRaid(g.month, r.date, card); };
+        card.onclick = function() { voteRaid(g.month, r.date); };
       }
       // 확정 버튼: 확정 전이면 마감 후에도 노출 (마감 → 확정 순서)
       if (!g.confirmed && isAdmin) {
@@ -568,6 +604,7 @@ function renderRaid(list) {
       list.appendChild(card);
     });
   });
+  if (past.length && !sel) appendPastToggle_(list, past.length);
 }
 
 /* ---------- 자연재해 (번개) ---------- */
@@ -575,7 +612,7 @@ function renderDisaster(list) {
   const me = getMe();
   const isAdmin = ME.isAdmin;
   const sel = voteMonthValue();
-  const rows = (DATA.disaster || []).filter(function (r) {
+  const filtered = (DATA.disaster || []).filter(function (r) {
     return !sel || (r.dateInfo && r.dateInfo.ym === sel); // 월 파싱 안 되는 라벨은 '전체'에서만 노출
   });
 
@@ -586,9 +623,15 @@ function renderDisaster(list) {
   addBtn.onclick = openFlashPrompt;
   list.appendChild(addBtn);
 
+  // 마감 자동 정리(#3): 지난 번개(오늘 이전)는 접기
+  const past = sel ? [] : filtered.filter(function (r) { return isPastFlash_(r); });
+  const active = sel ? filtered : filtered.filter(function (r) { return !isPastFlash_(r); });
+  const rows = showPastVotes ? active.concat(past) : active;
+
   if (!rows.length) {
     list.insertAdjacentHTML('beforeend', '<div class="loading">' +
-      (sel ? sel + '에 열린 번개가 없어요' : '아직 열린 번개가 없어요') + '</div>');
+      (sel ? sel + '에 열린 번개가 없어요' : (past.length ? '진행 중인 번개가 없어요' : '아직 열린 번개가 없어요')) + '</div>');
+    if (past.length && !sel) appendPastToggle_(list, past.length);
     return;
   }
 
@@ -601,7 +644,7 @@ function renderDisaster(list) {
       '<span class="count">' + r.voters.length + '명</span></div>' +
       (r.voters.length ? '<div class="voters">' + r.voters.map(esc).join(' · ') + '</div>' : '') +
       (mine ? '<div class="hint">✓ 참여 중 — 탭하면 취소</div>' : '');
-    card.onclick = function() { voteFlash(r.date, card); };
+    card.onclick = function() { voteFlash(r.date); };
     const shareBtn = document.createElement('button');
     shareBtn.className = 'mini-btn';
     shareBtn.textContent = '💬 공유';
@@ -622,6 +665,28 @@ function renderDisaster(list) {
     }
     list.appendChild(card);
   });
+  if (past.length && !sel) appendPastToggle_(list, past.length);
+}
+
+/* ---------- 마감 자동 정리 헬퍼 (#3) ---------- */
+let showPastVotes = false;
+
+function isPastMonth_(ym) {
+  const now = new Date();
+  return ym < (now.getFullYear() + '-' + pad2(now.getMonth() + 1));
+}
+function isPastFlash_(r) {
+  if (!r.dateInfo || !r.dateInfo.iso) return false; // 날짜 못 읽으면 유지
+  const now = new Date();
+  return r.dateInfo.iso < (now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate()));
+}
+function appendPastToggle_(list, n) {
+  const b = document.createElement('button');
+  b.className = 'btn2';
+  b.style.marginTop = '4px';
+  b.textContent = showPastVotes ? '지난 일정 접기' : '🕓 지난 일정 ' + n + '개 보기';
+  b.onclick = function () { showPastVotes = !showPastVotes; renderVotes(); };
+  list.appendChild(b);
 }
 
 /* ---------- 번개(자연재해) 등록/삭제 ---------- */
@@ -1011,8 +1076,13 @@ async function loadGallery(more) {
 function doConfirm(month, dateText) {
   const me = getMe();
   const isCancel = !dateText;
+  const g = (DATA.raidMonths || []).find(function (x) { return x.month === month; });
+  const prev = g && g.confirmed;
   const fields = isCancel ? [] : [
-    { key: 'loc', label: '모임 위치', type: 'text', placeholder: '예: 더클라임 강남' }
+    { key: 'loc', label: '모임 위치', type: 'text', placeholder: '예: 더클라임 강남',
+      value: prev ? prev.loc : '' },
+    { key: 'note', label: '설명 (선택)', type: 'text', placeholder: '예: 20시 정각 로비 집합, 회비 1만원',
+      value: prev ? (prev.note || '') : '' }
   ];
   fields.push({ key: 'pin', label: '관리자 PIN', type: 'password', inputmode: 'numeric', value: adminPin });
   modal({
@@ -1030,7 +1100,8 @@ function doConfirm(month, dateText) {
     },
     onConfirm: async function (v) {
       try {
-        DATA.raidMonths = await run('confirmDate', month, dateText, isCancel ? '' : v.loc.trim(), me, v.pin);
+        DATA.raidMonths = await run('confirmDate', month, dateText,
+          isCancel ? '' : v.loc.trim(), me, v.pin, isCancel ? '' : v.note.trim());
       } catch (e) {
         adminPin = ''; // 틀린 PIN 은 캐시하지 않음
         throw e;       // 모달 안에 에러 표시
@@ -1043,34 +1114,38 @@ function doConfirm(month, dateText) {
   });
 }
 
-async function voteRaid(month, dateText, card) {
-  const me = getMe();
-  card.style.opacity = '.5';
-  try {
-    const r = await run('toggleVote', 'raid', dateText, me, ME.token, month);
-    const g = (DATA.raidMonths || []).find(function(x) { return x.month === month; });
-    if (g) { const row = g.options.find(function(x) { return x.date === dateText; }); if (row) row.voters = r.voters; }
-    renderVotes();
-    renderHome();
-  } catch (e) {
-    toast(e.message || e);
-    card.style.opacity = '1';
-  }
+// 낙관적 토글: 로컬 voters 를 즉시 반영 → 화면 바로 갱신 → 서버는 백그라운드,
+// 실패하면 원복. 체감 속도가 서버 왕복(GAS 콜드스타트 ~1-2s)을 기다리지 않는다.
+function toggleVoterLocal_(row, me) {
+  if (!row) return;
+  const i = row.voters.indexOf(me);
+  if (i > -1) row.voters.splice(i, 1);
+  else row.voters.push(me);
 }
 
-async function voteFlash(dateText, card) {
+function voteRaid(month, dateText) {
   const me = getMe();
-  card.style.opacity = '.5';
-  try {
-    const r = await run('toggleVote', 'disaster', dateText, me, ME.token);
-    const row = (DATA.disaster || []).find(function(x) { return x.date === dateText; });
-    if (row) row.voters = r.voters;
-    renderVotes();
-    renderHome();
-  } catch (e) {
-    toast(e.message || e);
-    card.style.opacity = '1';
-  }
+  const g = (DATA.raidMonths || []).find(function (x) { return x.month === month; });
+  const row = g && g.options.find(function (x) { return x.date === dateText; });
+  if (!row) return;
+  const before = row.voters.slice();
+  toggleVoterLocal_(row, me);         // 즉시 반영
+  renderVotes(); renderHome();
+  run('toggleVote', 'raid', dateText, me, ME.token, month)
+    .then(function (r) { row.voters = r.voters; renderVotes(); renderHome(); }) // 서버 확정값으로 동기화
+    .catch(function (e) { row.voters = before; renderVotes(); renderHome(); toast(e.message || e); });
+}
+
+function voteFlash(dateText) {
+  const me = getMe();
+  const row = (DATA.disaster || []).find(function (x) { return x.date === dateText; });
+  if (!row) return;
+  const before = row.voters.slice();
+  toggleVoterLocal_(row, me);
+  renderVotes(); renderHome();
+  run('toggleVote', 'disaster', dateText, me, ME.token)
+    .then(function (r) { row.voters = r.voters; renderVotes(); renderHome(); })
+    .catch(function (e) { row.voters = before; renderVotes(); renderHome(); toast(e.message || e); });
 }
 
 /* ---------- 참여 날짜 선택 ---------- */
@@ -1281,7 +1356,33 @@ function loadMore() {
   moreLoaded = true;
   loadNotices();
   loadStats();
+  loadVenue();
   loadArchive();
+}
+
+/* ---------- 암장별 방문 통계 (#1) ---------- */
+async function loadVenue() {
+  const box = document.getElementById('venueBox');
+  box.className = 'loading';
+  box.textContent = '집계 중…';
+  try {
+    const v = await run('getVenueStats');
+    if (!v.total.length) { box.textContent = '아직 방문 기록이 없어요'; return; }
+    box.className = '';
+    const max = v.total[0].count;
+    const thisMonth = {};
+    v.thisMonth.forEach(function (x) { thisMonth[x.loc] = x.count; });
+    box.innerHTML = v.total.slice(0, 12).map(function (x) {
+      const pct = Math.round(x.count / max * 100);
+      const tm = thisMonth[x.loc] ? ' <span class="vs-tm">이번달 ' + thisMonth[x.loc] + '</span>' : '';
+      return '<div class="vs-row">' +
+        '<div class="vs-head"><span class="vs-loc">' + esc(x.loc) + '</span>' +
+        '<span class="vs-cnt">' + x.count + '회' + tm + '</span></div>' +
+        '<div class="vs-bar"><i style="width:' + pct + '%"></i></div></div>';
+    }).join('');
+  } catch (e) {
+    box.textContent = '불러오기 실패: ' + (e.message || e);
+  }
 }
 
 /* ---------- 공지사항 (#24) ---------- */
