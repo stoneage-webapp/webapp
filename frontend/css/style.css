@@ -452,3 +452,13 @@ body > header { flex-shrink: 0; }
   border-radius: 10px; padding: 9px 12px; margin-bottom: 8px;
 }
 .myproof-row .mp-txt { flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-dim); line-height: 1.5; }
+
+/* ==================== 처리 중 오버레이 — 흐르는 막대 (퍼센트 없는 단발성 작업) ==================== */
+#uploadOverlay .up-bar i.indet {
+  width: 40% !important;
+  animation: indet-slide 1.1s ease-in-out infinite alternate;
+}
+@keyframes indet-slide {
+  from { margin-left: 0%; }
+  to { margin-left: 60%; }
+}

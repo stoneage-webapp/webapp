@@ -231,6 +231,24 @@ function upProgress(pct, text) {
   if (text != null) document.getElementById('upText').textContent = text;
 }
 
+/* ---------- 처리 중 오버레이 (정산 실행/지원대상/담당자/공지 등, 실퍼센트 없는 단발성 작업) ----------
+ * 업로드 오버레이와 같은 카드를 재사용하되, 퍼센트 대신 흐르는 막대(indeterminate)로 "진행 중"만 표시.
+ */
+function busyShow(text) {
+  document.getElementById('upPct').style.display = 'none';
+  const fill = document.getElementById('upFill');
+  fill.classList.add('indet');
+  fill.style.width = '';
+  document.getElementById('upText').textContent = text || '처리 중…';
+  document.getElementById('uploadOverlay').style.display = 'flex';
+}
+function busyUpdate(text) { document.getElementById('upText').textContent = text; }
+function busyHide() {
+  document.getElementById('uploadOverlay').style.display = 'none';
+  document.getElementById('upFill').classList.remove('indet');
+  document.getElementById('upPct').style.display = '';
+}
+
 async function uploadFileSmart(startFnName, startArgs, file) {
   upProgress(0, '업로드 준비 중…');
   const uploadUrl = await run.apply(null, [startFnName].concat(startArgs));
@@ -523,9 +541,24 @@ function renderMySummary() {
     (!certed ? '<div class="my-hint">이번 달 벽화 인증을 아직 안 했어요 📸</div>' : '');
 }
 
+// 공지사항 홈 노출 (#2): getInitData의 notices(최신 3건) + 더보기 탭에서 등록/삭제 직후 동기화
+function renderHomeNotices() {
+  const el = document.getElementById('homeNotices');
+  if (!el) return;
+  const items = DATA.notices || [];
+  if (!items.length) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="month-head" style="margin-top:0">📢 공지사항</div>' +
+    items.map(function (n) {
+      return '<div class="notice-card"><div class="nc-text">' +
+        esc(n.text).replace(/\n/g, '<br>') + '</div>' +
+        '<div class="nc-meta">' + esc(n.by) + ' · ' + esc(n.when) + '</div></div>';
+    }).join('');
+}
+
 function renderHome() {
   renderDday();
   renderMySummary();
+  renderHomeNotices();
   const box = document.getElementById('homeCards');
   box.innerHTML = '';
 
@@ -1598,6 +1631,8 @@ function renderNotices(items) {
         try {
           const res = await run('deleteNotice', n.row, n.when, getMe(), ME.token);
           renderNotices(res.items);
+          DATA.notices = res.items.slice(0, 3);
+          renderHomeNotices();
         } catch (e) { toast(e.message || e); }
       };
       c.appendChild(del);
@@ -1612,11 +1647,17 @@ async function submitNotice() {
   if (!text) return toast('공지 내용을 입력하세요.');
   const btn = document.getElementById('noticeBtn');
   btn.disabled = true;
+  busyShow('공지 등록 중…');
   try {
     const res = await run('postNotice', text, getMe(), ME.token);
     ta.value = '';
     renderNotices(res.items);
+    DATA.notices = res.items.slice(0, 3);
+    renderHomeNotices();
+    busyHide();
+    toast('✓ 공지를 등록했어요.', true);
   } catch (e) {
+    busyHide();
     toast(e.message || e);
   } finally {
     btn.disabled = false;
@@ -1680,13 +1721,17 @@ async function loadArchive() {
 /* ---------- 정산 현황 (#21, 관리자) ---------- */
 function renderSettle(res) {
   const box = document.getElementById('settleBox');
-  if (!res.rows.length) { box.className = 'loading'; box.textContent = '아직 정산 기록이 없어요 (위에서 정산 실행)'; return; }
+  const ym = res.ym || '';
+  if (!res.rows.length) {
+    box.className = 'loading';
+    box.textContent = ym + ' 정산 기록이 없어요 (위에서 정산 실행)';
+    return;
+  }
   box.className = '';
   const canManage = canSettleMe();
-  const ym = res.ym || '';
   const table = document.createElement('div');
   table.className = 'stats-scroll';
-  let html = '<table class="stats-table"><thead><tr><th>이름</th><th>인증</th><th>장소</th>' +
+  let html = '<table class="stats-table"><thead><tr><th>이름</th><th>인증</th>' +
     (canManage ? '<th></th>' : '') + '</tr></thead><tbody>';
   res.rows.forEach(function (r) {
     const canceled = r.status === '정산 취소';
@@ -1696,7 +1741,7 @@ function renderSettle(res) {
         '" style="margin:0;padding:4px 9px">' + (canceled ? '↩ 복구' : '취소') + '</button></td>'
       : (canManage ? '<td></td>' : '');
     html += '<tr' + (canceled ? ' class="indep"' : '') + '><td>' + esc(r.name) + '</td><td>' +
-      esc(r.status) + '</td><td>' + esc(r.loc) + '</td>' + btn + '</tr>';
+      esc(r.status) + '</td>' + btn + '</tr>';
   });
   html += '</tbody></table>';
   table.innerHTML = html;
@@ -1725,12 +1770,14 @@ function renderSettle(res) {
   }
 }
 
-async function loadSettle() {
+// ym 생략 시 관리 탭의 '정산할 월' 선택값을 대상으로 조회 (실행/취소/초기화와 동일 월 기준)
+async function loadSettle(ym) {
+  ym = ym || document.getElementById('settleYm').value;
   const box = document.getElementById('settleBox');
   box.className = 'loading';
   box.textContent = '정산 현황을 여는 중…';
   try {
-    renderSettle(await run('getSettleStatus'));
+    renderSettle(await run('getSettleStatus', ym));
   } catch (e) {
     box.className = 'loading';
     box.textContent = '불러오기 실패: ' + (e.message || e);
@@ -1779,8 +1826,9 @@ function loadAdmin() {
   adminLoaded = true;
   // 정산할 월 기본값 = 이번 달
   const now = new Date();
-  document.getElementById('settleYm').value =
-    now.getFullYear() + '-' + pad2(now.getMonth() + 1);
+  const ymSel = document.getElementById('settleYm');
+  ymSel.value = now.getFullYear() + '-' + pad2(now.getMonth() + 1);
+  ymSel.onchange = function () { loadSettle(); }; // 월 변경 시 그 달 정산 현황으로 갱신
   loadSettle();
   if (ME.isAdmin) {
     buildSupportChips();
@@ -1810,12 +1858,15 @@ async function saveSupports() {
     .map(function (c) { return c.dataset.name; });
   const st = document.getElementById('supportStatus');
   if (!(await modalConfirm('지원 대상 ' + names.length + '명으로 저장할까요?\n(해제된 부족원은 정산에서 "지원 제외" 처리)'))) return;
+  busyShow('지원 대상 저장 중…');
   try {
     const res = await run('setSupports', names, getMe(), ME.token);
     DATA.support = res.support;
+    busyHide();
     st.className = 'status ok';
     st.textContent = '✓ 저장됨 — 지원 ' + names.length + '명 / 제외 ' + (DATA.members.length - names.length) + '명';
   } catch (e) {
+    busyHide();
     st.className = 'status err';
     st.textContent = e.message || e;
   }
@@ -1829,10 +1880,11 @@ async function runSettleClick() {
   if (!ym) return toast('정산할 월을 선택하세요.');
   if (!(await modalConfirm(ym + ' 정산을 실행할까요?\n인증현황 시트가 갱신되고 정산 폴더에 사진이 복사됩니다.'))) return;
   btn.disabled = true;
-  st.className = 'status';
-  st.textContent = '정산 중… (사진 수에 따라 수십 초 걸릴 수 있어요)';
+  st.textContent = '';
+  busyShow(ym + ' 정산 실행 중… (사진 수에 따라 수십 초 걸릴 수 있어요)');
   try {
     const r = await run('runSettle', ym, getMe(), ME.token);
+    busyHide();
     st.className = 'status ok';
     st.innerHTML = '✓ ' + esc(r.ym) + ' 정산 완료<br>' +
       '인증(지원 대상): <b>' + r.done + '</b> / ' + r.total + '명 · 지원 제외: ' + r.independent + '명<br>' +
@@ -1840,6 +1892,7 @@ async function runSettleClick() {
       (r.uncovered && r.uncovered.length ? '<br>⚠ 사진 누락: ' + r.uncovered.map(esc).join(', ') : '');
     loadSettle(); // 정산 현황 새로고침
   } catch (e) {
+    busyHide();
     st.className = 'status err';
     st.textContent = '실패: ' + (e.message || e);
   } finally {
@@ -1866,12 +1919,15 @@ async function saveSettlers() {
   const names = Array.prototype.slice.call(document.querySelectorAll('#settlerChips .chip.on'))
     .map(function (c) { return c.dataset.name; });
   const st = document.getElementById('settlerStatus');
+  busyShow('정산 담당자 저장 중…');
   try {
     const res = await run('setSettlers', names, getMe(), ME.token);
     DATA.settlers = res.settlers;
+    busyHide();
     st.className = 'status ok';
     st.textContent = '✓ 저장됨: ' + (res.settlers.length ? res.settlers.join(', ') : '(없음)');
   } catch (e) {
+    busyHide();
     st.className = 'status err';
     st.textContent = e.message || e;
   }

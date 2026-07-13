@@ -29,7 +29,7 @@ const GET_ACTIONS = {
   getHallData:     { cache: true, fn: function (p) { return getHallData(); } },
   getHallArchive:  { cache: true, fn: function (p) { return getHallArchive(); } },          // #23 역대 우승자
   getStats:        { cache: true, fn: function (p) { return getStats(); } },                // #20 출석/인증 통계
-  getSettleStatus: { cache: true, fn: function (p) { return getSettleStatus(); } },         // #21 정산 현황
+  getSettleStatus: { cache: true, fn: function (p) { return getSettleStatus(p.ym || ''); } }, // #21 정산 현황 (월 지정)
   getNotices:      { cache: true, fn: function (p) { return getNotices(Number(p.limit) || 20); } }, // #24 공지
   getVenueStats:   { cache: true, fn: function (p) { return getVenueStats(); } }             // 암장별 방문 통계
 };
@@ -135,7 +135,7 @@ function bumpCacheVer_() {
 }
 function cacheKey_(action, p) {
   return 'q:' + cacheVer_() + ':' + action + ':' +
-    ['month', 'limit', 'offset', 'person'].map(function (k) { return p[k] || ''; }).join(':');
+    ['month', 'limit', 'offset', 'person', 'ym'].map(function (k) { return p[k] || ''; }).join(':');
 }
 function cacheGet_(key) {
   try {
@@ -179,6 +179,7 @@ function getInitData() {
     confirmed: votes.confirmed,    // { disaster: {date,loc}|null }
     admins: CONFIG.ADMINS,
     settlers: getSettlers_(),      // 정산 담당자 (관리자 페이지 노출 판단용)
+    notices: getNotices(3).items,  // 최신 공지 3건 — 홈 화면 노출용
     flashOwners: votes.flashOwners
   };
 }

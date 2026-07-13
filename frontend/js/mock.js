@@ -5,7 +5,8 @@
 (function () {
   if (new URLSearchParams(location.search).get('mock') !== '1') return;
 
-  const MEMBERS = ['김광훈', '이희주', '박도윤', '최서연', '정민재'];
+  // 백엔드는 항상 오름차순으로 정렬해 내려준다 — 미리보기도 그 결과를 흉내낸다.
+  const MEMBERS = ['김광훈', '박도윤', '이희주', '정민재', '최서연'];
   const DI = function (iso, time) {
     const d = new Date(iso);
     const w = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
@@ -37,7 +38,11 @@
     confirmed: { disaster: null },
     admins: ['김광훈'],
     settlers: ['이희주'],
-    support: { '김광훈': true, '이희주': true, '박도윤': true, '최서연': true, '정민재': false },
+    support: { '김광훈': true, '박도윤': true, '이희주': true, '정민재': false, '최서연': true },
+    notices: [
+      { when: '2026-07-10', by: '김광훈', text: '7월 회비는 15일까지 계좌로 부탁드려요!', row: 3 },
+      { when: '2026-07-02', by: '김광훈', text: '이번 달 정기공격 장소 투표 열렸습니다 — 참여 부탁!', row: 2 }
+    ],
     flashOwners: { '7/19 14:00 @ 클라이밍파크': '최서연' }
   };
 
@@ -57,22 +62,25 @@
           { when: ym + '-05', actDate: ym + '-05', loc: '더클라임 강남', people: '김광훈, 이희주', by: '김광훈', fileId: 'mk1', link: '#' },
           { when: ym + '-02', actDate: ym + '-02', loc: '클라이밍파크', people: '김광훈', by: '김광훈', fileId: 'mk2', link: '#' }
         ], hasMore: false },
-        getNotices: { items: [{ when: '2026. 7. 1', by: '김광훈', text: '7월 회비는 15일까지!', row: 2 }] },
+        getNotices: { items: DATA.notices },
         getStats: {
           months: ['2026-06', ym],
-          members: MEMBERS.map(function (m, i) { return { name: m, supported: i !== 4 }; }),
+          members: MEMBERS.map(function (m) { return { name: m, supported: DATA.support[m] !== false }; }),
           cert: (function () { const o = {}; o['2026-06'] = { '김광훈': true }; o[ym] = { '김광훈': true, '이희주': true }; return o; })(),
           votes: (function () { const o = {}; o[ym] = { '김광훈': true, '이희주': true, '박도윤': true }; return o; })()
         },
-        getSettleStatus: { ym: ym, rows: [
-          { name: '김광훈', ym: ym, status: 'O', actDate: '7/16', loc: '더클라임', link: '' },
-          { name: '이희주', ym: ym, status: 'X', actDate: '', loc: '', link: '' },
-          { name: '박도윤', ym: ym, status: '정산 취소', actDate: '', loc: '', link: '' },
-          { name: '정민재', ym: ym, status: '지원 제외', actDate: '', loc: '', link: '' }
+        // getSettleStatus(ym): 열=월 누적 스키마 — 상태만(장소/링크 없음)
+        getSettleStatus: { ym: ym, months: ['2026-06', ym], rows: [
+          { name: '김광훈', status: 'O' },
+          { name: '박도윤', status: '정산 취소' },
+          { name: '이희주', status: 'X' },
+          { name: '정민재', status: '지원 제외' },
+          { name: '최서연', status: 'X' }
         ] },
-        cancelSettle: { ym: ym, rows: [
-          { name: '김광훈', ym: ym, status: 'O', actDate: '7/16', loc: '더클라임', link: '' },
-          { name: '이희주', ym: ym, status: '정산 취소', actDate: '', loc: '', link: '' }
+        cancelSettle: { ym: ym, months: ['2026-06', ym], rows: [
+          { name: '김광훈', status: 'O' },
+          { name: '박도윤', status: '취소 해제' },
+          { name: '이희주', status: 'X' }
         ] },
         resetSettle: { reset: true, ym: ym },
         getVenueStats: { month: ym, total: [{loc:'더클라임 강남',count:8},{loc:'클라이밍파크',count:5},{loc:'볼더링존',count:2}], thisMonth: [{loc:'더클라임 강남',count:3}] },
@@ -82,10 +90,10 @@
         addFlash: DATA.disaster, deleteFlash: DATA.disaster,
         confirmDate: DATA.raidMonths,
         // note 반영은 서버가 하므로 mock은 기존 데이터 반환
-        postNotice: { items: [{ when: 'now', by: args[1], text: args[0], row: 3 }] },
-        deleteNotice: { items: [] },
+        postNotice: { items: [{ when: 'now', by: args[1], text: args[0], row: 4 }].concat(DATA.notices) },
+        deleteNotice: { items: DATA.notices.slice(1) },
         resetPin: { name: args[0], reset: true },
-        runSettle: { ym: args[0], done: 2, total: 4, independent: 1, copied: 1, uncovered: ['박도윤'] },
+        runSettle: { ym: args[0], done: 2, total: 4, independent: 1, canceled: 1, copied: 1, uncovered: ['박도윤'] },
         setSettlers: { settlers: args[0] },
         setSupports: (function () { const on = Array.isArray(args[0]) ? args[0] : []; const s = {}; MEMBERS.forEach(function (m) { s[m] = on.indexOf(m) > -1; }); return { support: s }; })(),
         voteHall: HALL, deleteHallEntry: HALL, finalizeHallEntry: HALL,

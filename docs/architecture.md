@@ -23,7 +23,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `votes.gs` | 정기공격/자연재해 투표, 번개, 일정 확정, 마감 판정 |
 | `photos.gs` | Drive 업로드(청크), Photos 업로드, 벽화 갤러리, 사진 삭제 |
 | `hall.gs` | 명예의전당 출품/투표/영상 삭제 |
-| `settle.gs` | 월별 인증 정산(시트 메뉴), 월 파싱, 인증현황 집계, 출석 통계(`getStats`)·정산 조회(`getSettleStatus`) |
+| `settle.gs` | 월별 인증 정산(시트 메뉴/웹), 월 파싱, 인증현황 집계(열=월 누적)·정산 취소·출석 통계(`getStats`), 부족원 오름차순 정렬(`sortNames_`) |
 | `notices.gs` | 공지사항 — 목록/등록/삭제 (관리자). '공지' 시트 자동 생성 |
 
 > Notion API 연동(`notion.gs`)은 2026-07 사용자 결정으로 **완전 제거됨** (#7). 안내문 링크(`NOTION_URL`)는 단순 링크라 유지.
@@ -46,18 +46,19 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 
 | action | params | 반환(data) |
 |---|---|---|
-| `getInitData` | — | `{ members, support, months, raidMonths, disaster, certified, month, shareUrl, notionUrl, confirmed, admins, settlers, flashOwners }` |
+| `getInitData` | — | `{ members, support, months, raidMonths, disaster, certified, month, shareUrl, notionUrl, openchatUrl, confirmed, admins, settlers, notices, flashOwners }` |
 | `getVotes` | `month`(선택, `'2026-07'`) | `{ months, raidMonths, disaster, confirmed, flashOwners }` — month 지정 시 해당 월만 |
 | `getGallery` | `limit`(기본12), `offset`(기본0), `month`(선택), `person`(선택) | `{ items:[{when,actDate,loc,people,by,fileId,link}], hasMore }` — 필터 후 페이징 |
 | `getHallData` | — | `{ ym, entries:[...], winner, winnerMonth }` |
 | `getHallArchive` | — | `{ winners:[...] }` — 월별 최다득표, 최신순, 이번 달 제외 |
 | `getStats` | — | `{ months, members:[{name,independent}], cert:{ym:{이름:true}}, votes:{ym:{이름:true}} }` |
-| `getSettleStatus` | — | `{ ym, rows:[{name,ym,status,actDate,loc,link}] }` — 인증현황 시트 |
+| `getSettleStatus` | `ym`(선택, 기본 이번 달) | `{ ym, months:[존재하는 월들], rows:[{name,status}] }` — 인증현황 시트, 지정한 월 한 열만 |
 | `getNotices` | `limit`(기본20) | `{ items:[{when,by,text,row}] }` — 최신순 |
 | `getVenueStats` | — | `{ total:[{loc,count}], thisMonth:[{loc,count}], month }` — 암장별 방문 집계 |
-| (getInitData에 `openchatUrl` 추가 — 오픈카톡방 링크) | | |
 
 > - `driveApiKey`는 익명 `getInitData`에서 **제거됨** → `loginWithPin`/`changePin` 응답으로 이동.
+> - **부족원 목록은 항상 이름 오름차순**(`sortNames_`, settle.gs) — `members`, `getStats.members`, `getSettleStatus.rows` 등 목록을 반환하는 모든 곳에 일괄 적용.
+> - `getInitData.notices`는 최신 공지 3건(홈 화면 노출용). 전체 목록은 `getNotices`.
 > - 투표 항목에는 `dateInfo` 필드가 붙는다:
 >   `{ iso:'2026-07-16', ym:'2026-07', weekday:'목', time:'20:00'|null, display:'2026-07-16 (목) 20:00' }`
 >   파싱 실패 시 `null` — 프론트는 원본 `date` 라벨로 폴백. 표기는 `dateInfo.display` 우선.
@@ -87,8 +88,8 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `runSettle` | `ym('2026-07'), requester, token` | `{ ym, done, total, independent, copied, uncovered }` — **관리자 또는 정산 담당자** |
 | `setSettlers` | `names(배열), requester, token` | `{ settlers }` — 관리자 전용. Script Properties `settlers`에 저장 |
 | `setSupports` | `names(지원 대상 배열), requester, token` | `{ support: {이름:bool} }` — 관리자 전용. 부족원 시트 **J열(지원여부)** 기록 |
-| `cancelSettle` | `ym, targetName, requester, token` | `getSettleStatus()` — 인원별 이번 달 정산 취소/복구 토글 (관리자·담당자) |
-| `resetSettle` | `ym, requester, token` | `{ reset:true, ym }` — 이번 달 정산 초기화 (인증현황 비움) |
+| `cancelSettle` | `ym, targetName, requester, token` | `getSettleStatus(ym)` — 인원별 해당 월 정산 취소/복구 토글 (관리자·담당자) |
+| `resetSettle` | `ym, requester, token` | `{ reset:true, ym }` — 해당 월 열만 초기화 (다른 달 기록은 보존) |
 
 > `meta`(finalizeProof) = `{ kind:'사진'|'영상', mimeType, fileSize, participants:[], location, uploader, activityLabel }`
 
@@ -117,7 +118,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 명예의전당 | `getHallData`, `getHallArchive`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |
 | 공지 | `getNotices`, `postNotice`/`deleteNotice`(관리자) |
 | 통계 | `getStats` |
-| 관리 탭 (관리자·정산 담당자만 노출) | `runSettle`, `getSettleStatus`, `setSettlers`(관리자), `resetPin`(관리자) |
+| 관리 탭 (관리자·정산 담당자만 노출) | `runSettle`, `getSettleStatus`, `cancelSettle`, `resetSettle`, `setSettlers`(관리자), `setSupports`(관리자), `resetPin`(관리자) |
 
 ## AS-IS와의 차이 (참고)
 
