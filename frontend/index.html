@@ -19,7 +19,7 @@
 </head>
 <body>
 
-<div id="kakaoOverlay" style="display:none; position:fixed; inset:0; z-index:99; background:var(--bg); padding:56px 26px; text-align:center;">
+<div id="kakaoOverlay" class="fs-overlay" style="display:none; z-index:99; padding:56px 26px; text-align:center;">
   <img class="logo-hero" src="/icons/icon-512.png" alt="석기시대" width="88" height="88">
   <h2 style="margin:16px 0 10px; font-size:18px;">브라우저에서 열어주세요</h2>
   <p style="font-size:13.5px; color:var(--ink-dim); line-height:1.8;">
@@ -35,7 +35,7 @@
   <p>부족 공동 기록소</p>
 </header>
 
-<div id="loginScreen" style="display:none; position:fixed; inset:0; z-index:50; background:var(--bg); padding:calc(60px + var(--safe-t)) var(--pad) 0; text-align:center;">
+<div id="loginScreen" class="fs-overlay" style="display:none; z-index:50; padding:calc(60px + var(--safe-t)) var(--pad) calc(30px + var(--safe-b)); text-align:center;">
   <img class="logo-hero" src="/icons/icon-512.png" alt="석기시대" width="96" height="96">
   <h2 style="margin:18px 0 6px; font-size:clamp(18px,5vw,22px);">부족원 확인</h2>
   <p style="font-size:13px; color:var(--ink-dim); margin-bottom:26px;">이름을 고르고 PIN을 입력하세요<br><span style="font-size:12px">처음이면 입력한 PIN으로 자동 등록돼요 (4자리 이상)</span></p>
@@ -69,6 +69,7 @@
     <div id="ddayBanner"></div>
     <div id="homeCards"></div>
     <div class="cert-line" id="homeCertLine"></div>
+    <button class="btn2" onclick="openChat()">💬 오픈카톡방 바로가기</button>
     <button class="btn2" onclick="openAlbum()">🔥 부족 영상 앨범 (구글 포토)</button>
     <button class="btn2" onclick="openNotion()">📜 부족 안내문</button>
   </section>
@@ -82,6 +83,7 @@
     <div class="field" style="margin-bottom:10px">
       <select id="voteMonth"></select>
     </div>
+    <div id="voteCalendar"></div>
     <div class="deadline-line" id="deadlineLine"></div>
     <div id="voteList"></div>
   </section>
@@ -224,6 +226,15 @@
   <button id="nav-admin" style="display:none" onclick="setTab('admin')"><span class="ico">🛠️</span>관리</button>
 </nav>
 
+<div id="uploadOverlay" style="display:none;">
+  <div class="up-card">
+    <img class="logo-hero" src="/icons/icon-192.png" alt="" width="64" height="64">
+    <div class="up-pct" id="upPct">0%</div>
+    <div class="up-bar"><i id="upFill"></i></div>
+    <div class="up-text" id="upText">업로드 준비 중…</div>
+    <div class="up-hint">화면을 켜둔 채 잠시만 기다려주세요</div>
+  </div>
+</div>
 <div id="modalRoot"></div>
 <div id="toastRoot"></div>
 

@@ -106,9 +106,12 @@ function settleMonth(ym) {
   const tz = Session.getScriptTimeZone();
   const s = ss_();
 
-  // 부족원: J열 지원여부 기준 분리 (FALSE = 지원 제외)
+  // 부족원: J열 지원여부 기준 분리 (FALSE = 지원 제외) + 이번 달 인원별 정산 취소
   const split = splitBySupport_(s);
-  const members = split.members, independent = split.excluded;
+  const canceledMap = getSettleExcluded_()[ym] || {}; // { 이름: true } — 이번 달만 제외
+  const members = split.members.filter(function (m) { return !canceledMap[m]; });
+  const canceled = split.members.filter(function (m) { return canceledMap[m]; });
+  const independent = split.excluded;
   const memberSet = {};
   members.forEach(function(m) { memberSet[m] = true; });
 
@@ -165,6 +168,9 @@ function settleMonth(ym) {
   independent.forEach(function(m) {
     rows.push([m, ym, '지원 제외', '', '', '']);
   });
+  canceled.forEach(function(m) {
+    rows.push([m, ym, '정산 취소', '', '', '']);
+  });
   out.getRange(1, 1, rows.length, 6).setValues(rows);
 
   // 최소 집합 사진을 [정산폴더/ym] 하위에 복사 (파일당 커버 인원을 파일명에)
@@ -187,8 +193,49 @@ function settleMonth(ym) {
   const uncovered = needed.filter(function(m) { return !covered[m]; });
   return {
     done: done, total: members.length, independent: independent.length,
-    copied: copied, uncovered: uncovered
+    canceled: canceled.length, copied: copied, uncovered: uncovered
   };
+}
+
+/* ---------- 인원별 이번 달 정산 취소 / 초기화 (#4) ----------
+ * settle_excluded = { 'YYYY-MM': { 이름: true } } — 그 달만 정산에서 뺌 (지원여부 J열과 별개, 다음 달 자동 복구)
+ */
+function getSettleExcluded_() {
+  const v = PropertiesService.getScriptProperties().getProperty('settle_excluded');
+  try { return v ? JSON.parse(v) : {}; } catch (e) { return {}; }
+}
+function setSettleExcluded_(o) {
+  PropertiesService.getScriptProperties().setProperty('settle_excluded', JSON.stringify(o));
+}
+
+// 특정 인원의 이번 달 정산 취소/복구 토글 → 인증현황 재생성
+function cancelSettle(ym, targetName, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!canSettle_(requester)) throw new Error('정산 권한이 없습니다.');
+  ym = String(ym || '').trim();
+  targetName = String(targetName || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(ym)) throw new Error('월 형식 오류(yyyy-MM)');
+  if (!targetName) throw new Error('대상 이름이 없습니다.');
+  const all = getSettleExcluded_();
+  const cur = all[ym] || {};
+  if (cur[targetName]) delete cur[targetName]; else cur[targetName] = true;
+  all[ym] = cur;
+  setSettleExcluded_(all);
+  settleMonth(ym); // 인증현황 즉시 재생성
+  return getSettleStatus();
+}
+
+// 이번 달 정산 초기화: 인증현황 시트 비우고 이번 달 취소 명단도 리셋
+function resetSettle(ym, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!canSettle_(requester)) throw new Error('정산 권한이 없습니다.');
+  ym = String(ym || '').trim();
+  const all = getSettleExcluded_();
+  delete all[ym];
+  setSettleExcluded_(all);
+  const sh = ss_().getSheetByName(CONFIG.SHEETS.status);
+  if (sh) sh.clear();
+  return { reset: true, ym: ym };
 }
 
 /* ---------- 월별 출석/인증 통계 (웹 조회용, #20) ----------

@@ -33,7 +33,7 @@
     ],
     certified: { '김광훈': true, '이희주': true },
     month: ym,
-    shareUrl: '', notionUrl: '',
+    shareUrl: '', notionUrl: '', openchatUrl: 'https://open.kakao.com/o/g5IQRRBi',
     confirmed: { disaster: null },
     admins: ['김광훈'],
     settlers: ['이희주'],
@@ -61,7 +61,17 @@
           cert: (function () { const o = {}; o['2026-06'] = { '김광훈': true }; o[ym] = { '김광훈': true, '이희주': true }; return o; })(),
           votes: (function () { const o = {}; o[ym] = { '김광훈': true, '이희주': true, '박도윤': true }; return o; })()
         },
-        getSettleStatus: { ym: '2026-06', rows: [{ name: '김광훈', ym: '2026-06', status: 'O', actDate: '6/18', loc: '더클라임', link: '' }] },
+        getSettleStatus: { ym: ym, rows: [
+          { name: '김광훈', ym: ym, status: 'O', actDate: '7/16', loc: '더클라임', link: '' },
+          { name: '이희주', ym: ym, status: 'X', actDate: '', loc: '', link: '' },
+          { name: '박도윤', ym: ym, status: '정산 취소', actDate: '', loc: '', link: '' },
+          { name: '정민재', ym: ym, status: '지원 제외', actDate: '', loc: '', link: '' }
+        ] },
+        cancelSettle: { ym: ym, rows: [
+          { name: '김광훈', ym: ym, status: 'O', actDate: '7/16', loc: '더클라임', link: '' },
+          { name: '이희주', ym: ym, status: '정산 취소', actDate: '', loc: '', link: '' }
+        ] },
+        resetSettle: { reset: true, ym: ym },
         getVenueStats: { month: ym, total: [{loc:'더클라임 강남',count:8},{loc:'클라이밍파크',count:5},{loc:'볼더링존',count:2}], thisMonth: [{loc:'더클라임 강남',count:3}] },
         loginWithPin: { name: args[0], token: 'mock-token', isAdmin: args[0] === '김광훈', driveApiKey: '' },
         changePin: { name: args[0], token: 'mock-token', isAdmin: args[0] === '김광훈', driveApiKey: '' },

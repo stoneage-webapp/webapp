@@ -65,7 +65,9 @@ const POST_ACTIONS = {
   deleteNotice:      { auth: 'name', bust: true, fn: function (d) { return deleteNotice(d.row, d.when, d.name, d.token); } }, // #24
   runSettle:         { auth: 'requester', bust: true, fn: function (d) { return runSettle(d.ym, d.requester, d.token); } },   // 웹 정산 (관리자/담당자)
   setSettlers:       { auth: 'requester', bust: true, fn: function (d) { return setSettlers(d.names, d.requester, d.token); } }, // 담당자 지정 (관리자)
-  setSupports:       { auth: 'requester', bust: true, fn: function (d) { return setSupports(d.names, d.requester, d.token); } }  // 지원 대상 지정 (관리자, J열)
+  setSupports:       { auth: 'requester', bust: true, fn: function (d) { return setSupports(d.names, d.requester, d.token); } }, // 지원 대상 지정 (관리자, J열)
+  cancelSettle:      { auth: 'requester', bust: true, fn: function (d) { return cancelSettle(d.ym, d.targetName, d.requester, d.token); } }, // 인원별 이번 달 정산 취소/복구
+  resetSettle:       { auth: 'requester', bust: true, fn: function (d) { return resetSettle(d.ym, d.requester, d.token); } }              // 이번 달 정산 초기화
 };
 
 /* ---------- 진입점 ---------- */
@@ -173,6 +175,7 @@ function getInitData() {
     month: cert.ym,                // 'yyyy-MM'
     shareUrl: CONFIG.PHOTOS_SHARE_URL,
     notionUrl: CONFIG.NOTION_URL,
+    openchatUrl: CONFIG.OPENCHAT_URL,
     confirmed: votes.confirmed,    // { disaster: {date,loc}|null }
     admins: CONFIG.ADMINS,
     settlers: getSettlers_(),      // 정산 담당자 (관리자 페이지 노출 판단용)
