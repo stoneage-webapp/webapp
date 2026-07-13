@@ -301,3 +301,13 @@ textarea:focus { outline: none; border-color: var(--ember); }
 }
 .toast.show { opacity: 1; transform: none; }
 .toast.ok { border-color: var(--moss); }
+
+/* ==================== 로고 이미지 ==================== */
+.logo-hero {
+  display: block; margin: 0 auto 4px;
+  border-radius: 22%;
+}
+.logo-inline {
+  vertical-align: -6px; margin-right: 4px;
+  border-radius: 26%;
+}
