@@ -63,12 +63,28 @@
           { when: ym + '-02', actDate: ym + '-02', loc: '클라이밍파크', people: '김광훈', by: '김광훈', fileId: 'mk2', link: '#' }
         ], hasMore: false },
         getNotices: { items: DATA.notices },
-        getStats: {
-          months: ['2026-06', ym],
-          members: MEMBERS.map(function (m) { return { name: m, supported: DATA.support[m] !== false }; }),
-          cert: (function () { const o = {}; o['2026-06'] = { '김광훈': true }; o[ym] = { '김광훈': true, '이희주': true }; return o; })(),
-          votes: (function () { const o = {}; o[ym] = { '김광훈': true, '이희주': true, '박도윤': true }; return o; })()
-        },
+        getStats: (function () {
+          const requester = args[0];
+          const names = requester === '김광훈'
+            ? MEMBERS
+            : MEMBERS.filter(function (m) { return m === requester; });
+          const cert = {}, votes = {};
+          cert['2026-06'] = requester === '김광훈' ? { '김광훈': true } : {};
+          cert[ym] = requester === '김광훈'
+            ? { '김광훈': true, '이희주': true }
+            : (requester === '이희주' ? { '이희주': true } : {});
+          votes[ym] = requester === '김광훈'
+            ? { '김광훈': true, '이희주': true, '박도윤': true }
+            : (['이희주', '박도윤'].indexOf(requester) > -1
+              ? (function () { const o = {}; o[requester] = true; return o; })()
+              : {});
+          return {
+            months: ['2026-06', ym],
+            members: names.map(function (m) { return { name: m, supported: DATA.support[m] !== false }; }),
+            cert: cert,
+            votes: votes
+          };
+        })(),
         // getSettleStatus(ym): 열=월 누적 스키마 — 상태만(장소/링크 없음)
         getSettleStatus: { ym: ym, months: ['2026-06', ym], rows: [
           { name: '김광훈', status: 'O' },

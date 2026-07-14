@@ -307,13 +307,19 @@ function resetSettle(ym, requester, authToken) {
  *   cert   : { ym: { 이름: true } } — 해당 월 사진 인증자
  *   votes  : { ym: { 이름: true } } — 해당 월 정기공격 투표 참여자
  * }
- * 시트 전체 스캔이지만 라우터 캐시(2분) 뒤에 있어 성능 무해.
+ * 요청자는 라우터에서 name+token 검증 완료 후 전달된다.
+ * 관리자는 전체, 일반 회원은 본인의 이름과 월별 기록만 반환한다.
  */
-function getStats() {
+function getStats(requester) {
+  requester = String(requester || '').trim();
+  const canSeeAll = isAdmin_(requester);
   const s = ss_();
   const tz = Session.getScriptTimeZone();
 
-  const members = splitBySupport_(s).all; // [{name, supported}] 시트 순서
+  const members = splitBySupport_(s).all.filter(function (m) {
+    return canSeeAll || m.name === requester;
+  }); // [{name, supported}] — 일반 회원은 본인 1명만
+  if (!canSeeAll && !members.length) throw new Error('통계를 조회할 회원을 찾을 수 없습니다.');
 
   // 벽화: 월별 사진 인증자
   const cert = {};
@@ -329,7 +335,7 @@ function getStats() {
       if (!cert[ym]) cert[ym] = {};
       String(r[4]).split(',').forEach(function (n) {
         n = n.trim();
-        if (n) cert[ym][n] = true;
+        if (n && (canSeeAll || n === requester)) cert[ym][n] = true;
       });
     }
   }
@@ -344,7 +350,8 @@ function getStats() {
       if (!ym) continue;
       if (!votes[ym]) votes[ym] = {};
       rvals[i].slice(3).filter(String).forEach(function (n) {
-        votes[ym][String(n).trim()] = true;
+        n = String(n).trim();
+        if (canSeeAll || n === requester) votes[ym][n] = true;
       });
     }
   }

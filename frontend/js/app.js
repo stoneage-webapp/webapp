@@ -1579,7 +1579,7 @@ function applyAdminUI() {
 
 function loadMore() {
   moreLoaded = true;
-  loadNotices();
+  if (ME.isAdmin) loadNotices();
   loadStats();
   loadVenue();
   loadArchive();
@@ -1616,7 +1616,7 @@ async function loadNotices() {
   box.className = 'loading';
   box.textContent = '공지를 불러오는 중…';
   try {
-    const res = await run('getNotices', 20);
+    const res = await run('getNotices', 20, getMe(), ME.token);
     renderNotices(res.items);
   } catch (e) {
     box.textContent = '불러오기 실패: ' + (e.message || e);
@@ -1685,7 +1685,7 @@ async function loadStats() {
   box.className = 'loading';
   box.textContent = '통계를 내는 중…';
   try {
-    const s = await run('getStats');
+    const s = await run('getStats', getMe(), ME.token);
     box.className = '';
     if (!s.months.length) { box.className = 'loading'; box.textContent = '아직 데이터가 없어요'; return; }
     const months = s.months.slice(-6); // 최근 6개월
