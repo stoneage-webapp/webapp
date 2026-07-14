@@ -1499,11 +1499,10 @@ async function submitProof(kind) {
     // Photos 앨범 연동 안 됐어도 Drive 저장은 성공 → 사용자에겐 깔끔하게
     toast(result.photos === '완료' ? '✓ 벽화에 새겼어요! (Drive + 포토 앨범)' : '✓ 벽화에 새겼어요! (Drive 저장 완료)', true);
     if (kind === 'photo') {
-      chips.forEach(function(n) { DATA.certified[n] = true; });
-      buildChips('photoChips');
-      renderCertLine();
-      renderHome();
       galleryLoaded = false;
+      // 활동월이 이번 달이 아닐 수도 있으므로(예: 지난달 활동을 뒤늦게 인증) 무조건 "이번 달 완료"로
+      // 낙관 처리하지 않고, 서버가 활동일자 기준으로 계산한 실제 인증 현황을 다시 받아온다.
+      await refreshCertified();
       renderMyProofs(); // 방금 올린 인증이 취소 목록에 바로 보이게
     }
     resetForm(kind);
@@ -1694,7 +1693,8 @@ async function loadStats() {
     months.forEach(function (m) { html += '<th>' + esc(m.slice(2)) + '</th>'; }); // '26-07'
     html += '</tr></thead><tbody>';
     s.members.forEach(function (mb) {
-      const off = mb.supported === false; // 지원 제외 (J열)
+      // 지원 제외 여부는 관리자에게만 표시 (일반 부족원에게는 노출하지 않음)
+      const off = ME.isAdmin && mb.supported === false;
       html += '<tr' + (off ? ' class="indep"' : '') + '><td>' +
         esc(mb.name) + (off ? ' <span class="dim">(지원 제외)</span>' : '') + '</td>';
       months.forEach(function (m) {
