@@ -152,17 +152,19 @@
     <div class="status" id="photoStatus"></div>
   </section>
 
-  <!-- 더보기: 공지 · 통계 · 역대 우승자 · (관리자) 정산/PIN -->
+  <!-- 더보기: (관리자) 공지 · 통계 · 역대 우승자 -->
   <section id="tab-more" class="tab">
 
-    <div class="month-head">📢 공지사항</div>
-    <div class="admin-only" style="display:none; margin-bottom:10px">
-      <div class="field">
-        <textarea id="noticeText" rows="3" placeholder="부족원에게 알릴 내용"></textarea>
+    <div class="admin-only" style="display:none">
+      <div class="month-head">📢 공지사항</div>
+      <div style="margin-bottom:10px">
+        <div class="field">
+          <textarea id="noticeText" rows="3" placeholder="부족원에게 알릴 내용"></textarea>
+        </div>
+        <button class="btn2" id="noticeBtn" onclick="submitNotice()">공지 올리기</button>
       </div>
-      <button class="btn2" id="noticeBtn" onclick="submitNotice()">공지 올리기</button>
+      <div id="noticeList" class="loading">공지를 불러오는 중…</div>
     </div>
-    <div id="noticeList" class="loading">공지를 불러오는 중…</div>
 
     <div class="month-head" style="margin-top:22px">📊 출석 통계</div>
     <div id="statsBox" class="loading">통계를 내는 중…</div>

@@ -8,7 +8,7 @@
  *
  * ── 통신 규약 (docs/architecture.md 의 API 명세와 일치) ──
  *  - 조회(GET) :  <execUrl>?action=<name>&<param>=<value>
- *  - 변경(POST):  body = JSON.stringify({ action, ...params })
+ *  - 인증/변경(POST): body = JSON.stringify({ action, ...params })
  *                 Content-Type: text/plain;charset=utf-8   ← CORS 회피용. application/json 금지.
  *                 (GAS 웹앱은 프리플라이트 OPTIONS를 처리하지 못한다.)
  *  - 응답 봉투 :  { ok: true, data: <결과> }   또는   { ok: false, error: <메시지> }
@@ -28,17 +28,24 @@ const GET_ACTIONS = {
   getGallery:      { cache: true, fn: function (p) { return getGallery(Number(p.limit) || 12, Number(p.offset) || 0, p.month || '', p.person || ''); } },
   getHallData:     { cache: true, fn: function (p) { return getHallData(); } },
   getHallArchive:  { cache: true, fn: function (p) { return getHallArchive(); } },          // #23 역대 우승자
-  getStats:        { cache: true, fn: function (p) { return getStats(); } },                // #20 출석/인증 통계
   getSettleStatus: { cache: true, fn: function (p) { return getSettleStatus(p.ym || ''); } }, // #21 정산 현황 (월 지정)
-  getNotices:      { cache: true, fn: function (p) { return getNotices(Number(p.limit) || 20); } }, // #24 공지
   getVenueStats:   { cache: true, fn: function (p) { return getVenueStats(); } }             // 암장별 방문 통계
 };
 
-/* ---------- 변경 (POST) ---------- */
+/* ---------- 인증 조회 / 변경 (POST) ---------- */
 const POST_ACTIONS = {
   // 인증 (자체가 로그인이므로 auth 없음 — 내부에서 PIN 검증 + 시도 제한)
   loginWithPin:      { fn: function (d) { return loginWithPin(d.name, d.pin); } },
   changePin:         { fn: function (d) { return changePin(d.name, d.oldPin, d.newPin, d.token); } },
+
+  // 민감한 조회는 로그인 토큰을 검증한다.
+  // 출석 통계: 관리자는 전체, 일반 회원은 본인 통계만 getStats가 반환.
+  getStats:          { auth: 'name', fn: function (d) { return getStats(d.name); } },
+  // 홈의 최신 3건은 getInitData로 공개하되, 전체 공지 목록은 관리자만 조회.
+  getNotices:        { auth: 'name', fn: function (d) {
+    if (!isAdmin_(d.name)) throw new Error('관리자만 공지 목록을 조회할 수 있습니다.');
+    return getNotices(Number(d.limit) || 20);
+  } },
 
   // 투표
   toggleVote:        { auth: 'voter',     bust: true, fn: function (d) { return toggleVote(d.category, d.dateText, d.voter, d.token, d.month); } },

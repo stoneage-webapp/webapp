@@ -20,14 +20,14 @@ const API_GET = {
   getGallery:      ['limit', 'offset', 'month', 'person'],
   getHallData:     [],
   getHallArchive:  [],
-  getStats:        [],
   getSettleStatus: ['ym'],
-  getNotices:      ['limit'],
   getVenueStats:   []
 };
 const API_POST = {
   loginWithPin:      ['name', 'pin'],
   changePin:         ['name', 'oldPin', 'newPin', 'token'],
+  getStats:          ['name', 'token'],
+  getNotices:        ['limit', 'name', 'token'],
   toggleVote:        ['category', 'dateText', 'voter', 'token', 'month'],
   addFlash:          ['dateText', 'loc', 'creator', 'token'],
   deleteFlash:       ['dateText', 'requester', 'token'],

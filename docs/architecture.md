@@ -10,7 +10,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 
 - **통신 방향**: Front는 절대 Sheet에 직접 접근하지 않는다. 항상 `Front → Back → DB`.
   Back(Apps Script)이 PIN 검증 등 문지기 역할을 한다.
-- **인증**: 개인 PIN 로그인 → 서버가 서명 토큰 발급 → 이후 쓰기 요청마다 `name + token` 검증
+- **인증**: 개인 PIN 로그인 → 서버가 서명 토큰 발급 → 이후 쓰기 요청과 민감한 조회에 `name + token` 검증
   (`auth.gs`의 `verify_`). PIN이 바뀌면 기존 토큰은 자동 무효.
 
 ## 백엔드 파일 구성 (`apps-script/src/`)
@@ -51,24 +51,24 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `getGallery` | `limit`(기본12), `offset`(기본0), `month`(선택), `person`(선택) | `{ items:[{when,actDate,loc,people,by,fileId,link}], hasMore }` — 필터 후 페이징 |
 | `getHallData` | — | `{ ym, entries:[...], winner, winnerMonth }` |
 | `getHallArchive` | — | `{ winners:[...] }` — 월별 최다득표, 최신순, 이번 달 제외 |
-| `getStats` | — | `{ months, members:[{name,independent}], cert:{ym:{이름:true}}, votes:{ym:{이름:true}} }` |
 | `getSettleStatus` | `ym`(선택, 기본 이번 달) | `{ ym, months:[존재하는 월들], rows:[{name,status}] }` — 인증현황 시트, 지정한 월 한 열만 |
-| `getNotices` | `limit`(기본20) | `{ items:[{when,by,text,row}] }` — 최신순 |
 | `getVenueStats` | — | `{ total:[{loc,count}], thisMonth:[{loc,count}], month }` — 암장별 방문 집계 |
 
 > - `driveApiKey`는 익명 `getInitData`에서 **제거됨** → `loginWithPin`/`changePin` 응답으로 이동.
 > - **부족원 목록은 항상 이름 오름차순**(`sortNames_`, settle.gs) — `members`, `getStats.members`, `getSettleStatus.rows` 등 목록을 반환하는 모든 곳에 일괄 적용.
-> - `getInitData.notices`는 최신 공지 3건(홈 화면 노출용). 전체 목록은 `getNotices`.
+> - `getInitData.notices`는 최신 공지 3건(홈 화면 노출용). 전체 목록은 관리자가 인증된 `getNotices` POST로만 조회한다.
 > - 투표 항목에는 `dateInfo` 필드가 붙는다:
 >   `{ iso:'2026-07-16', ym:'2026-07', weekday:'목', time:'20:00'|null, display:'2026-07-16 (목) 20:00' }`
 >   파싱 실패 시 `null` — 프론트는 원본 `date` 라벨로 폴백. 표기는 `dateInfo.display` 우선.
 
-### 변경 (POST)
+### 인증 조회 / 변경 (POST)
 
 | action | params | 반환(data) |
 |---|---|---|
 | `loginWithPin` | `name, pin` | `{ name, token, isAdmin, driveApiKey, firstSet? }` — 실패 5회 → 10분 잠금 |
 | `changePin` | `name, oldPin, newPin, token` | `{ name, token, isAdmin, driveApiKey }` |
+| `getStats` | `name, token` | `{ months, members:[{name,supported}], cert:{ym:{이름:true}}, votes:{ym:{이름:true}} }` — 관리자는 전체, 일반 회원은 본인 통계만 |
+| `getNotices` | `limit`(기본20), `name, token` | `{ items:[{when,by,text,row}] }` — 관리자 전용 전체 목록 |
 | `toggleVote` | `category('raid'\|'disaster'), dateText, voter, token, month` | `{ date, voters }` |
 | `addFlash` | `dateText, loc, creator, token` | 자연재해 투표 배열 |
 | `deleteFlash` | `dateText, requester, token` | 자연재해 투표 배열 |
@@ -116,8 +116,8 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 사진 인증 | `startUpload` → `uploadChunk`/`checkUploadStatus` → `finalizeProof` |
 | 벽화 갤러리 | `getGallery`(월/사람 필터), `deleteProof` |
 | 명예의전당 | `getHallData`, `getHallArchive`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |
-| 공지 | `getNotices`, `postNotice`/`deleteNotice`(관리자) |
-| 통계 | `getStats` |
+| 공지 | 홈: `getInitData`의 최신 3건, 더보기(관리자): `getNotices`, `postNotice`/`deleteNotice` |
+| 통계 | `getStats`(관리자 전체/일반 본인) |
 | 관리 탭 (관리자·정산 담당자만 노출) | `runSettle`, `getSettleStatus`, `cancelSettle`, `resetSettle`, `setSettlers`(관리자), `setSupports`(관리자), `resetPin`(관리자) |
 
 ## AS-IS와의 차이 (참고)
