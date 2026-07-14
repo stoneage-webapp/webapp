@@ -233,6 +233,21 @@ function writeStatusColumn_(ym, statusMap) {
   });
   sh.clear();
   sh.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+  linkStatusHeaders_(sh, months);
+}
+
+// 월 헤더(B1~)를 그 달 정산 폴더([정산폴더]/yyyy-MM) 링크로 — 클릭하면 Drive로 바로 이동.
+// settleMonth 가 항상 그 폴더를 생성/확인해두므로, 이미 있는 폴더면 그대로 가져오기만 한다.
+function linkStatusHeaders_(sh, months) {
+  if (!CONFIG.SETTLE_FOLDER_ID) return;
+  try {
+    const root = DriveApp.getFolderById(CONFIG.SETTLE_FOLDER_ID);
+    months.forEach(function (m, i) {
+      const folder = getOrCreateFolder_(root, m);
+      const rich = SpreadsheetApp.newRichTextValue().setText(m).setLinkUrl(folder.getUrl()).build();
+      sh.getRange(1, i + 2).setRichTextValue(rich);
+    });
+  } catch (e) { /* SETTLE_FOLDER_ID 미설정/권한 문제 등 — 링크 없이도 시트는 정상 동작하므로 조용히 건너뜀 */ }
 }
 
 // 특정 월의 열 값만 비움 (다른 달 기록은 보존)
