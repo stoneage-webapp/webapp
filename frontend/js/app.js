@@ -232,21 +232,37 @@ function upProgress(pct, text) {
 }
 
 /* ---------- 처리 중 오버레이 (정산 실행/지원대상/담당자/공지 등, 실퍼센트 없는 단발성 작업) ----------
- * 업로드 오버레이와 같은 카드를 재사용하되, 퍼센트 대신 흐르는 막대(indeterminate)로 "진행 중"만 표시.
+ * 업로드 오버레이와 같은 카드를 재사용. 실제 진행률을 모르므로 CSS 트리클 애니메이션이
+ * 0%→90%까지 감속하며 한 방향으로만 채우고 멈춘다(서버 응답 대기 표현). 성공 시 100%로
+ * 스냅 후 닫고, 실패 시엔 완료 연출 없이 바로 닫는다.
  */
 function busyShow(text) {
   document.getElementById('upPct').style.display = 'none';
   const fill = document.getElementById('upFill');
+  fill.classList.remove('indet');
+  fill.style.width = '0%';
+  void fill.offsetWidth; // 강제 리플로우 — 클래스 재적용 시 애니메이션이 항상 처음부터 재생되도록
   fill.classList.add('indet');
-  fill.style.width = '';
   document.getElementById('upText').textContent = text || '처리 중…';
   document.getElementById('uploadOverlay').style.display = 'flex';
 }
 function busyUpdate(text) { document.getElementById('upText').textContent = text; }
-function busyHide() {
-  document.getElementById('uploadOverlay').style.display = 'none';
-  document.getElementById('upFill').classList.remove('indet');
-  document.getElementById('upPct').style.display = '';
+// ok=false(실패)면 완료 연출 없이 즉시 닫음. ok=true(기본, 성공)면 막대를 100%로 채운 뒤 짧게 보여주고 닫음.
+function busyHide(ok) {
+  const overlay = document.getElementById('uploadOverlay');
+  const fill = document.getElementById('upFill');
+  if (ok === false) {
+    overlay.style.display = 'none';
+    fill.classList.remove('indet');
+    document.getElementById('upPct').style.display = '';
+    return;
+  }
+  fill.classList.remove('indet');
+  fill.style.width = '100%';
+  setTimeout(function () {
+    overlay.style.display = 'none';
+    document.getElementById('upPct').style.display = '';
+  }, 280);
 }
 
 async function uploadFileSmart(startFnName, startArgs, file) {
@@ -1657,7 +1673,7 @@ async function submitNotice() {
     busyHide();
     toast('✓ 공지를 등록했어요.', true);
   } catch (e) {
-    busyHide();
+    busyHide(false);
     toast(e.message || e);
   } finally {
     btn.disabled = false;
@@ -1866,7 +1882,7 @@ async function saveSupports() {
     st.className = 'status ok';
     st.textContent = '✓ 저장됨 — 지원 ' + names.length + '명 / 제외 ' + (DATA.members.length - names.length) + '명';
   } catch (e) {
-    busyHide();
+    busyHide(false);
     st.className = 'status err';
     st.textContent = e.message || e;
   }
@@ -1892,7 +1908,7 @@ async function runSettleClick() {
       (r.uncovered && r.uncovered.length ? '<br>⚠ 사진 누락: ' + r.uncovered.map(esc).join(', ') : '');
     loadSettle(); // 정산 현황 새로고침
   } catch (e) {
-    busyHide();
+    busyHide(false);
     st.className = 'status err';
     st.textContent = '실패: ' + (e.message || e);
   } finally {
@@ -1927,7 +1943,7 @@ async function saveSettlers() {
     st.className = 'status ok';
     st.textContent = '✓ 저장됨: ' + (res.settlers.length ? res.settlers.join(', ') : '(없음)');
   } catch (e) {
-    busyHide();
+    busyHide(false);
     st.className = 'status err';
     st.textContent = e.message || e;
   }
