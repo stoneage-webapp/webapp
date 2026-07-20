@@ -4,13 +4,27 @@
  * (로직은 원본 v3.0.2/Code.gs에서 그대로 이전. GAS는 전역 스코프 공유.)
  */
 
-/* ---------- 번개(자연재해) 등록자 관리 (삭제 권한용) ---------- */
+/* ---------- 번개(자연재해) 등록자 관리 (수정/완료/삭제 권한용) ---------- */
 function getFlashOwners_() {
   const v = PropertiesService.getScriptProperties().getProperty('flash_owners');
   return v ? JSON.parse(v) : {};
 }
 function setFlashOwners_(obj) {
   PropertiesService.getScriptProperties().setProperty('flash_owners', JSON.stringify(obj));
+}
+
+// 번개 개설자 판정: flash_owners 기록이 있으면 그 값, 없으면(마이그레이션 이전 등 기록이 없는 번개)
+// 자연재해 시트 B열(첫 투표자=개설자, docs/sheets.md 참고)로 폴백한다.
+function flashOwnerOf_(dateText) {
+  const owners = getFlashOwners_();
+  if (owners[dateText]) return owners[dateText];
+  const sh = ss_().getSheetByName(CONFIG.SHEETS.disaster);
+  if (!sh) return '';
+  const vals = sh.getDataRange().getDisplayValues();
+  for (let i = 1; i < vals.length; i++) {
+    if (String(vals[i][0]).trim() === dateText) return vals[i][1] ? String(vals[i][1]).trim() : '';
+  }
+  return '';
 }
 
 // 번개 열기: 자연재해 시트 A열에 새 행 추가 (등록자 기록)
@@ -39,11 +53,10 @@ function addFlash(dateText, loc, creator, authToken) {
   }
 }
 
-// 번개 삭제: 등록자 또는 관리자만
+// 번개 삭제: 개설자 또는 관리자만
 function deleteFlash(dateText, requester, authToken) {
   requester = verify_(requester, authToken);
-  const owners = getFlashOwners_();
-  const owner = owners[dateText];
+  const owner = flashOwnerOf_(dateText);
   if (owner !== requester && CONFIG.ADMINS.indexOf(requester) < 0) {
     throw new Error('본인이 연 번개만 취소할 수 있습니다.');
   }
@@ -58,6 +71,7 @@ function deleteFlash(dateText, requester, authToken) {
         break;
       }
     }
+    const owners = getFlashOwners_();
     delete owners[dateText];
     setFlashOwners_(owners);
     return readVotes_(ss_(), CONFIG.SHEETS.disaster);
@@ -326,8 +340,7 @@ function toggleVote(category, dateText, voter, token, month) {
  */
 function editFlash(dateText, newDate, newLoc, requester, authToken) {
   requester = verify_(requester, authToken);
-  const owners = getFlashOwners_();
-  const owner = owners[dateText];
+  const owner = flashOwnerOf_(dateText);
   if (owner !== requester && !isAdmin_(requester)) {
     throw new Error('본인이 연 번개만 수정할 수 있습니다.');
   }
@@ -350,7 +363,13 @@ function editFlash(dateText, newDate, newLoc, requester, authToken) {
     if (found < 0) throw new Error('해당 번개를 찾을 수 없습니다.');
     if (newLabel !== dateText) {
       sh.getRange(found + 1, 1).setValue(newLabel);
-      if (owner) { delete owners[dateText]; owners[newLabel] = owner; setFlashOwners_(owners); }
+      // B열 폴백으로 알아낸 개설자도 이번에 flash_owners에 정식 기록해둔다(다음부터는 폴백 없이 바로 조회).
+      if (owner) {
+        const owners = getFlashOwners_();
+        delete owners[dateText];
+        owners[newLabel] = owner;
+        setFlashOwners_(owners);
+      }
     }
     return readVotes_(ss_(), CONFIG.SHEETS.disaster);
   } finally {
@@ -450,8 +469,7 @@ function needsCertNudge_(name) {
 // 자연재해(번개) 완료 처리 — 등록자 또는 관리자. 기록 후 행 제거(취소와 동일한 정리).
 function completeFlash(dateText, requester, authToken) {
   requester = verify_(requester, authToken);
-  const owners = getFlashOwners_();
-  const owner = owners[dateText];
+  const owner = flashOwnerOf_(dateText);
   if (owner !== requester && !isAdmin_(requester)) {
     throw new Error('본인이 연 번개만 완료 처리할 수 있습니다.');
   }
@@ -469,6 +487,7 @@ function completeFlash(dateText, requester, authToken) {
     const info = dateInfo_(parts[0], '');
     logCompletion_('자연재해', info ? info.ym : '', parts[0], parts.length > 1 ? parts.slice(1).join(' @ ') : '', voters, requester);
     sh.deleteRow(found + 1);
+    const owners = getFlashOwners_();
     delete owners[dateText];
     setFlashOwners_(owners);
     return readVotes_(ss_(), CONFIG.SHEETS.disaster);
