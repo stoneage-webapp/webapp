@@ -21,7 +21,7 @@
 | `admin_pin` | 일정 확정 관리자 PIN | 직접 정함 | ✅ |
 | `settlers` | 정산 담당자 목록 — **웹 관리자 페이지에서 설정** (직접 편집 불필요) | 앱 관리 | 자동 |
 | `auth_secret` | 토큰 서명 비밀키 — **최초 로그인 시 자동 생성, 손대지 말 것** | 자동 | 자동 |
-| `flash_owners` / `confirmed_raid_months` / `confirmed_disaster` | 앱이 자동 관리 | 자동 | 자동 |
+| `flash_owners` / `confirmed_raid_months` / `confirmed_disaster` / `completed_raid_months` | 앱이 자동 관리 | 자동 | 자동 |
 
 > - 값 수정 후에는 **재배포 필요 없음** — Script Properties는 실행 시마다 읽힌다.
 > - `DRIVE_API_KEY`는 브라우저에 노출되므로 **[사람] GCP에서 HTTP 리퍼러 제한(Netlify 도메인) 필수**.

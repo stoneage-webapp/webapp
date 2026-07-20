@@ -20,7 +20,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `Code.gs` | 웹앱 진입점 `doGet`/`doPost` + **action 레지스트리**(auth/bust/cache 플래그) + 조회 캐시 + `getInitData` |
 | `config.gs` | 전역 상수 `CONFIG` (실제 값은 커밋 금지 — `v3.0.2/Code.local.md` 참고) |
 | `auth.gs` | PIN 로그인, 서명 토큰, 요청 검증, 관리자 판별 |
-| `votes.gs` | 정기공격/자연재해 투표, 번개, 일정 확정, 마감 판정 |
+| `votes.gs` | 정기공격/자연재해 투표, 번개, 일정 확정, 완료 처리, 마감 판정 |
 | `photos.gs` | Drive 업로드(청크), Photos 업로드, 벽화 갤러리, 사진 삭제 |
 | `hall.gs` | 명예의전당 출품/투표/영상 삭제 |
 | `settle.gs` | 월별 인증 정산(시트 메뉴/웹), 월 파싱, 인증현황 집계(열=월 누적)·정산 취소·출석 통계(`getStats`), 부족원 오름차순 정렬(`sortNames_`) |
@@ -53,8 +53,10 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `getHallArchive` | — | `{ winners:[...] }` — 월별 최다득표, 최신순, 이번 달 제외 |
 | `getSettleStatus` | `ym`(선택, 기본 이번 달) | `{ ym, months:[존재하는 월들], rows:[{name,status}] }` — 인증현황 시트, 지정한 월 한 열만 |
 | `getVenueStats` | — | `{ total:[{loc,count}], thisMonth:[{loc,count}], month }` — 암장별 방문 집계 |
+| `getCompletionLog` | `limit`(기본10) | `{ items:[{when,kind,month,date,loc,people,by}] }` — `완료기록` 시트 최신순. 정기공격 무산 종료는 `date`가 `'(모임 없음)'` |
 
 > - `driveApiKey`는 익명 `getInitData`에서 **제거됨** → `loginWithPin`/`changePin` 응답으로 이동.
+> - `certNudge`도 같은 이유로 로그인 응답 전용: "이번 달 완료 처리된 모임에 참여했는데 아직 인증 안 함" 여부를 **본인 것만** 알려준다 (`needsCertNudge_`, votes.gs). 다른 사람의 인증 여부를 노출하지 않기 위해 `getInitData` 등 익명 GET에는 포함하지 않는다.
 > - **부족원 목록은 항상 이름 오름차순**(`sortNames_`, settle.gs) — `members`, `getStats.members`, `getSettleStatus.rows` 등 목록을 반환하는 모든 곳에 일괄 적용.
 > - `getInitData.notices`는 최신 공지 3건(홈 화면 노출용). 전체 목록은 관리자가 인증된 `getNotices` POST로만 조회한다.
 > - 투표 항목에는 `dateInfo` 필드가 붙는다:
@@ -65,14 +67,17 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 
 | action | params | 반환(data) |
 |---|---|---|
-| `loginWithPin` | `name, pin` | `{ name, token, isAdmin, driveApiKey, firstSet? }` — 실패 5회 → 10분 잠금 |
-| `changePin` | `name, oldPin, newPin, token` | `{ name, token, isAdmin, driveApiKey }` |
+| `loginWithPin` | `name, pin` | `{ name, token, isAdmin, driveApiKey, certNudge, firstSet? }` — 실패 5회 → 10분 잠금 |
+| `changePin` | `name, oldPin, newPin, token` | `{ name, token, isAdmin, driveApiKey, certNudge }` |
 | `getStats` | `name, token` | `{ months, members:[{name,supported}], cert:{ym:{이름:true}}, votes:{ym:{이름:true}} }` — 관리자는 전체, 일반 회원은 본인 통계만 |
 | `getNotices` | `limit`(기본20), `name, token` | `{ items:[{when,by,text,row}] }` — 관리자 전용 전체 목록 |
 | `toggleVote` | `category('raid'\|'disaster'), dateText, voter, token, month` | `{ date, voters }` |
 | `addFlash` | `dateText, loc, creator, token` | 자연재해 투표 배열 |
 | `deleteFlash` | `dateText, requester, token` | 자연재해 투표 배열 |
+| `editFlash` | `dateText, newDate, newLoc, requester, token` | 자연재해 투표 배열 — 날짜/위치 라벨만 변경(투표자 유지). 등록자 또는 관리자 |
+| `completeFlash` | `dateText, requester, token` | 자연재해 투표 배열 — 완료 처리(등록자 또는 관리자). `완료기록` 시트에 기록 후 목록에서 제거 |
 | `confirmDate` | `month, dateText, loc, name, pin, note?` | `raidMonths` 배열 (관리자 PIN — Script Properties `admin_pin`). `note`=확정 설명(선택) |
+| `completeRaid` | `month, requester, token` | `raidMonths` 배열 — 관리자 전용. 확정된 월이면 "완료", 확정 없이 마감된 월이면 "모임 없음"으로 종료. `완료기록` 시트에 기록 후 목록에서 제외 |
 | `startUpload` | `fileName, mimeType, fileSize, ym, **name, token**` | Drive resumable 업로드 URL(문자열) |
 | `startHallUpload` | `fileName, mimeType, fileSize, **name, token**` | Drive resumable 업로드 URL(문자열) |
 | `uploadChunk` | `uploadUrl, b64, start, end, total, **name, token**` | `{ done, fileId? }` |
@@ -112,12 +117,13 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 |---|---|
 | 초기 로드 | `getInitData` |
 | 로그인 | `loginWithPin`, `changePin` |
-| 투표(정기공격/번개) | `toggleVote`, `addFlash`, `deleteFlash`, `confirmDate` |
+| 투표(정기공격/번개) | `toggleVote`, `addFlash`, `deleteFlash`, `editFlash`, `confirmDate`, `completeFlash`, `completeRaid` |
 | 사진 인증 | `startUpload` → `uploadChunk`/`checkUploadStatus` → `finalizeProof` |
 | 벽화 갤러리 | `getGallery`(월/사람 필터), `deleteProof` |
 | 명예의전당 | `getHallData`, `getHallArchive`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |
 | 공지 | 홈: `getInitData`의 최신 3건, 더보기(관리자): `getNotices`, `postNotice`/`deleteNotice` |
 | 통계 | `getStats`(관리자 전체/일반 본인) |
+| 완료된 모임 기록 | `getCompletionLog` |
 | 관리 탭 (관리자·정산 담당자만 노출) | `runSettle`, `getSettleStatus`, `cancelSettle`, `resetSettle`, `setSettlers`(관리자), `setSupports`(관리자), `resetPin`(관리자) |
 
 ## AS-IS와의 차이 (참고)

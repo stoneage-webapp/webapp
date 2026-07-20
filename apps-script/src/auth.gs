@@ -15,7 +15,8 @@ function session_(name, extra) {
     name: name,
     token: makeToken_(name),
     isAdmin: CONFIG.ADMINS.indexOf(name) > -1,
-    driveApiKey: CONFIG.DRIVE_API_KEY
+    driveApiKey: CONFIG.DRIVE_API_KEY,
+    certNudge: needsCertNudge_(name) // 완료된 모임 참여자인데 이번 달 인증 안 했으면 true (본인만)
   };
   if (extra) Object.keys(extra).forEach(function (k) { out[k] = extra[k]; });
   return out;

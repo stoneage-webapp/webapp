@@ -28,7 +28,8 @@ const CONFIG = {
     mural: '벽화',
     hall: '명예의전당',
     notices: '공지',        // 공지사항 (첫 등록 시 앱이 자동 생성)
-    status: '인증현황'      // settleMonth 가 생성/갱신하는 정산 결과
+    status: '인증현황',     // settleMonth 가 생성/갱신하는 정산 결과
+    completion: '완료기록'  // 정기공격/자연재해 완료 처리 기록 (첫 완료 처리 시 앱이 자동 생성)
   },
   PHOTOS_MAX_BYTES: 45 * 1024 * 1024,  // 45MB 초과 파일은 Drive에만 저장 (Apps Script 응답 한도)
 

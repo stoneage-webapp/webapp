@@ -171,7 +171,8 @@ function readRaidByMonth_(s) {
     });
   }
   order.sort();
-  return order.map(function(m) {
+  const done = getCompletedRaidMonths_(); // 완료 처리된 월은 목록에서 제외 (#완료처리)
+  return order.filter(function (m) { return !done[m]; }).map(function(m) {
     const dl = deadlines[m] || '';
     return {
       month: m, deadline: dl, closed: isPastDeadline_(dl),
@@ -315,6 +316,162 @@ function toggleVote(category, dateText, voter, token, month) {
       }
       throw new Error('해당 일자를 찾을 수 없습니다: ' + dateText);
     }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* ---------- 자연재해(번개) 수정 ----------
+ * 날짜/위치 라벨만 변경 (투표자는 해당 행 그대로 유지). 등록자 또는 관리자만 가능.
+ */
+function editFlash(dateText, newDate, newLoc, requester, authToken) {
+  requester = verify_(requester, authToken);
+  const owners = getFlashOwners_();
+  const owner = owners[dateText];
+  if (owner !== requester && !isAdmin_(requester)) {
+    throw new Error('본인이 연 번개만 수정할 수 있습니다.');
+  }
+  newDate = String(newDate || '').trim();
+  newLoc = String(newLoc || '').trim();
+  if (!newDate) throw new Error('날짜를 입력하세요.');
+  if (!newLoc) throw new Error('위치를 입력하세요.');
+  const newLabel = newDate + ' @ ' + newLoc;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = ss_().getSheetByName(CONFIG.SHEETS.disaster);
+    const vals = sh.getDataRange().getDisplayValues();
+    let found = -1;
+    for (let i = 1; i < vals.length; i++) {
+      const label = String(vals[i][0]).trim();
+      if (label === dateText) found = i;
+      else if (label === newLabel) throw new Error('이미 같은 번개가 있습니다.');
+    }
+    if (found < 0) throw new Error('해당 번개를 찾을 수 없습니다.');
+    if (newLabel !== dateText) {
+      sh.getRange(found + 1, 1).setValue(newLabel);
+      if (owner) { delete owners[dateText]; owners[newLabel] = owner; setFlashOwners_(owners); }
+    }
+    return readVotes_(ss_(), CONFIG.SHEETS.disaster);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* ---------- 완료 처리 (정기공격/자연재해 종료) ----------
+ * 완료하면 목록(UI)에서 사라지고 '완료기록' 시트에 남는다.
+ * - 정기공격: 확정된 월(완료) 또는 확정 없이 마감된 월(모임 없음)만 가능. 후보 행은 사람이 등록한 것이라 시트는 그대로 두고,
+ *   Script Properties(completed_raid_months)에 완료 플래그만 남겨 목록에서 제외한다(readRaidByMonth_).
+ * - 자연재해: 시트 전체를 앱이 관리하므로 취소(deleteFlash)와 동일하게 행 자체를 제거한다.
+ */
+function getCompletedRaidMonths_() {
+  const v = PropertiesService.getScriptProperties().getProperty('completed_raid_months');
+  return v ? JSON.parse(v) : {};
+}
+function setCompletedRaidMonths_(obj) {
+  PropertiesService.getScriptProperties().setProperty('completed_raid_months', JSON.stringify(obj));
+}
+
+function completionLogSheet_() {
+  const s = ss_();
+  let sh = s.getSheetByName(CONFIG.SHEETS.completion);
+  if (!sh) sh = s.insertSheet(CONFIG.SHEETS.completion);
+  if (sh.getLastRow() === 0) sh.appendRow(['처리일시', '종류', '월', '날짜', '위치', '참여인원', '처리자']);
+  return sh;
+}
+function logCompletion_(kind, month, dateLabel, loc, voters, requester) {
+  completionLogSheet_().appendRow([
+    new Date(), kind, month || '', dateLabel || '', loc || '', (voters || []).join(', '), requester
+  ]);
+}
+
+// 완료기록 최근 목록 (더보기 탭 노출용, 공개 GET — getHallArchive와 동일한 성격의 조회)
+function getCompletionLog(limit) {
+  limit = limit || 10;
+  const sh = ss_().getSheetByName(CONFIG.SHEETS.completion);
+  if (!sh || sh.getLastRow() < 2) return { items: [] };
+  const vals = sh.getDataRange().getDisplayValues();
+  const items = [];
+  for (let i = vals.length - 1; i >= 1 && items.length < limit; i--) {
+    const r = vals[i]; // [처리일시, 종류, 월, 날짜, 위치, 참여인원, 처리자]
+    if (!r[0]) continue;
+    items.push({ when: r[0], kind: r[1], month: r[2], date: r[3], loc: r[4], people: r[5], by: r[6] });
+  }
+  return { items: items };
+}
+
+// 정기공격 월 완료 처리 — 관리자 전용.
+// 확정된 월이면 "완료"(모임 진행)로, 미확정이지만 투표가 마감된 채 방치된 월이면 "모임 없음"으로 종료한다.
+function completeRaid(month, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!isAdmin_(requester)) throw new Error('관리자만 완료 처리할 수 있습니다.');
+  month = String(month || '').trim();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const g = readRaidByMonth_(ss_()).find(function (x) { return x.month === month; });
+    if (!g) throw new Error('해당 월을 찾을 수 없습니다.');
+    if (g.confirmed) {
+      const opt = g.options.find(function (x) { return x.date === g.confirmed.date; }) || { voters: [] };
+      logCompletion_('정기공격', month, g.confirmed.date, g.confirmed.loc, opt.voters, requester);
+    } else if (g.closed) {
+      logCompletion_('정기공격', month, '(모임 없음)', '', [], requester);
+    } else {
+      throw new Error('확정되었거나 투표가 마감된 월만 완료 처리할 수 있습니다.');
+    }
+    const done = getCompletedRaidMonths_();
+    done[month] = { at: new Date().toISOString(), by: requester };
+    setCompletedRaidMonths_(done);
+    return readRaidByMonth_(ss_());
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 이번 달 완료 처리된 모임의 참여자였는데 아직 이번 달 사진 인증을 안 한 사람인지 — 로그인 시 개인화 리마인드용.
+// 본인 여부만 반환(다른 사람 인증 현황은 노출하지 않음).
+function needsCertNudge_(name) {
+  name = String(name || '').trim();
+  if (!name) return false;
+  const s = ss_();
+  const cert = getCertified_(s);
+  if (cert.map[name]) return false; // 이미 인증했으면 알림 불필요
+  const sh = s.getSheetByName(CONFIG.SHEETS.completion);
+  if (!sh || sh.getLastRow() < 2) return false;
+  const vals = sh.getDataRange().getDisplayValues();
+  for (let i = 1; i < vals.length; i++) {
+    if (String(vals[i][2]).trim() !== cert.ym) continue; // C=월
+    const people = String(vals[i][5] || '').split(',').map(function (n) { return n.trim(); }); // F=참여인원
+    if (people.indexOf(name) > -1) return true;
+  }
+  return false;
+}
+
+// 자연재해(번개) 완료 처리 — 등록자 또는 관리자. 기록 후 행 제거(취소와 동일한 정리).
+function completeFlash(dateText, requester, authToken) {
+  requester = verify_(requester, authToken);
+  const owners = getFlashOwners_();
+  const owner = owners[dateText];
+  if (owner !== requester && !isAdmin_(requester)) {
+    throw new Error('본인이 연 번개만 완료 처리할 수 있습니다.');
+  }
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = ss_().getSheetByName(CONFIG.SHEETS.disaster);
+    const vals = sh.getDataRange().getDisplayValues();
+    let found = -1, voters = [];
+    for (let i = 1; i < vals.length; i++) {
+      if (String(vals[i][0]).trim() === dateText) { found = i; voters = vals[i].slice(1).filter(String); break; }
+    }
+    if (found < 0) throw new Error('해당 번개를 찾을 수 없습니다.');
+    const parts = dateText.split(' @ ');
+    const info = dateInfo_(parts[0], '');
+    logCompletion_('자연재해', info ? info.ym : '', parts[0], parts.length > 1 ? parts.slice(1).join(' @ ') : '', voters, requester);
+    sh.deleteRow(found + 1);
+    delete owners[dateText];
+    setFlashOwners_(owners);
+    return readVotes_(ss_(), CONFIG.SHEETS.disaster);
   } finally {
     lock.releaseLock();
   }

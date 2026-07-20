@@ -29,7 +29,8 @@ const GET_ACTIONS = {
   getHallData:     { cache: true, fn: function (p) { return getHallData(); } },
   getHallArchive:  { cache: true, fn: function (p) { return getHallArchive(); } },          // #23 역대 우승자
   getSettleStatus: { cache: true, fn: function (p) { return getSettleStatus(p.ym || ''); } }, // #21 정산 현황 (월 지정)
-  getVenueStats:   { cache: true, fn: function (p) { return getVenueStats(); } }             // 암장별 방문 통계
+  getVenueStats:   { cache: true, fn: function (p) { return getVenueStats(); } },            // 암장별 방문 통계
+  getCompletionLog:{ cache: true, fn: function (p) { return getCompletionLog(Number(p.limit) || 10); } } // 완료된 모임 최근 기록
 };
 
 /* ---------- 인증 조회 / 변경 (POST) ---------- */
@@ -51,6 +52,9 @@ const POST_ACTIONS = {
   toggleVote:        { auth: 'voter',     bust: true, fn: function (d) { return toggleVote(d.category, d.dateText, d.voter, d.token, d.month); } },
   addFlash:          { auth: 'creator',   bust: true, fn: function (d) { return addFlash(d.dateText, d.loc, d.creator, d.token); } },
   deleteFlash:       { auth: 'requester', bust: true, fn: function (d) { return deleteFlash(d.dateText, d.requester, d.token); } },
+  editFlash:         { auth: 'requester', bust: true, fn: function (d) { return editFlash(d.dateText, d.newDate, d.newLoc, d.requester, d.token); } },
+  completeFlash:     { auth: 'requester', bust: true, fn: function (d) { return completeFlash(d.dateText, d.requester, d.token); } },
+  completeRaid:      { auth: 'requester', bust: true, fn: function (d) { return completeRaid(d.month, d.requester, d.token); } },
   confirmDate:       { bust: true, fn: function (d) { return confirmDate(d.month, d.dateText, d.loc, d.name, d.pin, d.note); } }, // 관리자 PIN은 함수 내부 검증
 
   // 업로드 (요청자 토큰 필수 — 익명 업로드 차단)

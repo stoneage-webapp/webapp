@@ -371,7 +371,8 @@ async function doLogin() {
 function applyLogin(session) {
   ME = {
     name: session.name, token: session.token, isAdmin: !!session.isAdmin,
-    driveApiKey: session.driveApiKey || ''   // 로그인 응답으로만 전달됨 (익명 노출 방지)
+    driveApiKey: session.driveApiKey || '',  // 로그인 응답으로만 전달됨 (익명 노출 방지)
+    certNudge: !!session.certNudge           // 완료된 모임 참여자인데 이번 달 인증 안 했으면 true (본인만)
   };
   apiSetSession(session); // 업로드 계열 API 의 name/token 자동 주입용
   document.getElementById('myName').value = session.name;
@@ -554,7 +555,8 @@ function renderMySummary() {
       '<span class="badge ' + (certed ? 'on' : '') + '">' + (certed ? '✅' : '⬜') + ' 사진 인증</span>' +
       '<span class="badge ' + (voted ? 'on' : '') + '">' + (voted ? '✅' : '⬜') + ' 정기공격 투표</span>' +
     '</div>' +
-    (!certed ? '<div class="my-hint">이번 달 벽화 인증을 아직 안 했어요 📸</div>' : '');
+    (!certed && ME.certNudge ? '<div class="my-hint">완료된 모임에 참여하셨네요 — 벽화 인증 잊지 마세요! 📸</div>' :
+     !certed ? '<div class="my-hint">이번 달 벽화 인증을 아직 안 했어요 📸</div>' : '');
 }
 
 // 공지사항 홈 노출 (#2): getInitData의 notices(최신 3건) + 더보기 탭에서 등록/삭제 직후 동기화
@@ -756,6 +758,15 @@ function renderRaid(list) {
         dl.textContent = '⏳ 투표 마감: ' + g.deadline + ' 까지' + (dd ? ' · ' + dd : '');
       }
       if (dl.textContent) list.appendChild(dl);
+      // 확정 없이 마감된 채 방치된 달 정리 (#완료처리): 관리자만
+      if (g.closed && isAdmin) {
+        const voidBtn = document.createElement('button');
+        voidBtn.className = 'btn2';
+        voidBtn.style.marginBottom = '10px';
+        voidBtn.textContent = '🚫 이번 달 종료 (모임 없음)';
+        voidBtn.onclick = function () { doCompleteRaid(g.month); };
+        list.appendChild(voidBtn);
+      }
     }
 
     if (g.confirmed) {
@@ -763,9 +774,11 @@ function renderRaid(list) {
       b.className = 'confirm-banner';
       const cinfo = g.options.find(function (x) { return x.date === g.confirmed.date; });
       const cdisp = cinfo ? fmtVoteDate(cinfo) : g.confirmed.date;
+      const expired = !!(cinfo && cinfo.dateInfo && isPastIso_(cinfo.dateInfo.iso)); // 완료 처리 (#완료처리)
       b.innerHTML = '📌 ' + mm + '월 확정<div class="cdate">' + esc(cdisp) + '</div>' +
         (g.confirmed.loc ? '📍 ' + esc(g.confirmed.loc) + '<br>' : '') +
         (g.confirmed.note ? '<div class="cnote">📝 ' + esc(g.confirmed.note).replace(/\n/g, '<br>') + '</div>' : '') +
+        (expired ? '<div class="warn">⏰ 모임 날짜가 지났어요 — 완료 처리해 주세요</div>' : '') +
         '투표 마감';
       const cal = document.createElement('button');
       cal.className = 'mini-btn';
@@ -797,6 +810,11 @@ function renderRaid(list) {
         u.textContent = '확정 취소';
         u.onclick = function() { doConfirm(g.month, ''); };
         b.appendChild(u);
+        const done = document.createElement('button');
+        done.className = 'mini-btn';
+        done.textContent = '✅ 완료 처리';
+        done.onclick = function() { doCompleteRaid(g.month); };
+        b.appendChild(done);
       }
       list.appendChild(b);
     }
@@ -864,8 +882,10 @@ function renderDisaster(list) {
     card.className = 'vote-card' + (mine ? ' mine' : '');
     // 날짜는 윗줄, 위치는 아랫줄 — 정기공격 카드와 폭/리듬 통일
     const dateTxt = r.dateInfo ? r.dateInfo.display : r.date;
+    const expired = isPastFlash_(r); // 완료 처리 안 된 채 기한이 지난 경우 표시 (#완료처리)
     card.innerHTML =
-      '<div class="top"><span class="date">' + esc(dateTxt) + '</span>' +
+      '<div class="top"><span class="date">' + esc(dateTxt) +
+      (expired ? ' <span class="tag-over">⏰ 기한 지남</span>' : '') + '</span>' +
       '<span class="count">' + r.voters.length + '명</span></div>' +
       (r.loc ? '<div class="vloc">📍 ' + esc(r.loc) + '</div>' : '') +
       (r.voters.length ? '<div class="voters">' + r.voters.map(esc).join(' · ') + '</div>' : '') +
@@ -883,6 +903,16 @@ function renderDisaster(list) {
     card.appendChild(shareBtn);
     const owner = DATA.flashOwners && DATA.flashOwners[r.date];
     if (owner === me || isAdmin) {
+      const ed = document.createElement('button');
+      ed.className = 'mini-btn';
+      ed.textContent = '✏️ 수정';
+      ed.onclick = function(e) { e.stopPropagation(); editFlashPrompt(r); };
+      card.appendChild(ed);
+      const done = document.createElement('button');
+      done.className = 'mini-btn';
+      done.textContent = '✅ 완료 처리';
+      done.onclick = function(e) { e.stopPropagation(); doCompleteFlash(r.date); };
+      card.appendChild(done);
       const db = document.createElement('button');
       db.className = 'mini-btn';
       db.textContent = '🗑️ 번개 취소';
@@ -901,10 +931,13 @@ function isPastMonth_(ym) {
   const now = new Date();
   return ym < (now.getFullYear() + '-' + pad2(now.getMonth() + 1));
 }
-function isPastFlash_(r) {
-  if (!r.dateInfo || !r.dateInfo.iso) return false; // 날짜 못 읽으면 유지
+function isPastIso_(iso) { // 완료 처리 배지/버튼 판정에도 재사용 (#완료처리)
+  if (!iso) return false;
   const now = new Date();
-  return r.dateInfo.iso < (now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate()));
+  return iso < (now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate()));
+}
+function isPastFlash_(r) {
+  return (r.dateInfo && r.dateInfo.iso) ? isPastIso_(r.dateInfo.iso) : false; // 날짜 못 읽으면 유지
 }
 function appendPastToggle_(list, n) {
   const b = document.createElement('button');
@@ -915,7 +948,7 @@ function appendPastToggle_(list, n) {
   list.appendChild(b);
 }
 
-/* ---------- 번개(자연재해) 등록/삭제 ---------- */
+/* ---------- 번개(자연재해) 등록/수정/완료/삭제 ---------- */
 function openFlashPrompt() {
   const today = new Date();
   modal({
@@ -952,6 +985,52 @@ async function deleteFlashClick(dateText) {
     if (DATA.flashOwners) delete DATA.flashOwners[dateText];
     renderVotes();
     renderHome();
+  } catch (e) {
+    toast(e.message || e);
+  }
+}
+
+// 번개 수정: 날짜/시간/위치만 변경 (투표자는 유지)
+function editFlashPrompt(r) {
+  modal({
+    title: '✏️ 번개 수정',
+    fields: [
+      { key: 'date', label: '날짜', type: 'date', value: r.dateInfo ? r.dateInfo.iso : '' },
+      { key: 'time', label: '시간 (선택)', type: 'time', value: (r.dateInfo && r.dateInfo.time) || '' },
+      { key: 'loc', label: '위치', type: 'text', value: r.loc || '', placeholder: '예: 더클라임 강남' }
+    ],
+    confirmText: '수정 완료',
+    busyText: '수정하는 중…',
+    validate: function (v) {
+      if (!v.date) return '날짜를 선택하세요.';
+      if (!v.loc.trim()) return '위치를 입력하세요.';
+      return null;
+    },
+    onConfirm: async function (v) {
+      const newDateText = v.date + (v.time ? ' ' + v.time : '');
+      const newLabel = newDateText + ' @ ' + v.loc.trim();
+      DATA.disaster = await run('editFlash', r.date, newDateText, v.loc.trim(), getMe(), ME.token);
+      if (DATA.flashOwners && r.date in DATA.flashOwners) {
+        DATA.flashOwners[newLabel] = DATA.flashOwners[r.date];
+        if (newLabel !== r.date) delete DATA.flashOwners[r.date];
+      }
+      renderVotes();
+      renderHome();
+      toast('✏️ 번개 정보를 수정했어요.', true);
+    }
+  });
+}
+
+// 번개 완료 처리: 등록자 또는 관리자. 완료 후 목록에서 사라지고 '완료기록' 시트에 남는다.
+async function doCompleteFlash(dateText) {
+  if (!(await modalConfirm('이 번개를 완료 처리할까요?\n완료 후 목록에서 사라지고 시트에 기록돼요.',
+    { title: '✅ 완료 처리', confirmText: '완료 처리' }))) return;
+  try {
+    DATA.disaster = await run('completeFlash', dateText, getMe(), ME.token);
+    if (DATA.flashOwners) delete DATA.flashOwners[dateText];
+    renderVotes();
+    renderHome();
+    toast('✅ 완료 처리했어요.', true);
   } catch (e) {
     toast(e.message || e);
   }
@@ -1339,6 +1418,26 @@ function doConfirm(month, dateText) {
   });
 }
 
+// 정기공격 완료 처리: 관리자 전용. 확정된 월은 "완료", 확정 없이 마감된 월은 "모임 없음"으로 종료.
+// 완료(종료) 후 목록에서 사라지고 '완료기록' 시트에 남는다.
+async function doCompleteRaid(month) {
+  const g = (DATA.raidMonths || []).find(function (x) { return x.month === month; });
+  const isVoid = !(g && g.confirmed);
+  const msg = isVoid
+    ? month + ' 정기공격을 "모임 없음"으로 종료할까요?\n종료 후 목록에서 사라지고 시트에 기록돼요.'
+    : month + ' 정기공격을 완료 처리할까요?\n완료 후 목록에서 사라지고 시트에 기록돼요.';
+  if (!(await modalConfirm(msg,
+    { title: isVoid ? '🚫 이번 달 종료' : '✅ 완료 처리', confirmText: isVoid ? '종료' : '완료 처리' }))) return;
+  try {
+    DATA.raidMonths = await run('completeRaid', month, getMe(), ME.token);
+    renderVotes();
+    renderHome();
+    toast(isVoid ? '🚫 이번 달을 종료했어요.' : '✅ 완료 처리했어요.', true);
+  } catch (e) {
+    toast(e.message || e);
+  }
+}
+
 // 낙관적 토글: 로컬 voters 를 즉시 반영 → 화면 바로 갱신 → 서버는 백그라운드,
 // 실패하면 원복. 체감 속도가 서버 왕복(GAS 콜드스타트 ~1-2s)을 기다리지 않는다.
 function toggleVoterLocal_(row, me) {
@@ -1583,6 +1682,7 @@ function loadMore() {
   loadStats();
   loadVenue();
   loadArchive();
+  loadCompletionLog();
 }
 
 /* ---------- 암장별 방문 통계 (#1) ---------- */
@@ -1727,6 +1827,31 @@ async function loadArchive() {
       c.innerHTML = '<div class="nc-text">👑 <b>' + esc(w.ym) + '</b> — ' + esc(w.title) + '</div>' +
         '<div class="nc-meta">' + esc(w.by) + ' · 🔥 ' + w.voters.length + '표</div>';
       c.onclick = function () { window.open(w.link, '_blank'); };
+      box.appendChild(c);
+    });
+  } catch (e) {
+    box.textContent = '불러오기 실패: ' + (e.message || e);
+  }
+}
+
+/* ---------- 완료된 모임 기록 (#완료처리) ---------- */
+async function loadCompletionLog() {
+  const box = document.getElementById('completionBox');
+  box.className = 'loading';
+  box.textContent = '기록을 불러오는 중…';
+  try {
+    const res = await run('getCompletionLog', 10);
+    if (!res.items.length) { box.textContent = '아직 완료 처리된 모임이 없어요'; return; }
+    box.className = '';
+    box.innerHTML = '';
+    res.items.forEach(function (it) {
+      const c = document.createElement('div');
+      c.className = 'notice-card';
+      const label = (it.kind === '자연재해' ? '🌋 ' : '⚔️ ') + esc(it.date) +
+        (it.loc ? ' @ ' + esc(it.loc) : '');
+      c.innerHTML = '<div class="nc-text">' + label + '</div>' +
+        '<div class="nc-meta">' + esc(it.by) + ' · ' + esc(it.when) +
+        (it.people ? ' · 🧗 ' + esc(it.people) : '') + '</div>';
       box.appendChild(c);
     });
   } catch (e) {

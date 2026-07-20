@@ -5,7 +5,7 @@
       "name": "frontend",
       "runtimeExecutable": "node",
       "runtimeArgs": [
-        "/Volumes/SamsungSSD/stone/.claude/preview-server.mjs"
+        ".claude/preview-server.mjs"
       ],
       "port": 8787
     }
