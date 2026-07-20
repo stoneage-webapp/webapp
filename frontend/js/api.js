@@ -21,7 +21,8 @@ const API_GET = {
   getHallData:     [],
   getHallArchive:  [],
   getSettleStatus: ['ym'],
-  getVenueStats:   []
+  getVenueStats:   [],
+  getCompletionLog: ['limit']
 };
 const API_POST = {
   loginWithPin:      ['name', 'pin'],
@@ -31,6 +32,9 @@ const API_POST = {
   toggleVote:        ['category', 'dateText', 'voter', 'token', 'month'],
   addFlash:          ['dateText', 'loc', 'creator', 'token'],
   deleteFlash:       ['dateText', 'requester', 'token'],
+  editFlash:         ['dateText', 'newDate', 'newLoc', 'requester', 'token'],
+  completeFlash:     ['dateText', 'requester', 'token'],
+  completeRaid:      ['month', 'requester', 'token'],
   confirmDate:       ['month', 'dateText', 'loc', 'name', 'pin', 'note'],
   startUpload:       ['fileName', 'mimeType', 'fileSize', 'ym'],
   startHallUpload:   ['fileName', 'mimeType', 'fileSize'],

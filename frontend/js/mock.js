@@ -52,6 +52,18 @@
     entries: [{ title: '오버행 돌파', by: '김광훈', voters: ['이희주'], fileId: 'y', link: '#', ym: ym, when: '' }]
   };
 
+  // 완료기록 목데이터 — 이번 달 번개 완료 건에 '박도윤'을 넣어 인증 리마인드(certNudge) 시나리오를 흉내낸다.
+  const COMPLETION_LOG = [
+    { when: '2026-06-20 22:10', kind: '정기공격', month: '2026-06', date: '2026-06-18', loc: '클라이밍파크', people: '김광훈', by: '김광훈' },
+    { when: ym + '-19 22:30', kind: '자연재해', month: ym, date: ym + '-19 14:00', loc: '클라이밍파크', people: '최서연, 박도윤', by: '최서연' }
+  ];
+  function certNudgeFor(name) {
+    if (!name || DATA.certified[name]) return false;
+    return COMPLETION_LOG.some(function (it) {
+      return it.month === ym && it.people.split(',').map(function (s) { return s.trim(); }).indexOf(name) > -1;
+    });
+  }
+
   window.API_MOCK = {
     handle: function (fn, args) {
       const T = {
@@ -100,10 +112,37 @@
         ] },
         resetSettle: { reset: true, ym: ym },
         getVenueStats: { month: ym, total: [{loc:'더클라임 강남',count:8},{loc:'클라이밍파크',count:5},{loc:'볼더링존',count:2}], thisMonth: [{loc:'더클라임 강남',count:3}] },
-        loginWithPin: { name: args[0], token: 'mock-token', isAdmin: args[0] === '김광훈', driveApiKey: '' },
-        changePin: { name: args[0], token: 'mock-token', isAdmin: args[0] === '김광훈', driveApiKey: '' },
+        getCompletionLog: { items: COMPLETION_LOG.slice().reverse() },
+        loginWithPin: { name: args[0], token: 'mock-token', isAdmin: args[0] === '김광훈', driveApiKey: '', certNudge: certNudgeFor(args[0]) },
+        changePin: { name: args[0], token: 'mock-token', isAdmin: args[0] === '김광훈', driveApiKey: '', certNudge: certNudgeFor(args[0]) },
         toggleVote: { date: args[1], voters: [args[2]] },
         addFlash: DATA.disaster, deleteFlash: DATA.disaster,
+        // T의 모든 필드는 fn 과 무관하게 매 호출마다 즉시 평가되므로(아래 목데이터 조회용 IIFE들과 동일 구조),
+        // DATA를 실제로 변형하는 아래 세 액션은 반드시 fn 가드로 감싸 다른 액션 호출 시 오작동을 막는다.
+        editFlash: (function () {
+          if (fn !== 'editFlash') return DATA.disaster;
+          const row = DATA.disaster.find(function (x) { return x.date === args[0]; });
+          if (row) {
+            const newDate = args[1], loc = args[2];
+            row.date = newDate + ' @ ' + loc;
+            row.loc = loc;
+            const iso = newDate.split(' ')[0], time = newDate.split(' ')[1] || null;
+            row.dateInfo = DI(iso, time);
+          }
+          return DATA.disaster;
+        })(),
+        completeFlash: (function () {
+          if (fn !== 'completeFlash') return DATA.disaster;
+          const idx = DATA.disaster.findIndex(function (x) { return x.date === args[0]; });
+          if (idx > -1) DATA.disaster.splice(idx, 1);
+          return DATA.disaster;
+        })(),
+        completeRaid: (function () {
+          if (fn !== 'completeRaid') return DATA.raidMonths;
+          const idx = DATA.raidMonths.findIndex(function (x) { return x.month === args[0]; });
+          if (idx > -1) DATA.raidMonths.splice(idx, 1);
+          return DATA.raidMonths;
+        })(),
         confirmDate: DATA.raidMonths,
         // note 반영은 서버가 하므로 mock은 기존 데이터 반환
         postNotice: { items: [{ when: 'now', by: args[1], text: args[0], row: 4 }].concat(DATA.notices) },
