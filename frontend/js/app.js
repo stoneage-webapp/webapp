@@ -901,7 +901,8 @@ function renderDisaster(list) {
         '\n\n같이 갈 사람 모여라 🔥', '번개 소식 복사 완료!');
     };
     card.appendChild(shareBtn);
-    const owner = DATA.flashOwners && DATA.flashOwners[r.date];
+    // flash_owners에 기록이 없으면(마이그레이션 이전 번개 등) B열 폴백과 동일하게 첫 투표자를 개설자로 본다.
+    const owner = (DATA.flashOwners && DATA.flashOwners[r.date]) || (r.voters && r.voters[0]) || '';
     if (owner === me || isAdmin) {
       const ed = document.createElement('button');
       ed.className = 'mini-btn';
