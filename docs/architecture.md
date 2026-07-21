@@ -62,6 +62,8 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 > - 투표 항목에는 `dateInfo` 필드가 붙는다:
 >   `{ iso:'2026-07-16', ym:'2026-07', weekday:'목', time:'20:00'|null, display:'2026-07-16 (목) 20:00' }`
 >   파싱 실패 시 `null` — 프론트는 원본 `date` 라벨로 폴백. 표기는 `dateInfo.display` 우선.
+> - 정기공격 후보(`raidMonths[].options[]`)와 번개(`disaster[]`)는 각각 `loc`(후보별/번개 위치) 필드를 가진다.
+>   두 시트의 `위치` 열은 `ensureLocationColumns_`(votes.gs)가 배포 후 첫 접근 시 1회 자동 삽입한다(sheets.md 참고).
 
 ### 인증 조회 / 변경 (POST)
 

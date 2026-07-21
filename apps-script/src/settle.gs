@@ -313,6 +313,7 @@ function resetSettle(ym, requester, authToken) {
 function getStats(requester) {
   requester = String(requester || '').trim();
   const canSeeAll = isAdmin_(requester);
+  ensureLocationColumns_(); // 정기공격 투표자 열 위치가 위치열 추가로 밀렸을 수 있음 (votes.gs)
   const s = ss_();
   const tz = Session.getScriptTimeZone();
 
@@ -340,7 +341,7 @@ function getStats(requester) {
     }
   }
 
-  // 정기공격: 월별 투표 참여자 (A=대상월, D~=투표자)
+  // 정기공격: 월별 투표 참여자 (A=대상월, E~=투표자 — D열은 위치)
   const votes = {};
   const rsh = s.getSheetByName(CONFIG.SHEETS.raid);
   if (rsh) {
@@ -349,7 +350,7 @@ function getStats(requester) {
       const ym = String(rvals[i][0]).trim();
       if (!ym) continue;
       if (!votes[ym]) votes[ym] = {};
-      rvals[i].slice(3).filter(String).forEach(function (n) {
+      rvals[i].slice(4).filter(String).forEach(function (n) {
         n = String(n).trim();
         if (canSeeAll || n === requester) votes[ym][n] = true;
       });

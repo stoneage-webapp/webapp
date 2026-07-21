@@ -4,6 +4,45 @@
  * (로직은 원본 v3.0.2/Code.gs에서 그대로 이전. GAS는 전역 스코프 공유.)
  */
 
+/* ---------- 위치 열 자동 마이그레이션 (멱등) ----------
+ * 정기공격일자 · 자연재해 시트에 '위치' 전용 열을 1회 추가한다.
+ * - 정기공격: A=월,B=날짜,C=마감, [D=위치 삽입], E~=투표자.  마커=D1='위치'
+ * - 자연재해: A=날짜, [B=위치 삽입], C~=투표자. 기존 A라벨 '날짜 @ 위치'를 A/B로 분리.  마커=B1='위치'
+ * 마커가 이미 있으면 잠금 없이 즉시 통과. 각 함수 진입점에서 "자기 잠금을 잡기 전에" 호출한다(중첩 잠금 방지).
+ */
+function ensureLocationColumns_() {
+  const s = ss_();
+  const raid = s.getSheetByName(CONFIG.SHEETS.raid);
+  const dis = s.getSheetByName(CONFIG.SHEETS.disaster);
+  const raidNeeds = raid && String(raid.getRange(1, 4).getDisplayValue()).trim() !== '위치';
+  const disNeeds = dis && String(dis.getRange(1, 2).getDisplayValue()).trim() !== '위치';
+  if (!raidNeeds && !disNeeds) return; // 이미 완료 — 잠금 없이 통과 (평상시 경로)
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    if (raid && String(raid.getRange(1, 4).getDisplayValue()).trim() !== '위치') {
+      raid.insertColumnAfter(3);            // C 다음(D) 새 열 → 기존 투표자(D~) E~로 밀림
+      raid.getRange(1, 4).setValue('위치'); // D1 헤더 겸 마커
+    }
+    if (dis && String(dis.getRange(1, 2).getDisplayValue()).trim() !== '위치') {
+      dis.insertColumnAfter(1);             // A 다음(B) 새 열 → 기존 투표자(B~) C~로 밀림
+      const last = dis.getLastRow();
+      for (let r = 2; r <= last; r++) {     // 데이터 행: A라벨 '날짜 @ 위치'를 A(날짜)/B(위치)로 분리
+        const label = String(dis.getRange(r, 1).getDisplayValue()).trim();
+        if (!label) continue;
+        const idx = label.indexOf(' @ ');
+        if (idx > -1) {
+          dis.getRange(r, 1).setValue(label.slice(0, idx));
+          dis.getRange(r, 2).setValue(label.slice(idx + 3));
+        }
+      }
+      dis.getRange(1, 2).setValue('위치');  // B1 헤더 겸 마커
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /* ---------- 번개(자연재해) 등록자 관리 (수정/완료/삭제 권한용) ---------- */
 function getFlashOwners_() {
   const v = PropertiesService.getScriptProperties().getProperty('flash_owners');
@@ -13,8 +52,14 @@ function setFlashOwners_(obj) {
   PropertiesService.getScriptProperties().setProperty('flash_owners', JSON.stringify(obj));
 }
 
-// 번개 개설자 판정: flash_owners 기록이 있으면 그 값, 없으면(마이그레이션 이전 등 기록이 없는 번개)
-// 자연재해 시트 B열(첫 투표자=개설자, docs/sheets.md 참고)로 폴백한다.
+// 번개 논리 키: '날짜 @ 위치'. 시트엔 날짜(A)/위치(B) 분리 저장하지만, 프론트·flash_owners 키는 이 합성 문자열을 유지.
+function flashLabel_(date, loc) {
+  date = String(date || '').trim();
+  loc = String(loc || '').trim();
+  return loc ? date + ' @ ' + loc : date;
+}
+
+// 번개 개설자 판정: flash_owners 기록이 있으면 그 값, 없으면(기록 없는 번개) 시트 C열(첫 투표자=개설자)로 폴백.
 function flashOwnerOf_(dateText) {
   const owners = getFlashOwners_();
   if (owners[dateText]) return owners[dateText];
@@ -22,28 +67,31 @@ function flashOwnerOf_(dateText) {
   if (!sh) return '';
   const vals = sh.getDataRange().getDisplayValues();
   for (let i = 1; i < vals.length; i++) {
-    if (String(vals[i][0]).trim() === dateText) return vals[i][1] ? String(vals[i][1]).trim() : '';
+    if (flashLabel_(vals[i][0], vals[i][1]) === dateText) {
+      return vals[i][2] ? String(vals[i][2]).trim() : ''; // C열 = 첫 투표자(개설자)
+    }
   }
   return '';
 }
 
-// 번개 열기: 자연재해 시트 A열에 새 행 추가 (등록자 기록)
+// 번개 열기: 자연재해 시트에 새 행 추가 (A=날짜, B=위치, C=등록자)
 function addFlash(dateText, loc, creator, authToken) {
   creator = verify_(creator, authToken);
+  ensureLocationColumns_();
   dateText = String(dateText || '').trim();
   loc = String(loc || '').trim();
   if (!dateText) throw new Error('날짜를 입력하세요.');
   if (!loc) throw new Error('위치를 입력하세요.');
-  const label = dateText + ' @ ' + loc;
+  const label = flashLabel_(dateText, loc);
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
     const sh = ss_().getSheetByName(CONFIG.SHEETS.disaster);
     const vals = sh.getDataRange().getDisplayValues();
     for (let i = 1; i < vals.length; i++) {
-      if (String(vals[i][0]).trim() === label) throw new Error('이미 같은 번개가 있습니다.');
+      if (flashLabel_(vals[i][0], vals[i][1]) === label) throw new Error('이미 같은 번개가 있습니다.');
     }
-    sh.appendRow([label, creator]); // A=라벨, B=등록자(첫 참여자 겸)
+    sh.appendRow([dateText, loc, creator]); // A=날짜, B=위치, C=등록자(첫 참여자 겸)
     const owners = getFlashOwners_();
     owners[label] = creator;
     setFlashOwners_(owners);
@@ -56,6 +104,7 @@ function addFlash(dateText, loc, creator, authToken) {
 // 번개 삭제: 개설자 또는 관리자만
 function deleteFlash(dateText, requester, authToken) {
   requester = verify_(requester, authToken);
+  ensureLocationColumns_();
   const owner = flashOwnerOf_(dateText);
   if (owner !== requester && CONFIG.ADMINS.indexOf(requester) < 0) {
     throw new Error('본인이 연 번개만 취소할 수 있습니다.');
@@ -66,7 +115,7 @@ function deleteFlash(dateText, requester, authToken) {
     const sh = ss_().getSheetByName(CONFIG.SHEETS.disaster);
     const vals = sh.getDataRange().getDisplayValues();
     for (let i = 1; i < vals.length; i++) {
-      if (String(vals[i][0]).trim() === dateText) {
+      if (flashLabel_(vals[i][0], vals[i][1]) === dateText) {
         sh.deleteRow(i + 1);
         break;
       }
@@ -80,6 +129,7 @@ function deleteFlash(dateText, requester, authToken) {
   }
 }
 
+// 자연재해 시트 읽기: A=날짜, B=위치, C~=투표자. date는 투표 키로 합성 라벨('날짜 @ 위치') 유지.
 function readVotes_(s, sheetName) {
   const sh = s.getSheetByName(sheetName);
   if (!sh) return [];
@@ -87,14 +137,13 @@ function readVotes_(s, sheetName) {
   return vals.slice(1)
     .filter(function(r) { return r[0]; })
     .map(function(r) {
-      // 번개 라벨 = '날짜 @ 위치' (addFlash 참고). date는 투표 키로 원본 유지.
-      const label = String(r[0]);
-      const parts = label.split(' @ ');
+      const date = String(r[0]);
+      const loc = r[1] ? String(r[1]) : '';
       return {
-        date: r[0],
-        loc: parts.length > 1 ? parts.slice(1).join(' @ ') : '',
-        dateInfo: dateInfo_(parts[0], ''),   // 표준 표기 (파싱 실패 시 null → 원본 라벨 표시)
-        voters: r.slice(1).filter(String)
+        date: flashLabel_(date, loc),
+        loc: loc,
+        dateInfo: dateInfo_(date, ''),   // 표준 표기 (파싱 실패 시 null → 원본 라벨 표시)
+        voters: r.slice(2).filter(String)
       };
     });
 }
@@ -141,6 +190,7 @@ function dateInfo_(label, monthHint) {
  * months: 존재하는 모든 월 목록 (프론트 필터 드롭다운용).
  */
 function getVotes(month) {
+  ensureLocationColumns_();
   const s = ss_();
   let raidMonths = readRaidByMonth_(s);
   let disaster = readVotes_(s, CONFIG.SHEETS.disaster);
@@ -163,8 +213,8 @@ function getVotes(month) {
 }
 
 /* ---------- 정기공격: 월별 투표 읽기 ----------
- * 시트: A=대상월(2026-07), B=날짜후보, C=마감일(2026-07-05), D~=투표자
- * 반환: [{ month, deadline, closed, confirmed, options:[{date,voters}] }, ...]
+ * 시트: A=대상월(2026-07), B=날짜후보, C=마감일(2026-07-05), D=위치, E~=투표자
+ * 반환: [{ month, deadline, closed, confirmed, options:[{date,loc,voters}] }, ...]
  */
 function readRaidByMonth_(s) {
   const sh = s.getSheetByName(CONFIG.SHEETS.raid);
@@ -180,8 +230,9 @@ function readRaidByMonth_(s) {
     if (vals[i][2] && !deadlines[month]) deadlines[month] = String(vals[i][2]).trim();
     groups[month].push({
       date: date,
+      loc: vals[i][3] ? String(vals[i][3]).trim() : '',  // D열 = 후보별 위치
       dateInfo: dateInfo_(date, month),  // 표준 표기 (월 그룹으로 연도 보정)
-      voters: vals[i].slice(3).filter(String)
+      voters: vals[i].slice(4).filter(String)            // E열~ = 투표자
     });
   }
   order.sort();
@@ -245,6 +296,7 @@ function confirmDate(month, dateText, loc, name, pin, note) {
     throw new Error('확정 권한이 없습니다.');
   }
   clearPinFail_('admin');
+  ensureLocationColumns_();
   month = String(month || '').trim();
   if (!month) throw new Error('대상 월이 없습니다.');
 
@@ -283,6 +335,7 @@ function confirmDate(month, dateText, loc, name, pin, note) {
  */
 function toggleVote(category, dateText, voter, token, month) {
   voter = verify_(voter, token);
+  ensureLocationColumns_();
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
@@ -301,29 +354,29 @@ function toggleVote(category, dateText, voter, token, month) {
       }
       for (let i = 1; i < vals.length; i++) {
         if (String(vals[i][0]).trim() === month && String(vals[i][1]).trim() === dateText) {
-          let voters = vals[i].slice(3).filter(String); // D열~
+          let voters = vals[i].slice(4).filter(String); // E열~
           voters = voters.indexOf(voter) > -1
             ? voters.filter(function(v) { return v !== voter; })
             : voters.concat(voter);
-          const width = Math.max(sh.getLastColumn() - 3, voters.length, 1);
-          sh.getRange(i + 1, 4, 1, width)
+          const width = Math.max(sh.getLastColumn() - 4, voters.length, 1);
+          sh.getRange(i + 1, 5, 1, width)
             .setValues([voters.concat(new Array(width - voters.length).fill(''))]);
           return { date: dateText, voters: voters };
         }
       }
       throw new Error('해당 일자를 찾을 수 없습니다: ' + dateText);
     } else {
-      // 자연재해(번개): A=날짜, B~=투표자
+      // 자연재해(번개): A=날짜, B=위치, C~=투표자
       const sh = ss_().getSheetByName(CONFIG.SHEETS.disaster);
       const vals = sh.getDataRange().getDisplayValues();
       for (let i = 1; i < vals.length; i++) {
-        if (vals[i][0] === dateText) {
-          let voters = vals[i].slice(1).filter(String);
+        if (flashLabel_(vals[i][0], vals[i][1]) === dateText) {
+          let voters = vals[i].slice(2).filter(String);
           voters = voters.indexOf(voter) > -1
             ? voters.filter(function(v) { return v !== voter; })
             : voters.concat(voter);
-          const width = Math.max(sh.getLastColumn() - 1, voters.length, 1);
-          sh.getRange(i + 1, 2, 1, width)
+          const width = Math.max(sh.getLastColumn() - 2, voters.length, 1);
+          sh.getRange(i + 1, 3, 1, width)
             .setValues([voters.concat(new Array(width - voters.length).fill(''))]);
           return { date: dateText, voters: voters };
         }
@@ -340,6 +393,7 @@ function toggleVote(category, dateText, voter, token, month) {
  */
 function editFlash(dateText, newDate, newLoc, requester, authToken) {
   requester = verify_(requester, authToken);
+  ensureLocationColumns_();
   const owner = flashOwnerOf_(dateText);
   if (owner !== requester && !isAdmin_(requester)) {
     throw new Error('본인이 연 번개만 수정할 수 있습니다.');
@@ -348,7 +402,7 @@ function editFlash(dateText, newDate, newLoc, requester, authToken) {
   newLoc = String(newLoc || '').trim();
   if (!newDate) throw new Error('날짜를 입력하세요.');
   if (!newLoc) throw new Error('위치를 입력하세요.');
-  const newLabel = newDate + ' @ ' + newLoc;
+  const newLabel = flashLabel_(newDate, newLoc);
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
@@ -356,14 +410,15 @@ function editFlash(dateText, newDate, newLoc, requester, authToken) {
     const vals = sh.getDataRange().getDisplayValues();
     let found = -1;
     for (let i = 1; i < vals.length; i++) {
-      const label = String(vals[i][0]).trim();
+      const label = flashLabel_(vals[i][0], vals[i][1]);
       if (label === dateText) found = i;
       else if (label === newLabel) throw new Error('이미 같은 번개가 있습니다.');
     }
     if (found < 0) throw new Error('해당 번개를 찾을 수 없습니다.');
     if (newLabel !== dateText) {
-      sh.getRange(found + 1, 1).setValue(newLabel);
-      // B열 폴백으로 알아낸 개설자도 이번에 flash_owners에 정식 기록해둔다(다음부터는 폴백 없이 바로 조회).
+      sh.getRange(found + 1, 1).setValue(newDate); // A=날짜
+      sh.getRange(found + 1, 2).setValue(newLoc);  // B=위치
+      // 폴백(C열)으로 알아낸 개설자도 이번에 flash_owners에 정식 기록해둔다(다음부터는 폴백 없이 바로 조회).
       if (owner) {
         const owners = getFlashOwners_();
         delete owners[dateText];
@@ -424,6 +479,7 @@ function getCompletionLog(limit) {
 function completeRaid(month, requester, authToken) {
   requester = verify_(requester, authToken);
   if (!isAdmin_(requester)) throw new Error('관리자만 완료 처리할 수 있습니다.');
+  ensureLocationColumns_();
   month = String(month || '').trim();
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -469,6 +525,7 @@ function needsCertNudge_(name) {
 // 자연재해(번개) 완료 처리 — 등록자 또는 관리자. 기록 후 행 제거(취소와 동일한 정리).
 function completeFlash(dateText, requester, authToken) {
   requester = verify_(requester, authToken);
+  ensureLocationColumns_();
   const owner = flashOwnerOf_(dateText);
   if (owner !== requester && !isAdmin_(requester)) {
     throw new Error('본인이 연 번개만 완료 처리할 수 있습니다.');
@@ -478,14 +535,19 @@ function completeFlash(dateText, requester, authToken) {
   try {
     const sh = ss_().getSheetByName(CONFIG.SHEETS.disaster);
     const vals = sh.getDataRange().getDisplayValues();
-    let found = -1, voters = [];
+    let found = -1, date = '', loc = '', voters = [];
     for (let i = 1; i < vals.length; i++) {
-      if (String(vals[i][0]).trim() === dateText) { found = i; voters = vals[i].slice(1).filter(String); break; }
+      if (flashLabel_(vals[i][0], vals[i][1]) === dateText) {
+        found = i;
+        date = String(vals[i][0]).trim();
+        loc = vals[i][1] ? String(vals[i][1]).trim() : '';
+        voters = vals[i].slice(2).filter(String);
+        break;
+      }
     }
     if (found < 0) throw new Error('해당 번개를 찾을 수 없습니다.');
-    const parts = dateText.split(' @ ');
-    const info = dateInfo_(parts[0], '');
-    logCompletion_('자연재해', info ? info.ym : '', parts[0], parts.length > 1 ? parts.slice(1).join(' @ ') : '', voters, requester);
+    const info = dateInfo_(date, '');
+    logCompletion_('자연재해', info ? info.ym : '', date, loc, voters, requester);
     sh.deleteRow(found + 1);
     const owners = getFlashOwners_();
     delete owners[dateText];

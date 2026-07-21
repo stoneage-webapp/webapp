@@ -826,9 +826,12 @@ function renderRaid(list) {
       const card = document.createElement('div');
       card.className = 'vote-card' + (mine ? ' mine' : '') +
         (isC ? ' confirmed' : '') + (blocked && !isC ? ' closed' : '');
+      // 날짜는 윗줄, 위치(후보별)는 아랫줄 — 번개 카드와 동일한 리듬
+      const dateTxt = r.dateInfo ? r.dateInfo.display : r.date;
       card.innerHTML =
-        '<div class="top"><span class="date">' + esc(fmtVoteDate(r)) + (isC ? ' ✅' : '') + '</span>' +
+        '<div class="top"><span class="date">' + esc(dateTxt) + (isC ? ' ✅' : '') + '</span>' +
         '<span class="count">' + r.voters.length + '명</span></div>' +
+        (r.loc ? '<div class="vloc">📍 ' + esc(r.loc) + '</div>' : '') +
         (r.voters.length ? '<div class="voters">' + r.voters.map(esc).join(' · ') + '</div>' : '') +
         (!blocked && mine ? '<div class="hint">✓ 참여 중 — 탭하면 취소</div>' : '');
       if (!blocked) {
@@ -1383,9 +1386,12 @@ function doConfirm(month, dateText) {
   const isCancel = !dateText;
   const g = (DATA.raidMonths || []).find(function (x) { return x.month === month; });
   const prev = g && g.confirmed;
+  // 위치 기본값: 이전 확정 위치 > 이 후보에 지정된 위치 순
+  const cand = g && (g.options || []).find(function (o) { return o.date === dateText; });
+  const defaultLoc = (prev && prev.loc) || (cand && cand.loc) || '';
   const fields = isCancel ? [] : [
     { key: 'loc', label: '모임 위치', type: 'text', placeholder: '예: 더클라임 강남',
-      value: prev ? prev.loc : '' },
+      value: defaultLoc },
     { key: 'note', label: '설명 (선택)', type: 'text', placeholder: '예: 20시 정각 로비 집합, 회비 1만원',
       value: prev ? (prev.note || '') : '' }
   ];
