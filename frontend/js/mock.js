@@ -22,11 +22,11 @@
     months: ['2026-06', ym],
     raidMonths: [
       { month: '2026-06', deadline: '2026-06-05', closed: true, confirmed: { date: '2026-06-18', loc: '클라이밍파크', note: '' },
-        options: [{ date: '2026-06-18', dateInfo: DI('2026-06-18', ''), voters: ['김광훈'] }] },
-      { month: ym, deadline: ym + '-10', closed: false, confirmed: { date: '7/16(수) 20:00', loc: '더클라임 강남', note: '20시 정각 로비 집합, 회비 1만원' },
+        options: [{ date: '2026-06-18', loc: '클라이밍파크', dateInfo: DI('2026-06-18', ''), voters: ['김광훈'] }] },
+      { month: ym, deadline: ym + '-10', closed: false, confirmed: null,
         options: [
-          { date: '7/16(수) 20:00', dateInfo: DI(d1, '20:00'), voters: ['김광훈', '이희주'] },
-          { date: '7/23(수) 20:00', dateInfo: DI(d2, '20:00'), voters: ['박도윤'] }
+          { date: '7/16(수) 20:00', loc: '더클라임 강남', dateInfo: DI(d1, '20:00'), voters: ['김광훈', '이희주'] },
+          { date: '7/23(수) 20:00', loc: '클라이밍파크 사당', dateInfo: DI(d2, '20:00'), voters: ['박도윤'] }
         ] }
     ],
     disaster: [
