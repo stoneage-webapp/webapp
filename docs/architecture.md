@@ -80,6 +80,8 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `completeFlash` | `dateText, requester, token` | 자연재해 투표 배열 — 완료 처리(등록자 또는 관리자). `완료기록` 시트에 기록 후 목록에서 제거 |
 | `confirmDate` | `month, dateText, loc, name, pin, note?` | `raidMonths` 배열 (관리자 PIN — Script Properties `admin_pin`). `note`=확정 설명(선택) |
 | `completeRaid` | `month, requester, token` | `raidMonths` 배열 — 관리자 전용. 확정된 월이면 "완료", 확정 없이 마감된 월이면 "모임 없음"으로 종료. `완료기록` 시트에 기록 후 목록에서 제외 |
+| `editRaidOption` | `month, dateText, newDate, newLoc, requester, token` | `raidMonths` 배열 — 관리자 전용. 후보 날짜(B)/위치(D) 수정, 투표자 보존. **확정된 월은 불가**(먼저 확정 취소) |
+| `deleteRaidOption` | `month, dateText, requester, token` | `raidMonths` 배열 — 관리자 전용. 후보 행 삭제(그 날짜 투표도 함께 삭제). **확정된 월은 불가** |
 | `startUpload` | `fileName, mimeType, fileSize, ym, **name, token**` | Drive resumable 업로드 URL(문자열) |
 | `startHallUpload` | `fileName, mimeType, fileSize, **name, token**` | Drive resumable 업로드 URL(문자열) |
 | `uploadChunk` | `uploadUrl, b64, start, end, total, **name, token**` | `{ done, fileId? }` |
@@ -119,7 +121,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 |---|---|
 | 초기 로드 | `getInitData` |
 | 로그인 | `loginWithPin`, `changePin` |
-| 투표(정기공격/번개) | `toggleVote`, `addFlash`, `deleteFlash`, `editFlash`, `confirmDate`, `completeFlash`, `completeRaid` |
+| 투표(정기공격/번개) | `toggleVote`, `addFlash`, `deleteFlash`, `editFlash`, `confirmDate`, `completeFlash`, `completeRaid`, `editRaidOption`, `deleteRaidOption` |
 | 사진 인증 | `startUpload` → `uploadChunk`/`checkUploadStatus` → `finalizeProof` |
 | 벽화 갤러리 | `getGallery`(월/사람 필터), `deleteProof` |
 | 명예의전당 | `getHallData`, `getHallArchive`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |

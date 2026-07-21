@@ -143,6 +143,21 @@
           if (idx > -1) DATA.raidMonths.splice(idx, 1);
           return DATA.raidMonths;
         })(),
+        editRaidOption: (function () {
+          if (fn !== 'editRaidOption') return DATA.raidMonths;
+          const g = DATA.raidMonths.find(function (x) { return x.month === args[0]; });
+          if (g) {
+            const o = g.options.find(function (x) { return x.date === args[1]; });
+            if (o) { o.date = args[2]; o.loc = args[3]; o.dateInfo = null; } // 실제 백엔드는 새 날짜를 dateInfo_로 재파싱
+          }
+          return DATA.raidMonths;
+        })(),
+        deleteRaidOption: (function () {
+          if (fn !== 'deleteRaidOption') return DATA.raidMonths;
+          const g = DATA.raidMonths.find(function (x) { return x.month === args[0]; });
+          if (g) { const i = g.options.findIndex(function (x) { return x.date === args[1]; }); if (i > -1) g.options.splice(i, 1); }
+          return DATA.raidMonths;
+        })(),
         confirmDate: DATA.raidMonths,
         // note 반영은 서버가 하므로 mock은 기존 데이터 반환
         postNotice: { items: [{ when: 'now', by: args[1], text: args[0], row: 4 }].concat(DATA.notices) },

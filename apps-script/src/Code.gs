@@ -56,6 +56,8 @@ const POST_ACTIONS = {
   completeFlash:     { auth: 'requester', bust: true, fn: function (d) { return completeFlash(d.dateText, d.requester, d.token); } },
   completeRaid:      { auth: 'requester', bust: true, fn: function (d) { return completeRaid(d.month, d.requester, d.token); } },
   confirmDate:       { bust: true, fn: function (d) { return confirmDate(d.month, d.dateText, d.loc, d.name, d.pin, d.note); } }, // 관리자 PIN은 함수 내부 검증
+  editRaidOption:    { auth: 'requester', bust: true, fn: function (d) { return editRaidOption(d.month, d.dateText, d.newDate, d.newLoc, d.requester, d.token); } },
+  deleteRaidOption:  { auth: 'requester', bust: true, fn: function (d) { return deleteRaidOption(d.month, d.dateText, d.requester, d.token); } },
 
   // 업로드 (요청자 토큰 필수 — 익명 업로드 차단)
   startUpload:       { auth: 'name', fn: function (d) { return startUpload(d.fileName, d.mimeType, d.fileSize, d.ym); } },

@@ -36,6 +36,8 @@ const API_POST = {
   completeFlash:     ['dateText', 'requester', 'token'],
   completeRaid:      ['month', 'requester', 'token'],
   confirmDate:       ['month', 'dateText', 'loc', 'name', 'pin', 'note'],
+  editRaidOption:    ['month', 'dateText', 'newDate', 'newLoc', 'requester', 'token'],
+  deleteRaidOption:  ['month', 'dateText', 'requester', 'token'],
   startUpload:       ['fileName', 'mimeType', 'fileSize', 'ym'],
   startHallUpload:   ['fileName', 'mimeType', 'fileSize'],
   uploadChunk:       ['uploadUrl', 'b64', 'start', 'end', 'total'],

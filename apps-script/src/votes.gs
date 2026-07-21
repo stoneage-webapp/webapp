@@ -329,6 +329,62 @@ function confirmDate(month, dateText, loc, name, pin, note) {
   return readRaidByMonth_(ss_());
 }
 
+/* ---------- 정기공격 후보 수정/삭제 (관리자 전용) ----------
+ * 후보 날짜(B)·위치(D)를 앱에서 직접 관리. 투표자(E~)는 수정 시 그대로 보존.
+ * 확정된 월은 투표가 마감된 상태라 후보 변경 불가 — 먼저 확정을 취소해야 한다.
+ */
+function editRaidOption(month, dateText, newDate, newLoc, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!isAdmin_(requester)) throw new Error('관리자만 후보를 수정할 수 있습니다.');
+  ensureLocationColumns_();
+  month = String(month || '').trim();
+  newDate = String(newDate || '').trim();
+  newLoc = String(newLoc || '').trim();
+  if (!newDate) throw new Error('날짜를 입력하세요.');
+  if (getRaidConfirmedAll_()[month]) throw new Error('확정된 월은 후보를 수정할 수 없습니다. 먼저 확정을 취소하세요.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = ss_().getSheetByName(CONFIG.SHEETS.raid);
+    const vals = sh.getDataRange().getDisplayValues();
+    let found = -1;
+    for (let i = 1; i < vals.length; i++) {
+      const m = String(vals[i][0]).trim(), b = String(vals[i][1]).trim();
+      if (m === month && b === dateText) found = i;
+      else if (m === month && b === newDate && newDate !== dateText) throw new Error('같은 날짜 후보가 이미 있습니다.');
+    }
+    if (found < 0) throw new Error('해당 후보를 찾을 수 없습니다.');
+    sh.getRange(found + 1, 2).setValue(newDate); // B=날짜
+    sh.getRange(found + 1, 4).setValue(newLoc);  // D=위치
+    return readRaidByMonth_(ss_());
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteRaidOption(month, dateText, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!isAdmin_(requester)) throw new Error('관리자만 후보를 삭제할 수 있습니다.');
+  ensureLocationColumns_();
+  month = String(month || '').trim();
+  if (getRaidConfirmedAll_()[month]) throw new Error('확정된 월은 후보를 삭제할 수 없습니다. 먼저 확정을 취소하세요.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = ss_().getSheetByName(CONFIG.SHEETS.raid);
+    const vals = sh.getDataRange().getDisplayValues();
+    for (let i = 1; i < vals.length; i++) {
+      if (String(vals[i][0]).trim() === month && String(vals[i][1]).trim() === dateText) {
+        sh.deleteRow(i + 1);
+        break;
+      }
+    }
+    return readRaidByMonth_(ss_());
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /* ---------- 투표 (토글) ----------
  * 정기공격: toggleVote('raid', dateText, voter, token, month)
  * 자연재해: toggleVote('disaster', dateText, voter, token)

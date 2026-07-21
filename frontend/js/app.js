@@ -837,13 +837,23 @@ function renderRaid(list) {
       if (!blocked) {
         card.onclick = function() { voteRaid(g.month, r.date); };
       }
-      // 확정 버튼: 확정 전이면 마감 후에도 노출 (마감 → 확정 순서)
+      // 관리자: 확정 전이면 확정/수정/삭제 노출 (확정되면 월 잠금 → 숨김)
       if (!g.confirmed && isAdmin) {
         const cb = document.createElement('button');
         cb.className = 'mini-btn';
         cb.textContent = '📌 이 날짜로 확정';
         cb.onclick = function(e) { e.stopPropagation(); doConfirm(g.month, r.date); };
         card.appendChild(cb);
+        const ed = document.createElement('button');
+        ed.className = 'mini-btn';
+        ed.textContent = '✏️ 수정';
+        ed.onclick = function(e) { e.stopPropagation(); editRaidOptionPrompt(g.month, r); };
+        card.appendChild(ed);
+        const del = document.createElement('button');
+        del.className = 'mini-btn';
+        del.textContent = '🗑️ 삭제';
+        del.onclick = function(e) { e.stopPropagation(); deleteRaidOptionClick(g.month, r.date); };
+        card.appendChild(del);
       }
       list.appendChild(card);
     });
@@ -1440,6 +1450,40 @@ async function doCompleteRaid(month) {
     renderVotes();
     renderHome();
     toast(isVoid ? '🚫 이번 달을 종료했어요.' : '✅ 완료 처리했어요.', true);
+  } catch (e) {
+    toast(e.message || e);
+  }
+}
+
+// 정기공격 후보 수정 (관리자): 날짜/위치 변경 — 투표자는 유지
+function editRaidOptionPrompt(month, r) {
+  modal({
+    title: '✏️ 후보 수정',
+    fields: [
+      { key: 'date', label: '날짜', type: 'text', value: r.date, placeholder: '예: 7/20 월요일' },
+      { key: 'loc', label: '위치 (선택)', type: 'text', value: r.loc || '', placeholder: '예: 더클라임 강남' }
+    ],
+    confirmText: '수정 완료',
+    busyText: '수정하는 중…',
+    validate: function (v) { if (!v.date.trim()) return '날짜를 입력하세요.'; return null; },
+    onConfirm: async function (v) {
+      DATA.raidMonths = await run('editRaidOption', month, r.date, v.date.trim(), v.loc.trim(), getMe(), ME.token);
+      renderVotes();
+      renderHome();
+      toast('✏️ 후보를 수정했어요.', true);
+    }
+  });
+}
+
+// 정기공격 후보 삭제 (관리자): 해당 날짜 행 삭제 — 그 날짜의 투표도 함께 사라짐
+async function deleteRaidOptionClick(month, dateText) {
+  if (!(await modalConfirm('이 후보 날짜를 삭제할까요?\n삭제하면 이 날짜의 투표도 함께 사라져요.',
+    { title: '🗑️ 후보 삭제', confirmText: '삭제' }))) return;
+  try {
+    DATA.raidMonths = await run('deleteRaidOption', month, dateText, getMe(), ME.token);
+    renderVotes();
+    renderHome();
+    toast('🗑️ 후보를 삭제했어요.', true);
   } catch (e) {
     toast(e.message || e);
   }
