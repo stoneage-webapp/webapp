@@ -17,6 +17,20 @@
   const ym = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2);
   const d1 = ym + '-16', d2 = ym + '-23';
 
+  // 공지: 최신순. pinned=고정. 홈은 "고정 전부 + 최신 1건"만 노출
+  const NOTICES = [
+    { when: ym + '-12', by: '김광훈', text: '이번 주 정모 사진 인증 잊지 마세요!', row: 4, pinned: false },
+    { when: '2026-07-10', by: '김광훈', text: '회비 계좌: OO은행 000-0000 (매월 15일)', row: 3, pinned: true },
+    { when: '2026-07-02', by: '김광훈', text: '이번 달 정기공격 장소 투표 열렸습니다 — 참여 부탁!', row: 2, pinned: false }
+  ];
+  function homeNotices() {
+    const pinned = NOTICES.filter(function (n) { return n.pinned; });
+    const latest = NOTICES.filter(function (n) { return !n.pinned; })[0];
+    const home = pinned.slice();
+    if (latest) home.push(latest);
+    return home;
+  }
+
   const DATA = {
     members: MEMBERS,
     months: ['2026-06', ym],
@@ -39,10 +53,7 @@
     admins: ['김광훈'],
     settlers: ['이희주'],
     support: { '김광훈': true, '박도윤': true, '이희주': true, '정민재': false, '최서연': true },
-    notices: [
-      { when: '2026-07-10', by: '김광훈', text: '7월 회비는 15일까지 계좌로 부탁드려요!', row: 3 },
-      { when: '2026-07-02', by: '김광훈', text: '이번 달 정기공격 장소 투표 열렸습니다 — 참여 부탁!', row: 2 }
-    ],
+    notices: homeNotices(),
     flashOwners: { '7/19 14:00 @ 클라이밍파크': '최서연' }
   };
 
@@ -112,14 +123,14 @@
   window.API_MOCK = {
     handle: function (fn, args) {
       const T = {
-        getInitData: DATA,
+        getInitData: (function () { DATA.notices = homeNotices(); return DATA; })(),
         getHallData: HALL,
         getHallArchive: { winners: [{ ym: '2026-06', title: '보라 완등', by: '이희주', voters: ['김광훈', '박도윤'], link: '#', fileId: 'x', when: '' }] },
         getGallery: { items: [
           { when: ym + '-05', actDate: ym + '-05', loc: '더클라임 강남', people: '김광훈, 이희주', by: '김광훈', fileId: 'mk1', link: '#' },
           { when: ym + '-02', actDate: ym + '-02', loc: '클라이밍파크', people: '김광훈', by: '김광훈', fileId: 'mk2', link: '#' }
         ], hasMore: false },
-        getNotices: { items: DATA.notices },
+        getNotices: { items: NOTICES.slice() },
         getStats: (function () {
           const requester = args[0];
           const names = requester === '김광훈'
@@ -204,9 +215,25 @@
           return DATA.raidMonths;
         })(),
         confirmDate: DATA.raidMonths,
-        // note 반영은 서버가 하므로 mock은 기존 데이터 반환
-        postNotice: { items: [{ when: 'now', by: args[1], text: args[0], row: 4 }].concat(DATA.notices) },
-        deleteNotice: { items: DATA.notices.slice(1) },
+        // 공지: 등록/삭제/고정 모두 { items(전체), home(고정+최신1) } 반환
+        postNotice: (function () {
+          if (fn !== 'postNotice') return { items: NOTICES.slice(), home: homeNotices() };
+          const maxRow = NOTICES.reduce(function (m, n) { return Math.max(m, n.row); }, 1);
+          NOTICES.unshift({ when: 'now', by: args[1], text: args[0], row: maxRow + 1, pinned: false });
+          return { items: NOTICES.slice(), home: homeNotices() };
+        })(),
+        deleteNotice: (function () {
+          if (fn !== 'deleteNotice') return { items: NOTICES.slice(), home: homeNotices() };
+          const i = NOTICES.findIndex(function (n) { return n.row === Number(args[0]); });
+          if (i > -1) NOTICES.splice(i, 1);
+          return { items: NOTICES.slice(), home: homeNotices() };
+        })(),
+        pinNotice: (function () {
+          if (fn !== 'pinNotice') return { items: NOTICES.slice(), home: homeNotices() };
+          const n = NOTICES.find(function (x) { return x.row === Number(args[0]); });
+          if (n) n.pinned = !!args[2];
+          return { items: NOTICES.slice(), home: homeNotices() };
+        })(),
         resetPin: { name: args[0], reset: true },
         // 부족원 CRUD — DATA/MEMBERS 를 실제로 변형하므로 fn 가드 필수 (flash 계열과 동일 패턴)
         addMember: (function () {
@@ -249,6 +276,20 @@
           if (fn !== 'setLevelRecord') return levelBoard();
           const nm = String(args[0] || '').trim();
           const counts = (args[1] && typeof args[1] === 'object') ? args[1] : {};
+          if (MEMBERS.indexOf(nm) > -1) {
+            const c = {};
+            LEVELS.forEach(function (lv) {
+              const v = parseInt(counts[lv], 10);
+              if (!isNaN(v) && v > 0) c[lv] = v;
+            });
+            LEVEL_COUNTS[nm] = c;
+          }
+          return levelBoard();
+        })(),
+        setMyLevelRecord: (function () {
+          if (fn !== 'setMyLevelRecord') return levelBoard();
+          const counts = (args[0] && typeof args[0] === 'object') ? args[0] : {};
+          const nm = String(args[1] || '').trim(); // 본인 이름
           if (MEMBERS.indexOf(nm) > -1) {
             const c = {};
             LEVELS.forEach(function (lv) {
