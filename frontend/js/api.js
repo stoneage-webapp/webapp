@@ -22,7 +22,8 @@ const API_GET = {
   getHallArchive:  [],
   getSettleStatus: ['ym'],
   getVenueStats:   [],
-  getCompletionLog: ['limit']
+  getCompletionLog: ['limit'],
+  getLevelBoard:   []
 };
 const API_POST = {
   loginWithPin:      ['name', 'pin'],
@@ -48,6 +49,11 @@ const API_POST = {
   deleteHallEntry:   ['fileId', 'requester', 'token'],
   voteHall:          ['fileId', 'voter', 'token'],
   resetPin:          ['targetName', 'requester', 'token'],
+  addMember:         ['newName', 'requester', 'token'],
+  renameMember:      ['oldName', 'newName', 'requester', 'token'],
+  deleteMember:      ['targetName', 'requester', 'token'],
+  setLevels:         ['levels', 'requester', 'token'],
+  setLevelRecord:    ['name', 'counts', 'requester', 'token'],
   postNotice:        ['text', 'name', 'token'],
   deleteNotice:      ['row', 'when', 'name', 'token'],
   runSettle:         ['ym', 'requester', 'token'],

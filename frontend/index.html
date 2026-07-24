@@ -19,6 +19,9 @@
 </head>
 <body>
 
+<!-- 아래로 당겨 새로고침 인디케이터 (app.js 가 위치/회전 제어) -->
+<div id="ptr"><div class="ptr-spin">↓</div></div>
+
 <div id="kakaoOverlay" class="fs-overlay" style="display:none; z-index:99; padding:56px 26px; text-align:center;">
   <img class="logo-hero" src="/icons/icon-512.png" alt="석기시대" width="88" height="88">
   <h2 style="margin:16px 0 10px; font-size:18px;">브라우저에서 열어주세요</h2>
@@ -169,6 +172,9 @@
     <div class="month-head" style="margin-top:22px">📊 출석 통계</div>
     <div id="statsBox" class="loading">통계를 내는 중…</div>
 
+    <div class="month-head" style="margin-top:22px">🧗 레벨 순위</div>
+    <div id="levelBox" class="loading">순위를 불러오는 중…</div>
+
     <div class="month-head" style="margin-top:22px">🧗 암장별 방문</div>
     <div id="venueBox" class="loading">집계 중…</div>
 
@@ -196,6 +202,28 @@
     <div id="settleBox" class="loading">정산 현황을 여는 중…</div>
 
     <div class="admin-only" style="display:none">
+      <div class="month-head" style="margin-top:22px">👥 부족원 관리</div>
+      <p class="dim" style="font-size:12.5px; margin-bottom:8px">
+        부족원을 추가·수정·삭제할 수 있어요. PIN은 각자 첫 로그인 때 정합니다.<br>
+        이름을 바꾸거나 삭제해도 <b>지난 투표·인증 기록은 이전 이름으로 남아요.</b>
+      </p>
+      <button class="btn2" onclick="addMemberPrompt()">➕ 부족원 추가</button>
+      <div id="memberAdminList" class="member-list"></div>
+
+      <div class="month-head" style="margin-top:22px">🧗 레벨 완등 기록</div>
+      <p class="dim" style="font-size:12.5px; margin-bottom:8px">
+        먼저 레벨(난이도)을 <b>낮은 것부터</b> 순서대로 등록하세요. 그다음 구성원을 눌러 레벨별 완등 횟수를 입력합니다.<br>
+        순위는 <b>가장 높이 완등한 레벨</b>이 우선이고, 같으면 그 레벨 완등 수로 가려요.
+      </p>
+      <div id="levelConfig"></div>
+      <div style="display:flex; gap:8px; margin-top:8px">
+        <div class="field" style="flex:1; margin:0"><input type="text" id="newLevelInput" placeholder="레벨 이름 (예: 빨강 / V3)" maxlength="12"></div>
+        <button class="btn2" style="width:auto; white-space:nowrap; margin:0" onclick="addLevelDraft()">➕ 추가</button>
+      </div>
+      <button class="btn2" onclick="saveLevels()">레벨 순서 저장</button>
+      <div class="status" id="levelCfgStatus"></div>
+      <div id="levelMemberList" class="member-list" style="margin-top:12px"></div>
+
       <div class="month-head" style="margin-top:22px">💸 지원(정산) 대상 설정</div>
       <p class="dim" style="font-size:12.5px; margin-bottom:8px">
         선택된 부족원만 정산(지원금) 대상에 포함돼요. 해제하면 통계·정산에서 "지원 제외"로 표시. (탭해서 선택)
