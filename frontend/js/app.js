@@ -416,10 +416,10 @@ async function softRefresh() {
   renderCertLine();
   renderVotes();
   renderHome();
+  await loadLevelBoard(); // 홈 레벨 순위 최신화 — 관리 탭 로더가 이 LEVELBOARD 를 재사용하므로 먼저 완료
 
   // 지연 로딩 탭은 플래그를 리셋해 다음 방문 때 새로 받게 하고, 지금 보고 있는 탭만 즉시 재로딩
   galleryLoaded = hallLoaded = moreLoaded = adminLoaded = false;
-  LEVELBOARD = null;
   if (currentTab === 'gallery') loadGallery();
   else if (currentTab === 'hall') loadHall();
   else if (currentTab === 'more') loadMore();
@@ -499,6 +499,7 @@ function applyLogin(session) {
   renderCertLine();
   renderVotes();
   renderHome();
+  loadLevelBoard(); // 홈 레벨 순위 (비동기)
   setTab('home');
 }
 
@@ -679,8 +680,8 @@ function renderHomeNotices() {
   if (!items.length) { el.innerHTML = ''; return; }
   el.innerHTML = '<div class="month-head" style="margin-top:0">📢 공지사항</div>' +
     items.map(function (n) {
-      return '<div class="notice-card"><div class="nc-text">' +
-        esc(n.text).replace(/\n/g, '<br>') + '</div>' +
+      return '<div class="notice-card' + (n.pinned ? ' pinned' : '') + '"><div class="nc-text">' +
+        (n.pinned ? '📌 ' : '') + esc(n.text).replace(/\n/g, '<br>') + '</div>' +
         '<div class="nc-meta">' + esc(n.by) + ' · ' + esc(n.when) + '</div></div>';
     }).join('');
 }
@@ -1843,7 +1844,6 @@ function loadMore() {
   moreLoaded = true;
   if (ME.isAdmin) loadNotices();
   loadStats();
-  loadLevelBoard();
   loadVenue();
   loadArchive();
   loadCompletionLog();
@@ -1898,26 +1898,42 @@ function renderNotices(items) {
   box.innerHTML = '';
   items.forEach(function (n) {
     const c = document.createElement('div');
-    c.className = 'notice-card';
-    c.innerHTML = '<div class="nc-text">' + esc(n.text).replace(/\n/g, '<br>') + '</div>' +
+    c.className = 'notice-card' + (n.pinned ? ' pinned' : '');
+    c.innerHTML = '<div class="nc-text">' + (n.pinned ? '📌 ' : '') + esc(n.text).replace(/\n/g, '<br>') + '</div>' +
       '<div class="nc-meta">' + esc(n.by) + ' · ' + esc(n.when) + '</div>';
     if (ME.isAdmin) {
+      const pin = document.createElement('button');
+      pin.className = 'mini-btn';
+      pin.style.marginRight = '6px';
+      pin.textContent = n.pinned ? '📌 고정 해제' : '📌 고정';
+      pin.onclick = async function () {
+        try {
+          applyNoticesResult(await run('pinNotice', n.row, n.when, !n.pinned, getMe(), ME.token));
+          toast(n.pinned ? '고정을 해제했어요.' : '✓ 공지를 고정했어요.', !n.pinned);
+        } catch (e) { toast(e.message || e); }
+      };
       const del = document.createElement('button');
       del.className = 'mini-btn';
       del.textContent = '🗑️ 삭제';
       del.onclick = async function () {
         if (!(await modalConfirm('이 공지를 삭제할까요?'))) return;
         try {
-          const res = await run('deleteNotice', n.row, n.when, getMe(), ME.token);
-          renderNotices(res.items);
-          DATA.notices = res.items.slice(0, 3);
-          renderHomeNotices();
+          applyNoticesResult(await run('deleteNotice', n.row, n.when, getMe(), ME.token));
         } catch (e) { toast(e.message || e); }
       };
+      c.appendChild(pin);
       c.appendChild(del);
     }
     box.appendChild(c);
   });
+}
+
+// 공지 등록/삭제/고정 결과 { items(전체), home(고정+최신) } 를 목록과 홈에 반영
+function applyNoticesResult(res) {
+  if (!res) return;
+  if (res.items) renderNotices(res.items);
+  DATA.notices = res.home || [];
+  renderHomeNotices();
 }
 
 async function submitNotice() {
@@ -1930,9 +1946,7 @@ async function submitNotice() {
   try {
     const res = await run('postNotice', text, getMe(), ME.token);
     ta.value = '';
-    renderNotices(res.items);
-    DATA.notices = res.items.slice(0, 3);
-    renderHomeNotices();
+    applyNoticesResult(res);
     busyHide();
     toast('✓ 공지를 등록했어요.', true);
   } catch (e) {
@@ -2229,7 +2243,7 @@ async function deleteMemberClick(name) {
 
 /* ==================== 레벨 완등 순위/기록 ====================
  * 순위: 최고 완등 레벨 우선(레벨 목록 순서 기준) → 동점은 그 레벨 완등 수 → 총 완등 → 이름.
- * 레벨 목록은 관리자가 앱에서 설정. 순위는 모두 열람, 기록은 관리자만.
+ * 순위는 홈에서 모두 열람. 완등 기록은 본인이 직접(누구나), 레벨 목록 설정만 관리자.
  */
 let LEVELBOARD = null;  // { levels:[...], rows:[{name,counts,topLevel,topIdx,topCount,total,rank}] }
 let levelDraft = [];    // 관리자 레벨 편집용 작업 배열
@@ -2240,9 +2254,9 @@ function levelRowMap_() {
   return map;
 }
 
-/* ---------- 순위 보기 (더보기 탭, 모두) ---------- */
+/* ---------- 순위 보기 (홈, 모두) ---------- */
 async function loadLevelBoard() {
-  const box = document.getElementById('levelBox');
+  const box = document.getElementById('homeLevelBox');
   if (box) { box.className = 'loading'; box.textContent = '순위를 불러오는 중…'; }
   try {
     LEVELBOARD = await run('getLevelBoard');
@@ -2253,10 +2267,13 @@ async function loadLevelBoard() {
 }
 
 function renderLevelRanking() {
-  const box = document.getElementById('levelBox');
+  const box = document.getElementById('homeLevelBox');
   if (!box || !LEVELBOARD) return;
   box.className = '';
   const levels = LEVELBOARD.levels || [];
+  // 내 완등 기록 버튼: 로그인 + 레벨 존재 시에만 노출
+  const myBtn = document.getElementById('myLevelBtn');
+  if (myBtn) myBtn.style.display = (getMe() && levels.length) ? '' : 'none';
   if (!levels.length) {
     box.innerHTML = '<div class="dim" style="font-size:13px; padding:6px 2px">아직 레벨이 등록되지 않았어요.' +
       (ME.isAdmin ? ' 관리 탭에서 레벨을 먼저 등록해 주세요.' : '') + '</div>';
@@ -2410,6 +2427,33 @@ function editMemberLevelPrompt(name) {
       renderLevelMemberList();
       renderLevelRanking();
       toast('✓ ' + name + ' 완등 기록을 저장했어요.', true);
+    }
+  });
+}
+
+// 본인 완등 기록 (홈 — 누구나 가능). 백엔드가 토큰으로 본인만 확인하므로 관리자 검증 없음.
+function editMyLevelPrompt() {
+  const me = getMe();
+  if (!me) return;
+  const levels = (LEVELBOARD && LEVELBOARD.levels) || [];
+  if (!levels.length) return toast('아직 레벨이 등록되지 않았어요.');
+  const cur = (levelRowMap_()[me] && levelRowMap_()[me].counts) || {};
+  modal({
+    title: '🧗 내 완등 기록',
+    message: '레벨별로 완등한 개수를 입력하세요. (빈칸/0 = 없음)',
+    fields: levels.map(function (lv) {
+      return { key: lv, label: lv, type: 'number', inputmode: 'numeric',
+               value: cur[lv] != null ? String(cur[lv]) : '' };
+    }),
+    confirmText: '저장',
+    busyText: '저장 중…',
+    onConfirm: async function (v) {
+      const counts = {};
+      levels.forEach(function (lv) { const n = parseInt(v[lv], 10); if (!isNaN(n) && n > 0) counts[lv] = n; });
+      LEVELBOARD = await run('setMyLevelRecord', counts, me, ME.token);
+      renderLevelRanking();
+      if (adminLoaded && ME.isAdmin) renderLevelMemberList(); // 관리 탭이 열려 있으면 목록도 동기화
+      toast('✓ 내 완등 기록을 저장했어요.', true);
     }
   });
 }

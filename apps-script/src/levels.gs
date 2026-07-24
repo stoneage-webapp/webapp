@@ -151,18 +151,17 @@ function setLevels(levels, requester, authToken) {
   return getLevelBoard();
 }
 
-/* ---------- 한 구성원의 레벨별 완등 수 기록 (관리자) ----------
+/* ---------- 한 구성원의 레벨별 완등 수 기록 ----------
  * counts = { 레벨명: 정수 } — 현재 레벨 목록에 있는 항목만 반영. 음수/비정수는 0 처리.
+ * 공통 로직: 권한 검증은 호출부(setLevelRecord=관리자, setMyLevelRecord=본인)에서 이미 끝냈다고 가정.
  */
-function setLevelRecord(name, counts, requester, authToken) {
-  requester = verify_(requester, authToken);
-  if (!isAdmin_(requester)) throw new Error('관리자만 완등 기록을 수정할 수 있습니다.');
+function writeLevelRecord_(name, counts) {
   name = String(name || '').trim();
   if (!name) throw new Error('대상 이름이 없습니다.');
   const roster = splitBySupport_(ss_()).all.map(function (m) { return m.name; });
   if (roster.indexOf(name) < 0) throw new Error('명단에 없는 이름입니다: ' + name);
   const levels = getLevels_();
-  if (!levels.length) throw new Error('먼저 레벨을 설정하세요.');
+  if (!levels.length) throw new Error('아직 레벨이 설정되지 않았어요. (관리자에게 문의)');
   counts = (counts && typeof counts === 'object') ? counts : {};
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -179,4 +178,17 @@ function setLevelRecord(name, counts, requester, authToken) {
     lock.releaseLock();
   }
   return getLevelBoard();
+}
+
+// 관리자: 아무 구성원의 완등 기록 수정 (관리 탭 — 정정/대리 입력용)
+function setLevelRecord(name, counts, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!isAdmin_(requester)) throw new Error('관리자만 다른 구성원의 완등 기록을 수정할 수 있습니다.');
+  return writeLevelRecord_(name, counts);
+}
+
+// 본인: 자기 완등 기록만 입력 (관리자 아니어도 가능). name 은 토큰으로 검증되므로 남의 기록은 못 바꾼다.
+function setMyLevelRecord(counts, name, authToken) {
+  name = verify_(name, authToken);
+  return writeLevelRecord_(name, counts);
 }

@@ -79,9 +79,11 @@ const POST_ACTIONS = {
   renameMember:      { auth: 'requester', bust: true, fn: function (d) { return renameMember(d.oldName, d.newName, d.requester, d.token); } }, // 부족원 이름 수정 (관리자)
   deleteMember:      { auth: 'requester', bust: true, fn: function (d) { return deleteMember(d.targetName, d.requester, d.token); } },        // 부족원 삭제 (관리자)
   setLevels:         { auth: 'requester', bust: true, fn: function (d) { return setLevels(d.levels, d.requester, d.token); } },              // 레벨 목록 설정 (관리자)
-  setLevelRecord:    { auth: 'requester', bust: true, fn: function (d) { return setLevelRecord(d.name, d.counts, d.requester, d.token); } }, // 레벨별 완등 수 기록 (관리자)
+  setLevelRecord:    { auth: 'requester', bust: true, fn: function (d) { return setLevelRecord(d.name, d.counts, d.requester, d.token); } }, // 다른 구성원 완등 기록 (관리자)
+  setMyLevelRecord:  { auth: 'name',      bust: true, fn: function (d) { return setMyLevelRecord(d.counts, d.name, d.token); } },           // 본인 완등 기록 (누구나)
   postNotice:        { auth: 'name', bust: true, fn: function (d) { return postNotice(d.text, d.name, d.token); } },   // #24
   deleteNotice:      { auth: 'name', bust: true, fn: function (d) { return deleteNotice(d.row, d.when, d.name, d.token); } }, // #24
+  pinNotice:         { auth: 'name', bust: true, fn: function (d) { return pinNotice(d.row, d.when, d.pinned, d.name, d.token); } }, // 공지 고정/해제 (관리자)
   runSettle:         { auth: 'requester', bust: true, fn: function (d) { return runSettle(d.ym, d.requester, d.token); } },   // 웹 정산 (관리자/담당자)
   setSettlers:       { auth: 'requester', bust: true, fn: function (d) { return setSettlers(d.names, d.requester, d.token); } }, // 담당자 지정 (관리자)
   setSupports:       { auth: 'requester', bust: true, fn: function (d) { return setSupports(d.names, d.requester, d.token); } }, // 지원 대상 지정 (관리자, J열)
@@ -198,7 +200,7 @@ function getInitData() {
     confirmed: votes.confirmed,    // { disaster: {date,loc}|null }
     admins: CONFIG.ADMINS,
     settlers: getSettlers_(),      // 정산 담당자 (관리자 페이지 노출 판단용)
-    notices: getNotices(3).items,  // 최신 공지 3건 — 홈 화면 노출용
+    notices: getHomeNotices_(),    // 홈 노출: 고정 공지 전부 + 최신 1건
     flashOwners: votes.flashOwners
   };
 }

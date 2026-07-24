@@ -99,9 +99,11 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `renameMember` | `oldName, newName, requester, token` | `{ members, support, settlers }` — 관리자 전용. A열 이름만 변경(PIN·지원여부 유지). 관리자 이름은 불가 |
 | `deleteMember` | `targetName, requester, token` | `{ members, support, settlers }` — 관리자 전용. 행 전체 삭제. 관리자 이름은 불가 |
 | `setLevels` | `levels(배열, 낮은→높은 순), requester, token` | `getLevelBoard()` 결과 — 관리자 전용. Script Property `levels` 저장 + `레벨완등` 시트 열 보강 |
-| `setLevelRecord` | `name, counts({레벨:정수}), requester, token` | `getLevelBoard()` 결과 — 관리자 전용. 한 구성원의 레벨별 완등 수를 `레벨완등` 시트에 기록 |
-| `postNotice` | `text, name, token` | `getNotices()` 결과 — 관리자 전용 |
-| `deleteNotice` | `row, when, name, token` | `getNotices()` 결과 — 관리자 전용. `when` 대조로 행 밀림 방지 |
+| `setLevelRecord` | `name, counts({레벨:정수}), requester, token` | `getLevelBoard()` — **관리자 전용**(다른 구성원 정정). 완등 수를 `레벨완등` 시트에 기록 |
+| `setMyLevelRecord` | `counts({레벨:정수}), name, token` | `getLevelBoard()` — **누구나(본인)**. 토큰으로 본인 확인 후 자기 완등 수만 기록 |
+| `postNotice` | `text, name, token` | `{ items(전체), home(고정+최신1) }` — 관리자 전용 |
+| `deleteNotice` | `row, when, name, token` | `{ items, home }` — 관리자 전용. `when` 대조로 행 밀림 방지 |
+| `pinNotice` | `row, when, pinned(bool), name, token` | `{ items, home }` — 관리자 전용. 공지 시트 **D열(고정)** 설정. 홈은 고정 공지 전부 + 최신 1건만 노출 |
 | `runSettle` | `ym('2026-07'), requester, token` | `{ ym, done, total, independent, copied, uncovered }` — **관리자 또는 정산 담당자** |
 | `setSettlers` | `names(배열), requester, token` | `{ settlers }` — 관리자 전용. Script Properties `settlers`에 저장 |
 | `setSupports` | `names(지원 대상 배열), requester, token` | `{ support: {이름:bool} }` — 관리자 전용. 부족원 시트 **J열(지원여부)** 기록 |
@@ -133,11 +135,11 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 사진 인증 | `startUpload` → `uploadChunk`/`checkUploadStatus` → `finalizeProof` |
 | 벽화 갤러리 | `getGallery`(월/사람 필터), `deleteProof` |
 | 명예의전당 | `getHallData`, `getHallArchive`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |
-| 공지 | 홈: `getInitData`의 최신 3건, 더보기(관리자): `getNotices`, `postNotice`/`deleteNotice` |
+| 공지 | 홈: `getInitData.notices`(고정 전부 + 최신 1건), 더보기(관리자): `getNotices`, `postNotice`/`deleteNotice`/`pinNotice`(고정) |
+| 레벨 순위 (홈, 모두 열람) | `getLevelBoard`, 본인 기록 `setMyLevelRecord`(누구나) |
 | 통계 | `getStats`(관리자 전체/일반 본인) |
 | 완료된 모임 기록 | `getCompletionLog` |
-| 레벨 순위 (더보기, 모두 열람) | `getLevelBoard` |
-| 관리 탭 (관리자·정산 담당자만 노출) | `runSettle`, `getSettleStatus`, `cancelSettle`, `resetSettle`, `setSettlers`(관리자), `setSupports`(관리자), `resetPin`(관리자), `addMember`/`renameMember`/`deleteMember`(관리자, 부족원 관리), `setLevels`/`setLevelRecord`(관리자, 레벨 완등 기록) |
+| 관리 탭 (관리자·정산 담당자만 노출) | `runSettle`, `getSettleStatus`, `cancelSettle`, `resetSettle`, `setSettlers`(관리자), `setSupports`(관리자), `resetPin`(관리자), `addMember`/`renameMember`/`deleteMember`(관리자, 부족원 관리), `setLevels`(관리자, 레벨 목록)·`setLevelRecord`(관리자, 정정) |
 
 ## AS-IS와의 차이 (참고)
 

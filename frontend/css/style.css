@@ -272,6 +272,7 @@ textarea:focus { outline: none; border-color: var(--ember); }
 }
 .notice-card .nc-text { font-size: 14.5px; line-height: 1.65; }
 .notice-card .nc-meta { font-size: 11.5px; color: var(--ink-dim); margin-top: 7px; }
+.notice-card.pinned { border-color: var(--ember); background: #2a2018; } /* 고정 공지 강조 */
 
 .stats-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .stats-table { border-collapse: collapse; width: 100%; font-size: 12.5px; white-space: nowrap; }
