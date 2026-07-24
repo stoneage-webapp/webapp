@@ -40,6 +40,7 @@ function dismissKakao() {
 const CHUNK = 8 * 1024 * 1024; // 릴레이 폴백용 8MB (Drive resumable: 256KB 배수 필수)
 let DATA = { members: [], raid: [], disaster: [] };
 let category = 'raid';
+let currentTab = 'home'; // 현재 보고 있는 탭 (당겨 새로고침이 이 탭을 유지)
 
 // run(액션, 인자...) 은 js/api.js 가 제공 (fetch 기반 — 호출부는 GAS 시절과 동일)
 
@@ -371,18 +372,59 @@ function initPullToRefresh() {
     } else { pulling = false; reset(); }
   }, { passive: false });
 
-  function end() {
+  async function end() {
     if (!pulling) return;
     pulling = false;
     if (dist >= THRESHOLD) {
+      // 전체 리로드 대신 현재 탭을 유지한 채 데이터만 갱신 (홈으로 안 돌아감)
       el.classList.add('refreshing');
       if (spin) { spin.style.transform = ''; spin.textContent = '↻'; }
       el.style.transform = 'translateX(-50%) translateY(' + THRESHOLD + 'px)';
-      setTimeout(function () { location.reload(); }, 150);
+      try { await softRefresh(); }
+      finally {
+        el.classList.remove('refreshing');
+        if (spin) spin.textContent = '↓';
+        reset();
+      }
     } else { reset(); }
   }
   window.addEventListener('touchend', end, { passive: true });
   window.addEventListener('touchcancel', function () { if (pulling) { pulling = false; reset(); } }, { passive: true });
+}
+
+/* 당겨 새로고침 본체 — 전체 페이지 리로드 없이 getInitData 를 다시 받아
+ * 현재 탭을 유지한 채 화면을 다시 그린다. (location.reload 는 항상 홈으로 돌아가는 문제 해결)
+ */
+async function softRefresh() {
+  let fresh;
+  try {
+    fresh = await run('getInitData');
+  } catch (e) {
+    toast('새로고침 실패: ' + (e.message || e));
+    return;
+  }
+  DATA = fresh;
+  fillNameSelects();
+  if (!getMe()) return; // 로그인 전이면 이름 목록만 갱신하고 끝
+
+  // 로그인 상태: DATA 의존 화면 다시 그리기 (applyLogin 의 렌더부와 동일, ME/탭은 유지)
+  buildChips('photoChips');
+  buildDateSelect('photo');
+  buildMonthFilter();
+  buildGalleryFilters();
+  applyAdminUI();
+  renderCertLine();
+  renderVotes();
+  renderHome();
+
+  // 지연 로딩 탭은 플래그를 리셋해 다음 방문 때 새로 받게 하고, 지금 보고 있는 탭만 즉시 재로딩
+  galleryLoaded = hallLoaded = moreLoaded = adminLoaded = false;
+  LEVELBOARD = null;
+  if (currentTab === 'gallery') loadGallery();
+  else if (currentTab === 'hall') loadHall();
+  else if (currentTab === 'more') loadMore();
+  else if (currentTab === 'admin') loadAdmin();
+  else if (currentTab === 'photo') renderMyProofs();
 }
 
 window.addEventListener('load', async function() {
@@ -494,6 +536,7 @@ function changePinPrompt() {
 
 /* ---------- 탭 ---------- */
 function setTab(t) {
+  currentTab = t;
   ['home','vote','photo','gallery','hall','more','admin'].forEach(function(k) {
     document.getElementById('tab-' + k).classList.toggle('on', k === t);
     document.getElementById('nav-' + k).classList.toggle('on', k === t);
@@ -1602,9 +1645,9 @@ function buildDateSelect(kind) {
   });
   (DATA.disaster || []).forEach(function(r) { addOpt(sel, r.date, '🌋 ' + fmtVoteDate(r)); });
   addOpt(sel, '__custom', '📅 직접 선택');
-  sel.addEventListener('change', function() {
+  sel.onchange = function() { // onchange 속성 = 재호출(당겨 새로고침)해도 리스너 누적 없음
     custom.style.display = sel.value === '__custom' ? 'block' : 'none';
-  });
+  };
 }
 function addOpt(sel, val, label) {
   const o = document.createElement('option');
