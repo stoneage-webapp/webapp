@@ -30,7 +30,8 @@ const GET_ACTIONS = {
   getHallArchive:  { cache: true, fn: function (p) { return getHallArchive(); } },          // #23 역대 우승자
   getSettleStatus: { cache: true, fn: function (p) { return getSettleStatus(p.ym || ''); } }, // #21 정산 현황 (월 지정)
   getVenueStats:   { cache: true, fn: function (p) { return getVenueStats(); } },            // 암장별 방문 통계
-  getCompletionLog:{ cache: true, fn: function (p) { return getCompletionLog(Number(p.limit) || 10); } } // 완료된 모임 최근 기록
+  getCompletionLog:{ cache: true, fn: function (p) { return getCompletionLog(Number(p.limit) || 10); } }, // 완료된 모임 최근 기록
+  getLevelBoard:   { cache: true, fn: function (p) { return getLevelBoard(); } }                          // 레벨별 완등 순위 (공개)
 };
 
 /* ---------- 인증 조회 / 변경 (POST) ---------- */
@@ -74,6 +75,11 @@ const POST_ACTIONS = {
 
   // 관리자 기능
   resetPin:          { auth: 'requester', fn: function (d) { return resetPin(d.targetName, d.requester, d.token); } }, // #18 (관리자 검증은 함수 내부)
+  addMember:         { auth: 'requester', bust: true, fn: function (d) { return addMember(d.newName, d.requester, d.token); } },              // 부족원 추가 (관리자)
+  renameMember:      { auth: 'requester', bust: true, fn: function (d) { return renameMember(d.oldName, d.newName, d.requester, d.token); } }, // 부족원 이름 수정 (관리자)
+  deleteMember:      { auth: 'requester', bust: true, fn: function (d) { return deleteMember(d.targetName, d.requester, d.token); } },        // 부족원 삭제 (관리자)
+  setLevels:         { auth: 'requester', bust: true, fn: function (d) { return setLevels(d.levels, d.requester, d.token); } },              // 레벨 목록 설정 (관리자)
+  setLevelRecord:    { auth: 'requester', bust: true, fn: function (d) { return setLevelRecord(d.name, d.counts, d.requester, d.token); } }, // 레벨별 완등 수 기록 (관리자)
   postNotice:        { auth: 'name', bust: true, fn: function (d) { return postNotice(d.text, d.name, d.token); } },   // #24
   deleteNotice:      { auth: 'name', bust: true, fn: function (d) { return deleteNotice(d.row, d.when, d.name, d.token); } }, // #24
   runSettle:         { auth: 'requester', bust: true, fn: function (d) { return runSettle(d.ym, d.requester, d.token); } },   // 웹 정산 (관리자/담당자)

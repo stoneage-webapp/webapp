@@ -19,7 +19,26 @@
     font-family: 'Pretendard', -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
     padding-bottom: calc(72px + var(--safe-b));
     font-size: 16px; /* iOS 입력 시 확대 방지 기준 */
+    overscroll-behavior-y: contain; /* 커스텀 당겨 새로고침이 네이티브 제스처와 충돌하지 않도록 */
   }
+
+  /* 아래로 당겨 새로고침 인디케이터 (app.js initPullToRefresh 가 위치/회전 제어) */
+  #ptr {
+    position: fixed; top: calc(-46px + var(--safe-t)); left: 50%;
+    transform: translateX(-50%);
+    width: 40px; height: 40px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--stone-hi); border: 1px solid var(--line);
+    color: var(--ember); font-size: 20px; font-weight: 800; line-height: 1;
+    z-index: 40; box-shadow: 0 6px 18px rgba(0, 0, 0, .4);
+    opacity: 0; pointer-events: none;
+  }
+  #ptr.active { opacity: 1; }
+  #ptr.snap { transition: transform .24s cubic-bezier(.2, .8, .3, 1), opacity .24s; }
+  #ptr.ready { color: var(--moss); border-color: var(--moss); }
+  #ptr .ptr-spin { transition: transform .06s linear; }
+  #ptr.refreshing .ptr-spin { animation: ptr-rot .7s linear infinite; }
+  @keyframes ptr-rot { to { transform: rotate(360deg); } }
   header {
     padding: calc(14px + var(--safe-t)) var(--pad) 12px; text-align: center;
     border-bottom: 1px solid var(--line);
@@ -454,6 +473,54 @@ body > header { flex-shrink: 0; }
   border-radius: 10px; padding: 9px 12px; margin-bottom: 8px;
 }
 .myproof-row .mp-txt { flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-dim); line-height: 1.5; }
+
+/* ==================== 부족원 관리 (관리 탭, 관리자) ==================== */
+.member-list { margin-top: 10px; }
+.member-row {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--stone); border: 1px solid var(--line);
+  border-radius: 10px; padding: 9px 12px; margin-bottom: 8px;
+}
+.member-row .member-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; }
+.member-row .mini-btn { margin-top: 0; }
+.member-row .mini-btn.danger { border-color: #7a3b3b; color: #d98a8a; }
+
+/* ==================== 레벨 완등 순위 ==================== */
+.lv-board { display: flex; flex-direction: column; gap: 8px; }
+.lv-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--stone); border: 1px solid var(--line);
+  border-radius: 10px; padding: 9px 12px;
+}
+.lv-row.me { border-color: var(--moss); }
+.lv-rank { flex-shrink: 0; width: 34px; text-align: center; font-size: 16px; font-weight: 800; color: var(--ember); }
+.lv-body { flex: 1; min-width: 0; }
+.lv-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.lv-head .lv-name { font-size: 14.5px; font-weight: 800; }
+.lv-head .lv-top { font-size: 12.5px; color: var(--ink-dim); flex-shrink: 0; }
+.lv-head .lv-top b { color: var(--ember); font-size: 14px; }
+.lv-sub { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 3px; }
+.lv-sub .lv-brk { font-size: 12px; color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lv-sub .lv-total { font-size: 12px; color: var(--moss); font-weight: 700; flex-shrink: 0; }
+
+/* 레벨 설정 (관리자) */
+.lv-cfg-row {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--stone); border: 1px solid var(--line);
+  border-radius: 10px; padding: 7px 10px; margin-bottom: 6px;
+}
+.lv-cfg-row .lv-cfg-idx {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--stone-hi); color: var(--ink-dim);
+  font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+}
+.lv-cfg-row .lv-cfg-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; }
+.lv-cfg-row .mini-btn { margin-top: 0; padding: 5px 10px; }
+.lv-cfg-row .mini-btn:disabled { opacity: .35; }
+.lv-cfg-row .mini-btn.danger { border-color: #7a3b3b; color: #d98a8a; }
+
+/* 필드 여러 개인 모달(레벨 완등 입력 등)이 화면을 넘으면 카드 안에서 스크롤 */
+.modal-card { max-height: 84vh; overflow-y: auto; }
 
 /* ==================== 처리 중 오버레이 — 좌→우로 차오르는 트리클 막대 ----------
  * 실제 퍼센트가 없는 단발성 작업(정산/저장/공지 등)용. 0%→90%까지 감속하며

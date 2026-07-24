@@ -64,6 +64,51 @@
     });
   }
 
+  // 부족원 추가/수정/삭제 후 백엔드가 돌려주는 스냅샷 형식 흉내 (members·support·settlers)
+  function memberSnap() {
+    return { members: MEMBERS.slice().sort(), support: DATA.support, settlers: DATA.settlers };
+  }
+
+  // ── 레벨(난이도)별 완등 순위 목데이터 ──
+  let LEVELS = ['흰', '노', '주', '초', '파', '빨'];       // 낮은→높은 순
+  const LEVEL_COUNTS = {                                   // { 이름: { 레벨: 완등수 } }
+    '김광훈': { '흰': 15, '노': 10, '주': 6, '초': 3, '파': 1 },
+    '이희주': { '흰': 12, '노': 9, '주': 6, '초': 3, '파': 1 },
+    '박도윤': { '흰': 8, '노': 4, '주': 1 },
+    '최서연': { '흰': 5, '노': 2 }
+    // 정민재: 기록 없음 (rank=null 시나리오)
+  };
+  function levelBoard() {
+    const roster = MEMBERS.slice().sort();
+    const rows = roster.map(function (name) {
+      const raw = LEVEL_COUNTS[name] || {};
+      const c = {};
+      let topIdx = -1, total = 0;
+      LEVELS.forEach(function (lv, i) {
+        const n = raw[lv] || 0;
+        if (n > 0) { c[lv] = n; total += n; if (i > topIdx) topIdx = i; }
+      });
+      const topLevel = topIdx >= 0 ? LEVELS[topIdx] : '';
+      return { name: name, counts: c, topLevel: topLevel, topIdx: topIdx,
+               topCount: topLevel ? (c[topLevel] || 0) : 0, total: total };
+    });
+    rows.sort(function (a, b) {
+      if (b.topIdx !== a.topIdx) return b.topIdx - a.topIdx;
+      if (b.topCount !== a.topCount) return b.topCount - a.topCount;
+      if (b.total !== a.total) return b.total - a.total;
+      return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+    });
+    let rank = 0, shown = 0, prevKey = null;
+    rows.forEach(function (r) {
+      if (r.topIdx < 0 && r.total === 0) { r.rank = null; return; }
+      shown++;
+      const key = r.topIdx + '|' + r.topCount + '|' + r.total;
+      if (key !== prevKey) { rank = shown; prevKey = key; }
+      r.rank = rank;
+    });
+    return { levels: LEVELS.slice(), rows: rows };
+  }
+
   window.API_MOCK = {
     handle: function (fn, args) {
       const T = {
@@ -163,6 +208,57 @@
         postNotice: { items: [{ when: 'now', by: args[1], text: args[0], row: 4 }].concat(DATA.notices) },
         deleteNotice: { items: DATA.notices.slice(1) },
         resetPin: { name: args[0], reset: true },
+        // 부족원 CRUD — DATA/MEMBERS 를 실제로 변형하므로 fn 가드 필수 (flash 계열과 동일 패턴)
+        addMember: (function () {
+          if (fn !== 'addMember') return memberSnap();
+          const n = String(args[0] || '').trim();
+          if (n && MEMBERS.indexOf(n) < 0) { MEMBERS.push(n); DATA.support[n] = true; }
+          return memberSnap();
+        })(),
+        renameMember: (function () {
+          if (fn !== 'renameMember') return memberSnap();
+          const oldN = String(args[0] || '').trim(), newN = String(args[1] || '').trim();
+          const i = MEMBERS.indexOf(oldN);
+          if (i > -1 && newN && MEMBERS.indexOf(newN) < 0) {
+            MEMBERS[i] = newN;
+            DATA.support[newN] = DATA.support[oldN]; delete DATA.support[oldN];
+            const si = DATA.settlers.indexOf(oldN); if (si > -1) DATA.settlers[si] = newN;
+          }
+          return memberSnap();
+        })(),
+        deleteMember: (function () {
+          if (fn !== 'deleteMember') return memberSnap();
+          const n = String(args[0] || '').trim();
+          const i = MEMBERS.indexOf(n);
+          if (i > -1) {
+            MEMBERS.splice(i, 1); delete DATA.support[n]; delete LEVEL_COUNTS[n];
+            DATA.settlers = DATA.settlers.filter(function (x) { return x !== n; });
+          }
+          return memberSnap();
+        })(),
+        // 레벨 순위/기록
+        getLevelBoard: levelBoard(),
+        setLevels: (function () {
+          if (fn !== 'setLevels') return levelBoard();
+          if (Array.isArray(args[0])) {
+            LEVELS = args[0].map(function (s) { return String(s).trim(); }).filter(Boolean);
+          }
+          return levelBoard();
+        })(),
+        setLevelRecord: (function () {
+          if (fn !== 'setLevelRecord') return levelBoard();
+          const nm = String(args[0] || '').trim();
+          const counts = (args[1] && typeof args[1] === 'object') ? args[1] : {};
+          if (MEMBERS.indexOf(nm) > -1) {
+            const c = {};
+            LEVELS.forEach(function (lv) {
+              const v = parseInt(counts[lv], 10);
+              if (!isNaN(v) && v > 0) c[lv] = v;
+            });
+            LEVEL_COUNTS[nm] = c;
+          }
+          return levelBoard();
+        })(),
         runSettle: { ym: args[0], done: 2, total: 4, independent: 1, canceled: 1, copied: 1, uncovered: ['박도윤'] },
         setSettlers: { settlers: args[0] },
         setSupports: (function () { const on = Array.isArray(args[0]) ? args[0] : []; const s = {}; MEMBERS.forEach(function (m) { s[m] = on.indexOf(m) > -1; }); return { support: s }; })(),

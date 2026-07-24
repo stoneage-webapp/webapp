@@ -19,7 +19,9 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 |---|---|
 | `Code.gs` | 웹앱 진입점 `doGet`/`doPost` + **action 레지스트리**(auth/bust/cache 플래그) + 조회 캐시 + `getInitData` |
 | `config.gs` | 전역 상수 `CONFIG` (실제 값은 커밋 금지 — `v3.0.2/Code.local.md` 참고) |
-| `auth.gs` | PIN 로그인, 서명 토큰, 요청 검증, 관리자 판별 |
+| `auth.gs` | PIN 로그인, 서명 토큰, 요청 검증, 관리자 판별, PIN 초기화 |
+| `members.gs` | 부족원 명단 관리(관리자) — 추가/이름수정/삭제. 부족원 시트 A열만 조작 |
+| `levels.gs` | 레벨(난이도)별 완등 기록/순위 — 레벨 목록(Script Property)·`레벨완등` 시트, 최고 레벨 우선 순위 |
 | `votes.gs` | 정기공격/자연재해 투표, 번개, 일정 확정, 완료 처리, 마감 판정 |
 | `photos.gs` | Drive 업로드(청크), Photos 업로드, 벽화 갤러리, 사진 삭제 |
 | `hall.gs` | 명예의전당 출품/투표/영상 삭제 |
@@ -54,6 +56,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `getSettleStatus` | `ym`(선택, 기본 이번 달) | `{ ym, months:[존재하는 월들], rows:[{name,status}] }` — 인증현황 시트, 지정한 월 한 열만 |
 | `getVenueStats` | — | `{ total:[{loc,count}], thisMonth:[{loc,count}], month }` — 암장별 방문 집계 |
 | `getCompletionLog` | `limit`(기본10) | `{ items:[{when,kind,month,date,loc,people,by}] }` — `완료기록` 시트 최신순. 정기공격 무산 종료는 `date`가 `'(모임 없음)'` |
+| `getLevelBoard` | — | `{ levels:[...낮은→높은], rows:[{name,counts:{레벨:수},topLevel,topIdx,topCount,total,rank}] }` — 레벨별 완등 순위(공개). **최고 레벨 우선** → 동점은 그 레벨 완등수 → 총완등 → 이름. 기록 없으면 `rank:null` |
 
 > - `driveApiKey`는 익명 `getInitData`에서 **제거됨** → `loginWithPin`/`changePin` 응답으로 이동.
 > - `certNudge`도 같은 이유로 로그인 응답 전용: "이번 달 완료 처리된 모임에 참여했는데 아직 인증 안 함" 여부를 **본인 것만** 알려준다 (`needsCertNudge_`, votes.gs). 다른 사람의 인증 여부를 노출하지 않기 위해 `getInitData` 등 익명 GET에는 포함하지 않는다.
@@ -92,6 +95,11 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `deleteHallEntry` | `fileId, requester, token` | `getHallData()` 결과 |
 | `voteHall` | `fileId, voter, token` | `getHallData()` 결과 |
 | `resetPin` | `targetName, requester, token` | `{ name, reset:true }` — 관리자 전용. 대상자는 다음 로그인에서 새 PIN 설정 |
+| `addMember` | `newName, requester, token` | `{ members, support, settlers }` — 관리자 전용. 부족원 시트 A열에 이름 추가 |
+| `renameMember` | `oldName, newName, requester, token` | `{ members, support, settlers }` — 관리자 전용. A열 이름만 변경(PIN·지원여부 유지). 관리자 이름은 불가 |
+| `deleteMember` | `targetName, requester, token` | `{ members, support, settlers }` — 관리자 전용. 행 전체 삭제. 관리자 이름은 불가 |
+| `setLevels` | `levels(배열, 낮은→높은 순), requester, token` | `getLevelBoard()` 결과 — 관리자 전용. Script Property `levels` 저장 + `레벨완등` 시트 열 보강 |
+| `setLevelRecord` | `name, counts({레벨:정수}), requester, token` | `getLevelBoard()` 결과 — 관리자 전용. 한 구성원의 레벨별 완등 수를 `레벨완등` 시트에 기록 |
 | `postNotice` | `text, name, token` | `getNotices()` 결과 — 관리자 전용 |
 | `deleteNotice` | `row, when, name, token` | `getNotices()` 결과 — 관리자 전용. `when` 대조로 행 밀림 방지 |
 | `runSettle` | `ym('2026-07'), requester, token` | `{ ym, done, total, independent, copied, uncovered }` — **관리자 또는 정산 담당자** |
@@ -128,7 +136,8 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 공지 | 홈: `getInitData`의 최신 3건, 더보기(관리자): `getNotices`, `postNotice`/`deleteNotice` |
 | 통계 | `getStats`(관리자 전체/일반 본인) |
 | 완료된 모임 기록 | `getCompletionLog` |
-| 관리 탭 (관리자·정산 담당자만 노출) | `runSettle`, `getSettleStatus`, `cancelSettle`, `resetSettle`, `setSettlers`(관리자), `setSupports`(관리자), `resetPin`(관리자) |
+| 레벨 순위 (더보기, 모두 열람) | `getLevelBoard` |
+| 관리 탭 (관리자·정산 담당자만 노출) | `runSettle`, `getSettleStatus`, `cancelSettle`, `resetSettle`, `setSettlers`(관리자), `setSupports`(관리자), `resetPin`(관리자), `addMember`/`renameMember`/`deleteMember`(관리자, 부족원 관리), `setLevels`/`setLevelRecord`(관리자, 레벨 완등 기록) |
 
 ## AS-IS와의 차이 (참고)
 

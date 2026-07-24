@@ -304,24 +304,93 @@ let ME = { name: '', token: '', isAdmin: false };
 function getMe() { return ME.name; }
 
 /* ---------- 초기화 ---------- */
+// 이름 셀렉트(로그인·숨김 myName) 채우기 — 최초 로드 + 부족원 명단 변경 후 재호출
+function fillNameSelects() {
+  const lsel = document.getElementById('loginName');
+  const keepL = lsel.value;
+  lsel.innerHTML = '<option value="">이름 선택</option>';
+  (DATA.members || []).forEach(function (m) { addOpt(lsel, m, m); });
+  if (keepL) lsel.value = keepL;
+
+  const sel = document.getElementById('myName'); // 숨김 셀렉트 (기존 코드 호환)
+  const keepM = sel.value;
+  sel.innerHTML = '';
+  (DATA.members || []).forEach(function (m) { addOpt(sel, m, m); });
+  if (keepM) sel.value = keepM;
+}
+
+/* ---------- 아래로 당겨 새로고침 (pull-to-refresh) ----------
+ * 문서 스크롤이 최상단일 때 아래로 당기면 인디케이터가 따라오고, 임계값을 넘겨 놓으면
+ * location.reload() 로 새로고침. 가로 스와이프·위로 스크롤·업로드/모달 진행 중엔 무시한다.
+ */
+function initPullToRefresh() {
+  const el = document.getElementById('ptr');
+  if (!el) return;
+  const spin = el.querySelector('.ptr-spin');
+  const THRESHOLD = 70;   // 이만큼 당기면 새로고침
+  const MAX = 110;        // 인디케이터 최대 이동
+  let startY = 0, startX = 0, pulling = false, decided = false, dist = 0;
+
+  function atTop() { return (window.scrollY || document.documentElement.scrollTop || 0) <= 0; }
+  function busy() { // 업로드 오버레이/모달이 떠 있으면 새로고침 제스처 비활성 (진행 중 작업 보호)
+    const up = document.getElementById('uploadOverlay');
+    const md = document.getElementById('modalRoot');
+    return (up && up.style.display === 'flex') || (md && md.children.length > 0);
+  }
+  function setPull(d) {
+    dist = d;
+    el.style.transform = 'translateX(-50%) translateY(' + Math.min(d, MAX) + 'px)';
+    el.classList.toggle('ready', d >= THRESHOLD);
+    if (spin) spin.style.transform = 'rotate(' + Math.min(d / THRESHOLD, 1) * 180 + 'deg)';
+  }
+  function reset() {
+    el.classList.add('snap');
+    el.classList.remove('ready', 'active');
+    el.style.transform = '';
+    if (spin) spin.style.transform = '';
+    setTimeout(function () { el.classList.remove('snap'); }, 250);
+  }
+
+  window.addEventListener('touchstart', function (e) {
+    if (busy() || e.touches.length !== 1 || !atTop()) { pulling = false; return; }
+    startY = e.touches[0].clientY; startX = e.touches[0].clientX;
+    pulling = true; decided = false; dist = 0;
+  }, { passive: true });
+
+  window.addEventListener('touchmove', function (e) {
+    if (!pulling) return;
+    const dy = e.touches[0].clientY - startY;
+    const dx = e.touches[0].clientX - startX;
+    if (!decided) { // 첫 유의미한 이동으로 방향 결정: 가로거나 위로면 PTR 취소
+      if (Math.abs(dx) > Math.abs(dy) || dy <= 0) { pulling = false; return; }
+      decided = true; el.classList.add('active');
+    }
+    if (dy > 0 && atTop()) {
+      e.preventDefault();  // 네이티브 고무줄/새로고침 억제
+      setPull(dy * 0.5);   // 저항감
+    } else { pulling = false; reset(); }
+  }, { passive: false });
+
+  function end() {
+    if (!pulling) return;
+    pulling = false;
+    if (dist >= THRESHOLD) {
+      el.classList.add('refreshing');
+      if (spin) { spin.style.transform = ''; spin.textContent = '↻'; }
+      el.style.transform = 'translateX(-50%) translateY(' + THRESHOLD + 'px)';
+      setTimeout(function () { location.reload(); }, 150);
+    } else { reset(); }
+  }
+  window.addEventListener('touchend', end, { passive: true });
+  window.addEventListener('touchcancel', function () { if (pulling) { pulling = false; reset(); } }, { passive: true });
+}
+
 window.addEventListener('load', async function() {
+  initPullToRefresh(); // 아래로 당겨 새로고침
   try {
     DATA = await run('getInitData');
 
-    // 로그인 화면 이름 목록 채우기
-    const lsel = document.getElementById('loginName');
-    DATA.members.forEach(function(m) {
-      const o = document.createElement('option');
-      o.value = o.textContent = m;
-      lsel.appendChild(o);
-    });
-    // 숨겨진 myName 셀렉트도 채워둠 (기존 코드 호환)
-    const sel = document.getElementById('myName');
-    DATA.members.forEach(function(m) {
-      const o = document.createElement('option');
-      o.value = o.textContent = m;
-      sel.appendChild(o);
-    });
+    fillNameSelects(); // 로그인/숨김 이름 목록 채우기
 
     document.getElementById('loading').style.display = 'none';
 
@@ -1731,6 +1800,7 @@ function loadMore() {
   moreLoaded = true;
   if (ME.isAdmin) loadNotices();
   loadStats();
+  loadLevelBoard();
   loadVenue();
   loadArchive();
   loadCompletionLog();
@@ -1996,6 +2066,311 @@ async function doResetPin() {
   }
 }
 
+/* ---------- 부족원 관리 (관리자): 추가 / 이름 수정 / 삭제 ----------
+ * 백엔드가 최신 명단 스냅샷({members, support, settlers})을 돌려주면 DATA 를 갱신하고
+ * 이름에 의존하는 UI(로그인·인증 참여자·필터·관리 칩·명단 목록)를 모두 다시 그린다.
+ */
+function applyMemberData(res) {
+  if (!res) return;
+  if (res.members) DATA.members = res.members;
+  if (res.support) DATA.support = res.support;
+  if (res.settlers) DATA.settlers = res.settlers;
+  fillNameSelects();
+  buildChips('photoChips');   // 인증 참여자 선택
+  buildGalleryFilters();      // 벽화 인물 필터
+  if (ME.isAdmin) {
+    buildSupportChips();
+    buildSettlerChips();
+    buildResetPinSelect();
+    renderMemberAdmin();
+    if (LEVELBOARD) renderLevelMemberList(); // 명단 변경을 레벨 기록 목록에도 반영
+  }
+}
+
+function renderMemberAdmin() {
+  const box = document.getElementById('memberAdminList');
+  if (!box) return;
+  box.innerHTML = '';
+  const admins = DATA.admins || [];
+  DATA.members.forEach(function (m) {
+    const isAdm = admins.indexOf(m) > -1;
+    const row = document.createElement('div');
+    row.className = 'member-row';
+
+    const nm = document.createElement('span');
+    nm.className = 'member-name';
+    nm.textContent = m + (isAdm ? ' 👑' : '');
+    row.appendChild(nm);
+
+    if (isAdm) {
+      const tag = document.createElement('span');
+      tag.className = 'dim'; tag.style.fontSize = '12px';
+      tag.textContent = '시트에서 관리';
+      row.appendChild(tag);
+    } else {
+      const edit = document.createElement('button');
+      edit.className = 'mini-btn'; edit.textContent = '수정';
+      edit.onclick = function () { editMemberPrompt(m); };
+      const del = document.createElement('button');
+      del.className = 'mini-btn danger'; del.textContent = '삭제';
+      del.onclick = function () { deleteMemberClick(m); };
+      row.appendChild(edit);
+      row.appendChild(del);
+    }
+    box.appendChild(row);
+  });
+}
+
+function addMemberPrompt() {
+  modal({
+    title: '➕ 부족원 추가',
+    message: '새 부족원의 이름을 입력하세요.\nPIN은 본인이 첫 로그인 때 직접 정합니다.',
+    fields: [{ key: 'name', label: '이름', placeholder: '예: 홍길동' }],
+    confirmText: '추가',
+    busyText: '추가 중…',
+    validate: function (v) {
+      const n = String(v.name || '').trim();
+      if (!n) return '이름을 입력하세요.';
+      if (n.indexOf(',') > -1) return '이름에 쉼표(,)는 쓸 수 없어요.';
+      if (DATA.members.indexOf(n) > -1) return '이미 명단에 있는 이름이에요.';
+      return null;
+    },
+    onConfirm: async function (v) {
+      const n = String(v.name).trim();
+      applyMemberData(await run('addMember', n, getMe(), ME.token));
+      toast('✓ ' + n + ' 님을 추가했어요.', true);
+    }
+  });
+}
+
+function editMemberPrompt(oldName) {
+  modal({
+    title: '✏️ 이름 수정',
+    message: '"' + oldName + '" 님의 새 이름을 입력하세요.\n※ 지난 투표·인증 기록은 이전 이름으로 남아요.',
+    fields: [{ key: 'name', label: '새 이름', value: oldName }],
+    confirmText: '저장',
+    busyText: '저장 중…',
+    validate: function (v) {
+      const n = String(v.name || '').trim();
+      if (!n) return '이름을 입력하세요.';
+      if (n.indexOf(',') > -1) return '이름에 쉼표(,)는 쓸 수 없어요.';
+      if (n !== oldName && DATA.members.indexOf(n) > -1) return '이미 명단에 있는 이름이에요.';
+      return null;
+    },
+    onConfirm: async function (v) {
+      const n = String(v.name).trim();
+      if (n === oldName) return; // 변화 없음 — 그냥 닫기
+      applyMemberData(await run('renameMember', oldName, n, getMe(), ME.token));
+      toast('✓ ' + oldName + ' → ' + n + ' 으로 바꿨어요.', true);
+    }
+  });
+}
+
+async function deleteMemberClick(name) {
+  const ok = await modalConfirm(
+    '"' + name + '" 님을 명단에서 삭제할까요?\n' +
+    'PIN·지원여부도 함께 지워지고, 되돌리려면 다시 추가해야 해요.\n' +
+    '(지난 투표·인증 기록은 이전 이름으로 남아요.)',
+    { title: '부족원 삭제', confirmText: '삭제' });
+  if (!ok) return;
+  busyShow(name + ' 삭제 중…');
+  try {
+    applyMemberData(await run('deleteMember', name, getMe(), ME.token));
+    busyHide();
+    toast('✓ ' + name + ' 님을 삭제했어요.', true);
+  } catch (e) {
+    busyHide(false);
+    toast(e.message || e);
+  }
+}
+
+/* ==================== 레벨 완등 순위/기록 ====================
+ * 순위: 최고 완등 레벨 우선(레벨 목록 순서 기준) → 동점은 그 레벨 완등 수 → 총 완등 → 이름.
+ * 레벨 목록은 관리자가 앱에서 설정. 순위는 모두 열람, 기록은 관리자만.
+ */
+let LEVELBOARD = null;  // { levels:[...], rows:[{name,counts,topLevel,topIdx,topCount,total,rank}] }
+let levelDraft = [];    // 관리자 레벨 편집용 작업 배열
+
+function levelRowMap_() {
+  const map = {};
+  if (LEVELBOARD && LEVELBOARD.rows) LEVELBOARD.rows.forEach(function (r) { map[r.name] = r; });
+  return map;
+}
+
+/* ---------- 순위 보기 (더보기 탭, 모두) ---------- */
+async function loadLevelBoard() {
+  const box = document.getElementById('levelBox');
+  if (box) { box.className = 'loading'; box.textContent = '순위를 불러오는 중…'; }
+  try {
+    LEVELBOARD = await run('getLevelBoard');
+    renderLevelRanking();
+  } catch (e) {
+    if (box) { box.className = 'status err'; box.textContent = '순위 로딩 실패: ' + (e.message || e); }
+  }
+}
+
+function renderLevelRanking() {
+  const box = document.getElementById('levelBox');
+  if (!box || !LEVELBOARD) return;
+  box.className = '';
+  const levels = LEVELBOARD.levels || [];
+  if (!levels.length) {
+    box.innerHTML = '<div class="dim" style="font-size:13px; padding:6px 2px">아직 레벨이 등록되지 않았어요.' +
+      (ME.isAdmin ? ' 관리 탭에서 레벨을 먼저 등록해 주세요.' : '') + '</div>';
+    return;
+  }
+  const ranked = LEVELBOARD.rows.filter(function (r) { return r.rank != null; });
+  const none = LEVELBOARD.rows.filter(function (r) { return r.rank == null; });
+  const badge = function (rank) { return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank + '위'; };
+
+  let html = '';
+  if (!ranked.length) {
+    html = '<div class="dim" style="font-size:13px; padding:6px 2px">아직 완등 기록이 없어요.</div>';
+  } else {
+    html = '<div class="lv-board">' + ranked.map(function (r) {
+      const brk = levels.filter(function (lv) { return r.counts[lv]; })
+        .map(function (lv) { return esc(lv) + '×' + r.counts[lv]; }).join(' · ');
+      return '<div class="lv-row' + (r.name === getMe() ? ' me' : '') + '">' +
+        '<span class="lv-rank">' + badge(r.rank) + '</span>' +
+        '<div class="lv-body">' +
+          '<div class="lv-head"><span class="lv-name">' + esc(r.name) + '</span>' +
+            '<span class="lv-top">최고 <b>' + esc(r.topLevel) + '</b></span></div>' +
+          '<div class="lv-sub"><span class="lv-brk">' + (brk || '-') + '</span>' +
+            '<span class="lv-total">총 ' + r.total + '</span></div>' +
+        '</div></div>';
+    }).join('') + '</div>';
+  }
+  if (none.length) {
+    html += '<div class="dim" style="font-size:12px; margin-top:8px">기록 없음: ' +
+      none.map(function (r) { return esc(r.name); }).join(', ') + '</div>';
+  }
+  box.innerHTML = html;
+}
+
+/* ---------- 레벨 설정 + 구성원별 기록 (관리 탭, 관리자) ---------- */
+async function loadLevelAdmin() {
+  if (!LEVELBOARD) {
+    try { LEVELBOARD = await run('getLevelBoard'); }
+    catch (e) { LEVELBOARD = { levels: [], rows: [] }; }
+  }
+  levelDraft = (LEVELBOARD.levels || []).slice();
+  renderLevelConfig();
+  renderLevelMemberList();
+}
+
+function renderLevelConfig() {
+  const box = document.getElementById('levelConfig');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!levelDraft.length) {
+    box.innerHTML = '<div class="dim" style="font-size:12.5px">아직 레벨이 없어요. 아래에서 낮은 난이도부터 추가하세요.</div>';
+    return;
+  }
+  levelDraft.forEach(function (lv, i) {
+    const row = document.createElement('div');
+    row.className = 'lv-cfg-row';
+    const idx = document.createElement('span'); idx.className = 'lv-cfg-idx'; idx.textContent = (i + 1);
+    const nm = document.createElement('span'); nm.className = 'lv-cfg-name'; nm.textContent = lv;
+    row.appendChild(idx); row.appendChild(nm);
+    const up = document.createElement('button'); up.className = 'mini-btn'; up.textContent = '↑'; up.disabled = i === 0;
+    up.onclick = function () { moveLevelDraft(i, -1); };
+    const dn = document.createElement('button'); dn.className = 'mini-btn'; dn.textContent = '↓'; dn.disabled = i === levelDraft.length - 1;
+    dn.onclick = function () { moveLevelDraft(i, 1); };
+    const rm = document.createElement('button'); rm.className = 'mini-btn danger'; rm.textContent = '✕';
+    rm.onclick = function () { levelDraft.splice(i, 1); renderLevelConfig(); };
+    row.appendChild(up); row.appendChild(dn); row.appendChild(rm);
+    box.appendChild(row);
+  });
+}
+
+function moveLevelDraft(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= levelDraft.length) return;
+  const t = levelDraft[i]; levelDraft[i] = levelDraft[j]; levelDraft[j] = t;
+  renderLevelConfig();
+}
+
+function addLevelDraft() {
+  const inp = document.getElementById('newLevelInput');
+  const v = String(inp.value || '').trim();
+  if (!v) return;
+  if (v.length > 12) return toast('레벨 이름은 12자 이내로.');
+  if (levelDraft.indexOf(v) > -1) return toast('이미 있는 레벨이에요.');
+  levelDraft.push(v);
+  inp.value = '';
+  renderLevelConfig();
+}
+
+async function saveLevels() {
+  const st = document.getElementById('levelCfgStatus');
+  busyShow('레벨 저장 중…');
+  try {
+    LEVELBOARD = await run('setLevels', levelDraft, getMe(), ME.token);
+    levelDraft = (LEVELBOARD.levels || []).slice();
+    busyHide();
+    st.className = 'status ok';
+    st.textContent = '✓ 레벨 ' + levelDraft.length + '단계 저장됨';
+    renderLevelConfig();
+    renderLevelMemberList();
+    renderLevelRanking();
+  } catch (e) {
+    busyHide(false);
+    st.className = 'status err';
+    st.textContent = e.message || e;
+  }
+}
+
+function renderLevelMemberList() {
+  const box = document.getElementById('levelMemberList');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!LEVELBOARD || !(LEVELBOARD.levels || []).length) {
+    box.innerHTML = '<div class="dim" style="font-size:12.5px">레벨을 저장하면 구성원별 완등 입력이 열려요.</div>';
+    return;
+  }
+  const map = levelRowMap_();
+  DATA.members.forEach(function (m) {
+    const r = map[m] || { total: 0, topLevel: '' };
+    const row = document.createElement('div');
+    row.className = 'member-row';
+    const nm = document.createElement('span');
+    nm.className = 'member-name';
+    nm.innerHTML = esc(m) + ' <span class="dim" style="font-weight:400; font-size:12px">' +
+      (r.total ? '· 최고 ' + esc(r.topLevel) + ' · 총 ' + r.total : '· 기록 없음') + '</span>';
+    row.appendChild(nm);
+    const btn = document.createElement('button');
+    btn.className = 'mini-btn';
+    btn.textContent = '완등 입력';
+    btn.onclick = function () { editMemberLevelPrompt(m); };
+    row.appendChild(btn);
+    box.appendChild(row);
+  });
+}
+
+function editMemberLevelPrompt(name) {
+  const levels = (LEVELBOARD && LEVELBOARD.levels) || [];
+  if (!levels.length) return toast('먼저 레벨을 저장하세요.');
+  const cur = (levelRowMap_()[name] && levelRowMap_()[name].counts) || {};
+  modal({
+    title: '🧗 ' + name + ' 완등 기록',
+    message: '레벨별 완등 횟수를 입력하세요. (빈칸/0 = 없음)',
+    fields: levels.map(function (lv) {
+      return { key: lv, label: lv, type: 'number', inputmode: 'numeric',
+               value: cur[lv] != null ? String(cur[lv]) : '' };
+    }),
+    confirmText: '저장',
+    busyText: '저장 중…',
+    onConfirm: async function (v) {
+      const counts = {};
+      levels.forEach(function (lv) { const n = parseInt(v[lv], 10); if (!isNaN(n) && n > 0) counts[lv] = n; });
+      LEVELBOARD = await run('setLevelRecord', name, counts, getMe(), ME.token);
+      renderLevelMemberList();
+      renderLevelRanking();
+      toast('✓ ' + name + ' 완등 기록을 저장했어요.', true);
+    }
+  });
+}
+
 /* ==================== 벽화 갤러리 필터 (#22) ==================== */
 function buildGalleryFilters() {
   const gm = document.getElementById('galleryMonth');
@@ -2026,6 +2401,8 @@ function loadAdmin() {
     buildSupportChips();
     buildSettlerChips();
     buildResetPinSelect();
+    renderMemberAdmin();
+    loadLevelAdmin();
   }
 }
 
