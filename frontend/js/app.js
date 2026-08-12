@@ -713,6 +713,30 @@ function renderHomeNotices() {
     }).join('');
 }
 
+/* 번개 인증 리마인더 (#4 인앱): 최근(2일 내) 참여한 번개가 있는데 이번 달 인증을 안 했으면 홈에 안내.
+ * (실제 시각 푸시 알림은 별도 인프라(Firebase)가 필요 — 여기선 앱을 열 때 뜨는 인앱 리마인더) */
+function renderFlashReminder() {
+  const el = document.getElementById('flashReminder');
+  if (!el) return;
+  el.innerHTML = '';
+  const me = getMe();
+  if (!me || (DATA.certified && DATA.certified[me])) return; // 이미 인증했으면 생략
+  const now = new Date();
+  const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let hit = null;
+  (DATA.disaster || []).forEach(function (r) {
+    if (!r.voters || r.voters.indexOf(me) < 0 || !isPastFlash_(r)) return; // 내가 참여한 지난 번개만
+    const iso = r.dateInfo && r.dateInfo.iso;
+    if (!iso) return;
+    const d = new Date(iso + 'T00:00:00');
+    if (Math.round((todayMid - d) / 86400000) <= 2 && (!hit || d > hit)) hit = d; // 최근 2일 내
+  });
+  if (!hit) return;
+  el.innerHTML = '<div class="flash-remind">⚡ 최근 번개 다녀오셨죠? <b>사진 인증</b>을 아직 안 하셨어요.' +
+    '<span class="fr-go">📸 인증하러 가기</span></div>';
+  el.firstChild.onclick = function () { setTab('photo'); };
+}
+
 /* 최근 24시간 벽화/전당 (#6 새 소식) — 하루 지나면 백엔드에서 빠지므로 자동으로 사라짐 */
 function renderHomeRecent() {
   const el = document.getElementById('homeRecent');
@@ -751,6 +775,7 @@ function markNoticesSeen() {
 function renderHome() {
   renderDday();
   renderMySummary();
+  renderFlashReminder();
   renderHomeRecent();
   renderHomeNotices();
   updateNoticeBadge();
@@ -971,7 +996,8 @@ function renderRaid(list) {
         shareText('⚔️ ' + mm + '월 정기공격 확정!\n📅 ' + (opt.dateInfo ? opt.dateInfo.display : g.confirmed.date) +
           (g.confirmed.loc ? '\n📍 ' + g.confirmed.loc : '') +
           (g.confirmed.note ? '\n📝 ' + g.confirmed.note : '') +
-          (opt.voters.length ? '\n🧗 참여(' + opt.voters.length + '): ' + koSort(opt.voters).join(', ') : ''),
+          (opt.voters.length ? '\n🧗 참여(' + opt.voters.length + '): ' + koSort(opt.voters).join(', ') : '') +
+          '\n\n👉 ' + location.origin,
           '확정 소식 복사 완료!');
       };
       b.appendChild(sbtn);
@@ -1101,7 +1127,7 @@ function renderDisaster(list) {
       e.stopPropagation();
       shareText('⚡ 번개 소집!\n' + r.date +
         (r.voters.length ? '\n🧗 참여(' + r.voters.length + '): ' + koSort(r.voters).join(', ') : '') +
-        '\n\n같이 갈 사람 모여라 🔥', '번개 소식 복사 완료!');
+        '\n\n같이 갈 사람 모여라 🔥\n👉 ' + location.origin, '번개 소식 복사 완료!');
     };
     card.appendChild(shareBtn);
     // flash_owners에 기록이 없으면(마이그레이션 이전 번개 등) B열 폴백과 동일하게 첫 투표자를 개설자로 본다.

@@ -309,6 +309,25 @@ textarea:focus { outline: none; border-color: var(--ember); }
 /* 암장 지도 링크 */
 .maplink { color: var(--ember); text-decoration: none; border-bottom: 1px dotted var(--ember); }
 
+/* 앱 로딩 프로그래스 바 (#로딩바) */
+.load-bar {
+  max-width: 240px; height: 6px; margin: 14px auto 0;
+  background: var(--stone-hi); border-radius: 999px; overflow: hidden;
+}
+.load-bar i {
+  display: block; height: 100%; width: 0; background: var(--ember); border-radius: 999px;
+  animation: load-trickle 6s cubic-bezier(.15,.8,.3,1) forwards;
+}
+@keyframes load-trickle { 0% { width: 8%; } 25% { width: 45%; } 55% { width: 70%; } 80% { width: 85%; } 100% { width: 94%; } }
+
+/* 번개 인증 리마인더 (#4) */
+.flash-remind {
+  background: #33261a; border: 1px solid var(--ember); border-radius: var(--radius);
+  padding: 12px 14px; margin-bottom: 12px; font-size: 13.5px; color: var(--ink);
+  cursor: pointer; line-height: 1.6;
+}
+.flash-remind .fr-go { color: var(--ember); font-weight: 800; margin-left: 6px; white-space: nowrap; }
+
 .stats-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .stats-table { border-collapse: collapse; width: 100%; font-size: 12.5px; white-space: nowrap; }
 .stats-table th, .stats-table td {
