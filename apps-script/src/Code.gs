@@ -31,7 +31,7 @@ const GET_ACTIONS = {
   getSettleStatus: { cache: true, fn: function (p) { return getSettleStatus(p.ym || ''); } }, // #21 정산 현황 (월 지정)
   getVenueStats:   { cache: true, fn: function (p) { return getVenueStats(); } },            // 암장별 방문 통계
   getCompletionLog:{ cache: true, fn: function (p) { return getCompletionLog(Number(p.limit) || 10); } }, // 완료된 모임 최근 기록
-  getLevelBoard:   { cache: true, fn: function (p) { return getLevelBoard(); } }                          // 레벨별 완등 순위 (공개)
+  getLevelBoard:   { cache: true, fn: function (p) { return getLevelBoard(p.season || ''); } }             // 레벨별 완등 순위 (공개, 시즌별)
 };
 
 /* ---------- 인증 조회 / 변경 (POST) ---------- */
@@ -83,6 +83,7 @@ const POST_ACTIONS = {
   setMyLevelRecord:  { auth: 'name',      bust: true, fn: function (d) { return setMyLevelRecord(d.counts, d.name, d.token); } },           // 본인 완등 기록 (누구나)
   postNotice:        { auth: 'name', bust: true, fn: function (d) { return postNotice(d.text, d.name, d.token); } },   // #24
   deleteNotice:      { auth: 'name', bust: true, fn: function (d) { return deleteNotice(d.row, d.when, d.name, d.token); } }, // #24
+  editNotice:        { auth: 'name', bust: true, fn: function (d) { return editNotice(d.row, d.when, d.text, d.name, d.token); } }, // 공지 수정 (관리자)
   pinNotice:         { auth: 'name', bust: true, fn: function (d) { return pinNotice(d.row, d.when, d.pinned, d.name, d.token); } }, // 공지 고정/해제 (관리자)
   runSettle:         { auth: 'requester', bust: true, fn: function (d) { return runSettle(d.ym, d.requester, d.token); } },   // 웹 정산 (관리자/담당자)
   setSettlers:       { auth: 'requester', bust: true, fn: function (d) { return setSettlers(d.names, d.requester, d.token); } }, // 담당자 지정 (관리자)
@@ -156,7 +157,7 @@ function bumpCacheVer_() {
 }
 function cacheKey_(action, p) {
   return 'q:' + cacheVer_() + ':' + action + ':' +
-    ['month', 'limit', 'offset', 'person', 'ym'].map(function (k) { return p[k] || ''; }).join(':');
+    ['month', 'limit', 'offset', 'person', 'ym', 'season'].map(function (k) { return p[k] || ''; }).join(':');
 }
 function cacheGet_(key) {
   try {
@@ -201,6 +202,40 @@ function getInitData() {
     admins: CONFIG.ADMINS,
     settlers: getSettlers_(),      // 정산 담당자 (관리자 페이지 노출 판단용)
     notices: getHomeNotices_(),    // 홈 노출: 고정 공지 전부 + 최신 1건
+    recent: getRecentActivity_(),  // 최근 24시간 벽화/전당 (홈 "새 소식")
     flashOwners: votes.flashOwners
   };
+}
+
+/* ---------- 최근 24시간 활동 (홈 "새 소식", #6) ----------
+ * 벽화(사진/영상 인증)·명예의전당에 최근 24h 내 올라온 항목. 하루 지나면 자연히 사라짐.
+ */
+function getRecentActivity_() {
+  const s = ss_();
+  const tz = Session.getScriptTimeZone();
+  const cutoff = Date.now() - 24 * 3600 * 1000;
+  const murals = [];
+  const mh = s.getSheetByName(CONFIG.SHEETS.mural);
+  if (mh && mh.getLastRow() > 1) {
+    const vals = mh.getRange(1, 1, mh.getLastRow(), 6).getValues(); // A=인증일시 ~ F=업로더
+    for (let i = 1; i < vals.length; i++) {
+      const t = vals[i][0];
+      if (!(t instanceof Date) || t.getTime() < cutoff) continue;
+      murals.push({ kind: String(vals[i][2] || '사진'), loc: String(vals[i][3] || ''),
+        by: String(vals[i][5] || ''), when: Utilities.formatDate(t, tz, 'M/d HH:mm') });
+    }
+  }
+  const hall = [];
+  const hh = s.getSheetByName(CONFIG.SHEETS.hall);
+  if (hh && hh.getLastRow() > 1) {
+    const vals = hh.getRange(1, 1, hh.getLastRow(), 4).getValues(); // A=등록일시 ~ D=제목
+    for (let i = 1; i < vals.length; i++) {
+      const t = vals[i][0];
+      if (!(t instanceof Date) || t.getTime() < cutoff) continue;
+      hall.push({ by: String(vals[i][2] || ''), title: String(vals[i][3] || '무제'),
+        when: Utilities.formatDate(t, tz, 'M/d HH:mm') });
+    }
+  }
+  murals.reverse(); hall.reverse(); // 최신순
+  return { murals: murals.slice(0, 5), hall: hall.slice(0, 5) };
 }
