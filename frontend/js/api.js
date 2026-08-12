@@ -81,6 +81,33 @@ function apiUnwrap_(env) {
   throw new Error((env && env.error) || '서버 응답 오류');
 }
 
+/* 응답을 JSON 으로 안전하게 파싱.
+ * GAS 는 재배포 직후(권한 재승인 대기)나 일시 장애 때 JSON 대신 **HTML 페이지**를 돌려준다.
+ * 그대로 res.json() 하면 "Unexpected token '<'" / "The string did not match the expected pattern"
+ * 같은 암호 같은 에러가 사용자에게 노출되므로, 여기서 알아듣는 문구로 바꾼다. */
+async function apiParse_(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    if (/^\s*</.test(text)) { // HTML 응답 = 서버가 점검/재승인 중
+      throw new Error('서버가 잠시 응답하지 않아요. 잠시 후 다시 시도해주세요. (점검 또는 권한 재승인 중)');
+    }
+    throw new Error('서버 응답을 읽지 못했어요. 잠시 후 다시 시도해주세요.');
+  }
+}
+
+// 일시적 오류(HTML 응답 등)면 한 번만 조용히 재시도
+async function apiFetchJson_(url, opts) {
+  try {
+    return await apiParse_(await fetch(url, opts));
+  } catch (e) {
+    if (!/잠시/.test(e.message)) throw e;
+    await new Promise(function (r) { setTimeout(r, 900); });
+    return apiParse_(await fetch(url, opts));
+  }
+}
+
 async function run(fn) {
   const args = Array.prototype.slice.call(arguments, 1);
 
@@ -94,8 +121,7 @@ async function run(fn) {
         qs += '&' + k + '=' + encodeURIComponent(args[i]);
       }
     });
-    const res = await fetch(GAS_URL + qs);
-    return apiUnwrap_(await res.json());
+    return apiUnwrap_(await apiFetchJson_(GAS_URL + qs));
   }
 
   if (API_POST[fn]) {
@@ -107,12 +133,11 @@ async function run(fn) {
       body.name = API_SESSION.name;
       body.token = API_SESSION.token;
     }
-    const res = await fetch(GAS_URL, {
+    return apiUnwrap_(await apiFetchJson_(GAS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // ★ application/json 금지 (CORS)
       body: JSON.stringify(body)
-    });
-    return apiUnwrap_(await res.json());
+    }));
   }
 
   throw new Error('알 수 없는 API 액션: ' + fn);
