@@ -59,6 +59,7 @@ const POST_ACTIONS = {
   confirmDate:       { bust: true, fn: function (d) { return confirmDate(d.month, d.dateText, d.loc, d.name, d.pin, d.note); } }, // 관리자 PIN은 함수 내부 검증
   editRaidOption:    { auth: 'requester', bust: true, fn: function (d) { return editRaidOption(d.month, d.dateText, d.newDate, d.newLoc, d.requester, d.token); } },
   deleteRaidOption:  { auth: 'requester', bust: true, fn: function (d) { return deleteRaidOption(d.month, d.dateText, d.requester, d.token); } },
+  addRaidOption:     { auth: 'requester', bust: true, fn: function (d) { return addRaidOption(d.month, d.dateText, d.loc, d.requester, d.token); } }, // 후보 추가 (관리자)
 
   // 업로드 (요청자 토큰 필수 — 익명 업로드 차단)
   startUpload:       { auth: 'name', fn: function (d) { return startUpload(d.fileName, d.mimeType, d.fileSize, d.ym); } },
@@ -78,6 +79,7 @@ const POST_ACTIONS = {
   addMember:         { auth: 'requester', bust: true, fn: function (d) { return addMember(d.newName, d.requester, d.token); } },              // 부족원 추가 (관리자)
   renameMember:      { auth: 'requester', bust: true, fn: function (d) { return renameMember(d.oldName, d.newName, d.requester, d.token); } }, // 부족원 이름 수정 (관리자)
   deleteMember:      { auth: 'requester', bust: true, fn: function (d) { return deleteMember(d.targetName, d.requester, d.token); } },        // 부족원 삭제 (관리자)
+  setAdmins:         { auth: 'requester', bust: true, fn: function (d) { return setAdmins(d.names, d.requester, d.token); } },                // 관리자(부관리자) 목록 설정 (관리자)
   setLevels:         { auth: 'requester', bust: true, fn: function (d) { return setLevels(d.levels, d.requester, d.token); } },              // 레벨 목록 설정 (관리자)
   setLevelRecord:    { auth: 'requester', bust: true, fn: function (d) { return setLevelRecord(d.name, d.counts, d.requester, d.token); } }, // 다른 구성원 완등 기록 (관리자)
   setMyLevelRecord:  { auth: 'name',      bust: true, fn: function (d) { return setMyLevelRecord(d.counts, d.name, d.token); } },           // 본인 완등 기록 (누구나)
@@ -108,7 +110,7 @@ function doGet(e) {
     const data = entry.fn(p);
     cachePut_(key, data);
     return data;
-  });
+  }, action);
 }
 
 function doPost(e) {
@@ -126,14 +128,32 @@ function doPost(e) {
     const data = entry.fn(d);
     if (entry.bust) bumpCacheVer_();
     return data;
-  });
+  }, action);
 }
 
 /* ---------- 응답 헬퍼 ---------- */
-// 콜백 실행 → 성공/실패를 봉투로 감싸 JSON 반환 (로직 함수의 throw 를 error 로 변환)
-function _json(fn) {
+// 콜백 실행 → 성공/실패를 봉투로 감싸 JSON 반환 (로직 함수의 throw 를 error 로 변환). 예기치 못한 오류는 로깅.
+function _json(fn, action) {
   try { return _out({ ok: true, data: fn() }); }
-  catch (err) { return _out({ ok: false, error: (err && err.message) || String(err) }); }
+  catch (err) {
+    const msg = (err && err.message) || String(err);
+    logError_(action, msg);
+    return _out({ ok: false, error: msg });
+  }
+}
+
+// 예기치 못한 오류만 '오류로그' 시트에 기록 (흔한 사용자 오류는 제외). 헤더+최근 300행 유지.
+function logError_(action, msg) {
+  try {
+    const s = String(msg || '');
+    if (/PIN|인증이 만료|명단에 없는|시도 횟수|권한이 없|관리자만|같은 날짜|목록이 갱신|파싱 실패|이미 명단|이미 있는|입력하세요|형식 오류|먼저 확정|확정된 월/.test(s)) return; // 예상된 사용자/검증 오류
+    const ss = ss_();
+    let sh = ss.getSheetByName(CONFIG.SHEETS.errorlog);
+    if (!sh) { sh = ss.insertSheet(CONFIG.SHEETS.errorlog); sh.appendRow(['시각', 'action', '메시지']); }
+    sh.appendRow([new Date(), String(action || ''), s]);
+    const last = sh.getLastRow();
+    if (last > 301) sh.deleteRows(2, last - 301);
+  } catch (e) { /* 로깅 실패는 무시 */ }
 }
 function _out(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))

@@ -300,6 +300,15 @@ textarea:focus { outline: none; border-color: var(--ember); }
 .confirm-banner.reminder { box-shadow: 0 0 0 2px var(--ember) inset; background: #3a2a18; }
 .confirm-banner .remind { font-size: 15px; font-weight: 800; color: var(--ember); margin-bottom: 6px; }
 
+/* 레벨 시즌 셀렉트 (홈 순위 헤더) */
+.season-sel {
+  font-size: 12px; font-weight: 400; color: var(--ink);
+  background: var(--stone-hi); border: 1px solid var(--line); border-radius: 8px;
+  padding: 3px 22px 3px 8px; margin-left: 6px; vertical-align: middle; color-scheme: dark;
+}
+/* 암장 지도 링크 */
+.maplink { color: var(--ember); text-decoration: none; border-bottom: 1px dotted var(--ember); }
+
 .stats-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .stats-table { border-collapse: collapse; width: 100%; font-size: 12.5px; white-space: nowrap; }
 .stats-table th, .stats-table td {

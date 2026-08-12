@@ -125,3 +125,24 @@ function removeFromSettlers_(name) {
     PropertiesService.getScriptProperties().setProperty('settlers', JSON.stringify(next));
   }
 }
+
+/* ---------- 관리자(부관리자) 목록 설정 (관리자 전용) ----------
+ * Script Property 'ADMINS'(쉼표 구분)에 저장 → CONFIG.ADMINS 가 다음 실행부터 반영.
+ * 로스터에 있는 이름만, 최소 1명 유지(전원 해제 → 잠금 방지).
+ */
+function setAdmins(names, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!isAdmin_(requester)) throw new Error('관리자만 관리자 목록을 설정할 수 있습니다.');
+  if (!Array.isArray(names)) throw new Error('이름 배열이 필요합니다.');
+  const roster = splitBySupport_(ss_()).all.map(function (m) { return m.name; });
+  const clean = []; const seen = {};
+  names.forEach(function (n) {
+    n = String(n).trim();
+    if (!n || seen[n]) return;
+    if (roster.indexOf(n) < 0) throw new Error('명단에 없는 이름입니다: ' + n);
+    seen[n] = true; clean.push(n);
+  });
+  if (!clean.length) throw new Error('관리자는 최소 1명이어야 합니다.');
+  PropertiesService.getScriptProperties().setProperty('ADMINS', clean.join(','));
+  return { admins: clean };
+}

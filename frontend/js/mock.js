@@ -93,7 +93,7 @@
     '최서연': { '흰': 5, '노': 2 }
     // 정민재: 기록 없음 (rank=null 시나리오)
   };
-  function levelBoard() {
+  function levelBoard(reqSeason) {
     const roster = MEMBERS.slice().sort();
     const rows = roster.map(function (name) {
       const raw = LEVEL_COUNTS[name] || {};
@@ -122,8 +122,16 @@
       r.rank = rank;
     });
     const q = Math.ceil((now.getMonth() + 1) / 3);
-    const season = now.getFullYear() + '-Q' + q;
-    return { levels: LEVELS.slice(), rows: rows, season: season, seasonLabel: now.getFullYear() + ' ' + q + '분기' };
+    const y = now.getFullYear();
+    const curSeason = y + '-Q' + q;
+    const prevQ = q === 1 ? 4 : q - 1, prevY = q === 1 ? y - 1 : y;
+    const season = /^\d{4}-Q[1-4]$/.test(reqSeason || '') ? reqSeason : curSeason;
+    if (season !== curSeason) { // 지난 시즌: 목데이터엔 기록 없음 → 전원 rank null
+      rows.forEach(function (r) { r.counts = {}; r.total = 0; r.topIdx = -1; r.topLevel = ''; r.topCount = 0; r.rank = null; });
+    }
+    return { levels: LEVELS.slice(), rows: rows, season: season,
+             seasonLabel: season.slice(0, 4) + ' ' + season.slice(6) + '분기',
+             seasons: [curSeason, prevY + '-Q' + prevQ] };
   }
 
   window.API_MOCK = {
@@ -220,6 +228,17 @@
           if (g) { const i = g.options.findIndex(function (x) { return x.date === args[1]; }); if (i > -1) g.options.splice(i, 1); }
           return DATA.raidMonths;
         })(),
+        addRaidOption: (function () {
+          if (fn !== 'addRaidOption') return DATA.raidMonths;
+          const month = args[0], dateText = args[1], loc = args[2] || '';
+          let g = DATA.raidMonths.find(function (x) { return x.month === month; });
+          if (!g) { g = { month: month, deadline: '', closed: false, confirmed: null, options: [] }; DATA.raidMonths.push(g); }
+          if (!g.options.some(function (o) { return o.date === dateText; })) {
+            const iso = (String(dateText).match(/\d{4}-\d{2}-\d{2}/) || [month + '-01'])[0];
+            g.options.push({ date: dateText, loc: loc, dateInfo: DI(iso, ''), voters: [] });
+          }
+          return DATA.raidMonths;
+        })(),
         confirmDate: DATA.raidMonths,
         // 공지: 등록/삭제/고정 모두 { items(전체), home(고정+최신1) } 반환
         postNotice: (function () {
@@ -276,7 +295,7 @@
           return memberSnap();
         })(),
         // 레벨 순위/기록
-        getLevelBoard: levelBoard(),
+        getLevelBoard: levelBoard(args[0]),
         setLevels: (function () {
           if (fn !== 'setLevels') return levelBoard();
           if (Array.isArray(args[0])) {
@@ -314,6 +333,11 @@
         })(),
         runSettle: { ym: args[0], done: 2, total: 4, independent: 1, canceled: 1, copied: 1, uncovered: ['박도윤'] },
         setSettlers: { settlers: args[0] },
+        setAdmins: (function () {
+          if (fn !== 'setAdmins') return { admins: DATA.admins };
+          DATA.admins = Array.isArray(args[0]) ? args[0].slice() : DATA.admins;
+          return { admins: DATA.admins };
+        })(),
         setSupports: (function () { const on = Array.isArray(args[0]) ? args[0] : []; const s = {}; MEMBERS.forEach(function (m) { s[m] = on.indexOf(m) > -1; }); return { support: s }; })(),
         voteHall: HALL, deleteHallEntry: HALL, finalizeHallEntry: HALL,
         deleteProof: { ok: true },
