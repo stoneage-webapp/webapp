@@ -13,17 +13,21 @@ function noticesSheet_() {
   return sh;
 }
 
-// 최신순 전체 목록. row 는 삭제/고정 시 대조용(시트 행 번호). pinned = D열 truthy
+// 최신순 전체 목록. row 는 삭제/고정 시 대조용(시트 행 번호). pinned = D열 truthy. ts = 등록시각(ms, 새공지 뱃지용)
 function getNotices(limit) {
   limit = limit || 20;
   const sh = ss_().getSheetByName(CONFIG.SHEETS.notices);
   if (!sh || sh.getLastRow() < 2) return { items: [] };
-  const vals = sh.getDataRange().getDisplayValues();
+  const rng = sh.getDataRange();
+  const disp = rng.getDisplayValues();
+  const raw = rng.getValues(); // A열 Date → ts
   const items = [];
-  for (let i = vals.length - 1; i >= 1 && items.length < limit; i--) {
-    const r = vals[i];
+  for (let i = disp.length - 1; i >= 1 && items.length < limit; i--) {
+    const r = disp[i];
     if (!r[2]) continue;
-    items.push({ when: r[0], by: r[1], text: r[2], row: i + 1, pinned: isPinned_(r[3]) });
+    const a = raw[i][0];
+    const ts = (a instanceof Date) ? a.getTime() : (Date.parse(String(r[0])) || 0);
+    items.push({ when: r[0], by: r[1], text: r[2], row: i + 1, pinned: isPinned_(r[3]), ts: ts });
   }
   return { items: items };
 }
@@ -75,6 +79,29 @@ function deleteNotice(row, when, name, authToken) {
       throw new Error('목록이 갱신되었습니다. 새로고침 후 다시 시도해주세요.');
     }
     sh.deleteRow(row);
+    return noticesPayload_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 관리자만 내용 수정. when 대조로 행 밀림 오수정 방지
+function editNotice(row, when, text, name, authToken) {
+  name = verify_(name, authToken);
+  if (!isAdmin_(name)) throw new Error('관리자만 공지를 수정할 수 있습니다.');
+  text = String(text || '').trim();
+  if (!text) throw new Error('공지 내용을 입력하세요.');
+  if (text.length > 2000) throw new Error('공지는 2000자 이내로 작성하세요.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = ss_().getSheetByName(CONFIG.SHEETS.notices);
+    row = Number(row);
+    if (!sh || !row || row < 2 || row > sh.getLastRow()) throw new Error('해당 공지를 찾을 수 없습니다.');
+    if (String(sh.getRange(row, 1).getDisplayValue()) !== String(when)) {
+      throw new Error('목록이 갱신되었습니다. 새로고침 후 다시 시도해주세요.');
+    }
+    sh.getRange(row, 3).setValue(text); // C열 내용
     return noticesPayload_();
   } finally {
     lock.releaseLock();

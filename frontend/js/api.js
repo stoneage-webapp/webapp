@@ -23,7 +23,7 @@ const API_GET = {
   getSettleStatus: ['ym'],
   getVenueStats:   [],
   getCompletionLog: ['limit'],
-  getLevelBoard:   []
+  getLevelBoard:   ['season']
 };
 const API_POST = {
   loginWithPin:      ['name', 'pin'],
@@ -57,6 +57,7 @@ const API_POST = {
   setMyLevelRecord:  ['counts', 'name', 'token'],
   postNotice:        ['text', 'name', 'token'],
   deleteNotice:      ['row', 'when', 'name', 'token'],
+  editNotice:        ['row', 'when', 'text', 'name', 'token'],
   pinNotice:         ['row', 'when', 'pinned', 'name', 'token'],
   runSettle:         ['ym', 'requester', 'token'],
   setSettlers:       ['names', 'requester', 'token'],

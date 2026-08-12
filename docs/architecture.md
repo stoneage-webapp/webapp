@@ -56,7 +56,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `getSettleStatus` | `ym`(선택, 기본 이번 달) | `{ ym, months:[존재하는 월들], rows:[{name,status}] }` — 인증현황 시트, 지정한 월 한 열만 |
 | `getVenueStats` | — | `{ total:[{loc,count}], thisMonth:[{loc,count}], month }` — 암장별 방문 집계 |
 | `getCompletionLog` | `limit`(기본10) | `{ items:[{when,kind,month,date,loc,people,by}] }` — `완료기록` 시트 최신순. 정기공격 무산 종료는 `date`가 `'(모임 없음)'` |
-| `getLevelBoard` | — | `{ levels:[...낮은→높은], rows:[{name,counts:{레벨:수},topLevel,topIdx,topCount,total,rank}] }` — 레벨별 완등 순위(공개). **최고 레벨 우선** → 동점은 그 레벨 완등수 → 총완등 → 이름. 기록 없으면 `rank:null` |
+| `getLevelBoard` | `season(선택, 예 '2026-Q3')` | `{ levels, rows:[{name,counts,topLevel,topIdx,topCount,total,rank}], season, seasonLabel }` — 레벨 완등 순위(공개, **분기 시즌별**, 기본=현재 분기). **최고 레벨 우선** → 그 레벨 완등수 → 총완등 → 이름. 기록 없으면 `rank:null` |
 
 > - `driveApiKey`는 익명 `getInitData`에서 **제거됨** → `loginWithPin`/`changePin` 응답으로 이동.
 > - `certNudge`도 같은 이유로 로그인 응답 전용: "이번 달 완료 처리된 모임에 참여했는데 아직 인증 안 함" 여부를 **본인 것만** 알려준다 (`needsCertNudge_`, votes.gs). 다른 사람의 인증 여부를 노출하지 않기 위해 `getInitData` 등 익명 GET에는 포함하지 않는다.
@@ -103,6 +103,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `setMyLevelRecord` | `counts({레벨:정수}), name, token` | `getLevelBoard()` — **누구나(본인)**. 토큰으로 본인 확인 후 자기 완등 수만 기록 |
 | `postNotice` | `text, name, token` | `{ items(전체), home(고정+최신1) }` — 관리자 전용 |
 | `deleteNotice` | `row, when, name, token` | `{ items, home }` — 관리자 전용. `when` 대조로 행 밀림 방지 |
+| `editNotice` | `row, when, text, name, token` | `{ items, home }` — 관리자 전용. 공지 내용(C열) 수정. `when` 대조 |
 | `pinNotice` | `row, when, pinned(bool), name, token` | `{ items, home }` — 관리자 전용. 공지 시트 **D열(고정)** 설정. 홈은 고정 공지 전부 + 최신 1건만 노출 |
 | `runSettle` | `ym('2026-07'), requester, token` | `{ ym, done, total, independent, copied, uncovered }` — **관리자 또는 정산 담당자** |
 | `setSettlers` | `names(배열), requester, token` | `{ settlers }` — 관리자 전용. Script Properties `settlers`에 저장 |
@@ -135,8 +136,9 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 사진 인증 | `startUpload` → `uploadChunk`/`checkUploadStatus` → `finalizeProof` |
 | 벽화 갤러리 | `getGallery`(월/사람 필터), `deleteProof` |
 | 명예의전당 | `getHallData`, `getHallArchive`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |
-| 공지 | 홈: `getInitData.notices`(고정 전부 + 최신 1건), 더보기(관리자): `getNotices`, `postNotice`/`deleteNotice`/`pinNotice`(고정) |
-| 레벨 순위 (홈, 모두 열람) | `getLevelBoard`, 본인 기록 `setMyLevelRecord`(누구나) |
+| 공지 | 홈: `getInitData.notices`(고정 전부 + 최신 1건, 새 공지 뱃지), 더보기(관리자): `getNotices`, `postNotice`/`editNotice`/`deleteNotice`/`pinNotice` |
+| 레벨 순위 (홈, 모두 열람) | `getLevelBoard`(분기 시즌별), 본인 기록 `setMyLevelRecord`(누구나) |
+| 홈 새 소식 (최근 24h 벽화/전당) · 모임 D-1 리마인더 | `getInitData.recent` · 확정 모임 D-day |
 | 통계 | `getStats`(관리자 전체/일반 본인) |
 | 완료된 모임 기록 | `getCompletionLog` |
 | 관리 탭 (관리자·정산 담당자만 노출) | `runSettle`, `getSettleStatus`, `cancelSettle`, `resetSettle`, `setSettlers`(관리자), `setSupports`(관리자), `resetPin`(관리자), `addMember`/`renameMember`/`deleteMember`(관리자, 부족원 관리), `setLevels`(관리자, 레벨 목록)·`setLevelRecord`(관리자, 정정) |

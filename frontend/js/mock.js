@@ -17,11 +17,11 @@
   const ym = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2);
   const d1 = ym + '-16', d2 = ym + '-23';
 
-  // 공지: 최신순. pinned=고정. 홈은 "고정 전부 + 최신 1건"만 노출
+  // 공지: 최신순. pinned=고정. 홈은 "고정 전부 + 최신 1건"만 노출. ts=등록시각(ms, 새공지 뱃지용)
   const NOTICES = [
-    { when: ym + '-12', by: '김광훈', text: '이번 주 정모 사진 인증 잊지 마세요!', row: 4, pinned: false },
-    { when: '2026-07-10', by: '김광훈', text: '회비 계좌: OO은행 000-0000 (매월 15일)', row: 3, pinned: true },
-    { when: '2026-07-02', by: '김광훈', text: '이번 달 정기공격 장소 투표 열렸습니다 — 참여 부탁!', row: 2, pinned: false }
+    { when: ym + '-12', by: '김광훈', text: '이번 주 정모 사진 인증 잊지 마세요!', row: 4, pinned: false, ts: now.getTime() - 2 * 3600e3 },
+    { when: '2026-07-10', by: '김광훈', text: '회비 계좌: OO은행 000-0000 (매월 15일)', row: 3, pinned: true, ts: now.getTime() - 5 * 86400e3 },
+    { when: '2026-07-02', by: '김광훈', text: '이번 달 정기공격 장소 투표 열렸습니다 — 참여 부탁!', row: 2, pinned: false, ts: now.getTime() - 12 * 86400e3 }
   ];
   function homeNotices() {
     const pinned = NOTICES.filter(function (n) { return n.pinned; });
@@ -54,6 +54,10 @@
     settlers: ['이희주'],
     support: { '김광훈': true, '박도윤': true, '이희주': true, '정민재': false, '최서연': true },
     notices: homeNotices(),
+    recent: { // 최근 24h 벽화/전당 (홈 "새 소식")
+      murals: [{ kind: '사진', loc: '더클라임 강남', by: '이희주', when: '오늘 09:12' }],
+      hall: [{ by: '박도윤', title: '오버행 돌파', when: '오늘 08:40' }]
+    },
     flashOwners: { '7/19 14:00 @ 클라이밍파크': '최서연' }
   };
 
@@ -117,7 +121,9 @@
       if (key !== prevKey) { rank = shown; prevKey = key; }
       r.rank = rank;
     });
-    return { levels: LEVELS.slice(), rows: rows };
+    const q = Math.ceil((now.getMonth() + 1) / 3);
+    const season = now.getFullYear() + '-Q' + q;
+    return { levels: LEVELS.slice(), rows: rows, season: season, seasonLabel: now.getFullYear() + ' ' + q + '분기' };
   }
 
   window.API_MOCK = {
@@ -219,7 +225,13 @@
         postNotice: (function () {
           if (fn !== 'postNotice') return { items: NOTICES.slice(), home: homeNotices() };
           const maxRow = NOTICES.reduce(function (m, n) { return Math.max(m, n.row); }, 1);
-          NOTICES.unshift({ when: 'now', by: args[1], text: args[0], row: maxRow + 1, pinned: false });
+          NOTICES.unshift({ when: 'now', by: args[1], text: args[0], row: maxRow + 1, pinned: false, ts: Date.now() });
+          return { items: NOTICES.slice(), home: homeNotices() };
+        })(),
+        editNotice: (function () {
+          if (fn !== 'editNotice') return { items: NOTICES.slice(), home: homeNotices() };
+          const n = NOTICES.find(function (x) { return x.row === Number(args[0]); });
+          if (n) n.text = String(args[2] || '').trim() || n.text;
           return { items: NOTICES.slice(), home: homeNotices() };
         })(),
         deleteNotice: (function () {

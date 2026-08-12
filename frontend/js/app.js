@@ -42,6 +42,17 @@ let DATA = { members: [], raid: [], disaster: [] };
 let category = 'raid';
 let currentTab = 'home'; // 현재 보고 있는 탭 (당겨 새로고침이 이 탭을 유지)
 
+// 이름 목록을 가나다순으로 (표시용 — 원본 배열은 그대로 둠, 번개 개설자=첫 투표자 로직 보존)
+function koSort(arr) {
+  return (arr || []).slice().sort(function (a, b) { return String(a).localeCompare(String(b), 'ko'); });
+}
+// 투표 후보/번개를 날짜 오름차순 정렬용 키
+function dateKey_(x) { return (x && x.dateInfo && x.dateInfo.iso) || (x && x.date) || ''; }
+// 쉼표로 이어진 이름 문자열을 가나다순으로 다시 이어붙임 (참여자/참여인원 표시용)
+function koSortStr(s) {
+  return koSort(String(s || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean)).join(', ');
+}
+
 // run(액션, 인자...) 은 js/api.js 가 제공 (fetch 기반 — 호출부는 GAS 시절과 동일)
 
 /* ---------- 날짜 표준 표기 ----------
@@ -123,8 +134,9 @@ function modal(opts) {
         s.textContent = f.label;
         w.appendChild(s);
       }
-      const inp = document.createElement('input');
-      inp.type = f.type || 'text';
+      const isTA = f.type === 'textarea';
+      const inp = document.createElement(isTA ? 'textarea' : 'input');
+      if (isTA) { inp.rows = f.rows || 3; } else { inp.type = f.type || 'text'; }
       if (f.placeholder) inp.placeholder = f.placeholder;
       if (f.value !== undefined) inp.value = f.value;
       if (f.inputmode) inp.setAttribute('inputmode', f.inputmode);
@@ -179,6 +191,7 @@ function modal(opts) {
     // 첫 입력 포커스 + Enter 로 확인
     const list = Object.keys(inputs).map(function (k) { return inputs[k]; });
     list.forEach(function (inp) {
+      if (inp.tagName === 'TEXTAREA') return; // 여러 줄 입력은 Enter=줄바꿈
       inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') okb.click(); });
     });
     if (list[0]) setTimeout(function () { list[0].focus(); }, 60);
@@ -547,6 +560,7 @@ function setTab(t) {
   if (t === 'more' && !moreLoaded) loadMore();
   if (t === 'admin' && !adminLoaded) loadAdmin();
   if (t === 'photo') renderMyProofs(); // 내 인증 목록(취소용) 갱신
+  if (t === 'home') markNoticesSeen();  // 홈을 보면 공지 뱃지 해제 (#5)
 }
 
 /* ---------- 내 인증 취소 (인증 탭) ----------
@@ -570,7 +584,7 @@ async function renderMyProofs() {
       row.className = 'myproof-row';
       const txt = document.createElement('span');
       txt.className = 'mp-txt';
-      txt.textContent = (it.actDate || it.when) + ' · 📍 ' + it.loc + ' · 🧗 ' + it.people;
+      txt.textContent = (it.actDate || it.when) + ' · 📍 ' + it.loc + ' · 🧗 ' + koSortStr(it.people);
       row.appendChild(txt);
       const del = document.createElement('button');
       del.className = 'mini-btn';
@@ -640,9 +654,16 @@ function renderDday() {
     if (!next || d < next.d) next = { d: d, conf: g.confirmed, month: g.month };
   });
   if (!next) return;
-  const opt = null; // 위치는 confirmed.loc 사용
+  // D-1 리마인더(#7): 확정 모임이 오늘/내일이면 강조
+  const t0 = new Date();
+  const todayMid = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate());
+  const nextMid = new Date(next.d.getFullYear(), next.d.getMonth(), next.d.getDate());
+  const diffDays = Math.round((nextMid - todayMid) / 86400000);
+  const remind = diffDays === 0 ? '🔔 오늘 정기공격이에요!' : diffDays === 1 ? '🔔 내일 정기공격이에요!' : '';
   el.innerHTML =
-    '<div class="confirm-banner" style="cursor:pointer">🔥 다음 정기공격 <b>' + ddayText(next.d) + '</b>' +
+    '<div class="confirm-banner' + (remind ? ' reminder' : '') + '" style="cursor:pointer">' +
+    (remind ? '<div class="remind">' + remind + '</div>' : '') +
+    '🔥 다음 정기공격 <b>' + ddayText(next.d) + '</b>' +
     '<div class="cdate">' + esc(next.conf.date) + '</div>' +
     (next.conf.loc ? '📍 ' + esc(next.conf.loc) : '') + '</div>';
   el.firstChild.onclick = function () { goVote('raid'); };
@@ -686,10 +707,47 @@ function renderHomeNotices() {
     }).join('');
 }
 
+/* 최근 24시간 벽화/전당 (#6 새 소식) — 하루 지나면 백엔드에서 빠지므로 자동으로 사라짐 */
+function renderHomeRecent() {
+  const el = document.getElementById('homeRecent');
+  if (!el) return;
+  const rec = DATA.recent || {};
+  const murals = rec.murals || [], hall = rec.hall || [];
+  if (!murals.length && !hall.length) { el.innerHTML = ''; return; }
+  let items = '';
+  murals.forEach(function (m) {
+    items += '<div class="rec-item" data-tab="gallery">🖼️ <b>' + esc(m.by) + '</b> ' + esc(m.kind || '사진') +
+      (m.loc ? ' · ' + esc(m.loc) : '') + '<span class="rec-when">' + esc(m.when) + '</span></div>';
+  });
+  hall.forEach(function (h) {
+    items += '<div class="rec-item" data-tab="hall">🏆 <b>' + esc(h.by) + '</b> 전당 · ' + esc(h.title) +
+      '<span class="rec-when">' + esc(h.when) + '</span></div>';
+  });
+  el.innerHTML = '<div class="recent-box"><div class="rec-head">🆕 새 소식 <span class="dim" style="font-size:11px">· 최근 24시간</span></div>' + items + '</div>';
+  el.querySelectorAll('.rec-item').forEach(function (it) { it.onclick = function () { setTab(it.dataset.tab); }; });
+}
+
+/* 새 공지 뱃지 (#5): 가장 최근 공지 ts > 마지막으로 홈 본 시각이면 홈 탭 아이콘에 점 */
+function newestNoticeTs_() {
+  return (DATA.notices || []).reduce(function (m, n) { return Math.max(m, n.ts || 0); }, 0);
+}
+function updateNoticeBadge() {
+  const dot = document.getElementById('homeNoticeDot');
+  if (!dot) return;
+  const seen = Number(localStorage.getItem('sga_notice_seen') || 0);
+  dot.style.display = newestNoticeTs_() > seen ? '' : 'none';
+}
+function markNoticesSeen() {
+  localStorage.setItem('sga_notice_seen', String(newestNoticeTs_()));
+  updateNoticeBadge();
+}
+
 function renderHome() {
   renderDday();
   renderMySummary();
+  renderHomeRecent();
   renderHomeNotices();
+  updateNoticeBadge();
   const box = document.getElementById('homeCards');
   box.innerHTML = '';
 
@@ -907,7 +965,7 @@ function renderRaid(list) {
         shareText('⚔️ ' + mm + '월 정기공격 확정!\n📅 ' + (opt.dateInfo ? opt.dateInfo.display : g.confirmed.date) +
           (g.confirmed.loc ? '\n📍 ' + g.confirmed.loc : '') +
           (g.confirmed.note ? '\n📝 ' + g.confirmed.note : '') +
-          (opt.voters.length ? '\n🧗 참여(' + opt.voters.length + '): ' + opt.voters.join(', ') : ''),
+          (opt.voters.length ? '\n🧗 참여(' + opt.voters.length + '): ' + koSort(opt.voters).join(', ') : ''),
           '확정 소식 복사 완료!');
       };
       b.appendChild(sbtn);
@@ -932,7 +990,10 @@ function renderRaid(list) {
       list.appendChild(b);
     }
 
-    g.options.forEach(function(r) {
+    const opts = g.options.slice().sort(function (a, b) { // 날짜 오름차순 (#날짜별)
+      const ka = dateKey_(a), kb = dateKey_(b); return ka < kb ? -1 : ka > kb ? 1 : 0;
+    });
+    opts.forEach(function(r) {
       const mine = me && r.voters.indexOf(me) > -1;
       const isC = g.confirmed && r.date === g.confirmed.date;
       const blocked = !!g.confirmed || g.closed;
@@ -945,7 +1006,7 @@ function renderRaid(list) {
         '<div class="top"><span class="date">' + esc(dateTxt) + (isC ? ' ✅' : '') + '</span>' +
         '<span class="count">' + r.voters.length + '명</span></div>' +
         (r.loc ? '<div class="vloc">📍 ' + esc(r.loc) + '</div>' : '') +
-        (r.voters.length ? '<div class="voters">' + r.voters.map(esc).join(' · ') + '</div>' : '') +
+        (r.voters.length ? '<div class="voters">' + koSort(r.voters).map(esc).join(' · ') + '</div>' : '') +
         (!blocked && mine ? '<div class="hint">✓ 참여 중 — 탭하면 취소</div>' : '');
       if (!blocked) {
         card.onclick = function() { voteRaid(g.month, r.date); };
@@ -990,9 +1051,10 @@ function renderDisaster(list) {
   addBtn.onclick = openFlashPrompt;
   list.appendChild(addBtn);
 
-  // 마감 자동 정리(#3): 지난 번개(오늘 이전)는 접기
-  const past = sel ? [] : filtered.filter(function (r) { return isPastFlash_(r); });
-  const active = sel ? filtered : filtered.filter(function (r) { return !isPastFlash_(r); });
+  // 마감 자동 정리(#3): 지난 번개(오늘 이전)는 접기 + 날짜 오름차순 정렬(#날짜별)
+  const byDate = function (a, b) { const ka = dateKey_(a), kb = dateKey_(b); return ka < kb ? -1 : ka > kb ? 1 : 0; };
+  const past = (sel ? [] : filtered.filter(function (r) { return isPastFlash_(r); })).sort(byDate);
+  const active = (sel ? filtered : filtered.filter(function (r) { return !isPastFlash_(r); })).sort(byDate);
   const rows = showPastVotes ? active.concat(past) : active;
 
   if (!rows.length) {
@@ -1014,7 +1076,7 @@ function renderDisaster(list) {
       (expired ? ' <span class="tag-over">⏰ 기한 지남</span>' : '') + '</span>' +
       '<span class="count">' + r.voters.length + '명</span></div>' +
       (r.loc ? '<div class="vloc">📍 ' + esc(r.loc) + '</div>' : '') +
-      (r.voters.length ? '<div class="voters">' + r.voters.map(esc).join(' · ') + '</div>' : '') +
+      (r.voters.length ? '<div class="voters">' + koSort(r.voters).map(esc).join(' · ') + '</div>' : '') +
       (mine ? '<div class="hint">✓ 참여 중 — 탭하면 취소</div>' : '');
     card.onclick = function() { voteFlash(r.date); };
     const shareBtn = document.createElement('button');
@@ -1023,7 +1085,7 @@ function renderDisaster(list) {
     shareBtn.onclick = function(e) {
       e.stopPropagation();
       shareText('⚡ 번개 소집!\n' + r.date +
-        (r.voters.length ? '\n🧗 참여(' + r.voters.length + '): ' + r.voters.join(', ') : '') +
+        (r.voters.length ? '\n🧗 참여(' + r.voters.length + '): ' + koSort(r.voters).join(', ') : '') +
         '\n\n같이 갈 사람 모여라 🔥', '번개 소식 복사 완료!');
     };
     card.appendChild(shareBtn);
@@ -1285,7 +1347,7 @@ function renderHall() {
       meta.innerHTML =
         '<div class="fm-top">' + (idx === 0 && e.voters.length ? '👑 ' : '') + esc(e.title) + '</div>' +
         '<span class="fm-dim">' + esc(e.by) + ' 출품' +
-        (e.voters.length ? ' · 🔥 ' + e.voters.map(esc).join(', ') : '') + '</span>';
+        (e.voters.length ? ' · 🔥 ' + koSort(e.voters).map(esc).join(', ') : '') + '</span>';
       c.appendChild(meta);
       const vb = document.createElement('button');
       const mine = me && e.voters.indexOf(me) > -1;
@@ -1443,7 +1505,7 @@ function makeGalleryCard(it) {
   info.className = 'cell-info';
   info.innerHTML =
     '<div class="ci-loc">📍 ' + esc(it.loc) + '</div>' +
-    '<div>🧗 ' + esc(it.people) + '</div>' +
+    '<div>🧗 ' + esc(koSortStr(it.people)) + '</div>' +
     '<div class="ci-dim">' + esc(it.actDate || it.when) + ' · ' + esc(it.by) + '</div>';
 
   const openBtn = document.createElement('button');
@@ -1902,6 +1964,12 @@ function renderNotices(items) {
     c.innerHTML = '<div class="nc-text">' + (n.pinned ? '📌 ' : '') + esc(n.text).replace(/\n/g, '<br>') + '</div>' +
       '<div class="nc-meta">' + esc(n.by) + ' · ' + esc(n.when) + '</div>';
     if (ME.isAdmin) {
+      const edit = document.createElement('button');
+      edit.className = 'mini-btn';
+      edit.style.marginRight = '6px';
+      edit.textContent = '✏️ 수정';
+      edit.onclick = function () { editNoticePrompt(n); };
+      c.appendChild(edit);
       const pin = document.createElement('button');
       pin.className = 'mini-btn';
       pin.style.marginRight = '6px';
@@ -1928,12 +1996,28 @@ function renderNotices(items) {
   });
 }
 
-// 공지 등록/삭제/고정 결과 { items(전체), home(고정+최신) } 를 목록과 홈에 반영
+// 공지 등록/삭제/고정/수정 결과 { items(전체), home(고정+최신) } 를 목록과 홈에 반영
 function applyNoticesResult(res) {
   if (!res) return;
   if (res.items) renderNotices(res.items);
   DATA.notices = res.home || [];
   renderHomeNotices();
+  updateNoticeBadge();
+}
+
+// 공지 수정 (관리자, #4)
+function editNoticePrompt(n) {
+  modal({
+    title: '✏️ 공지 수정',
+    fields: [{ key: 'text', label: '내용', type: 'textarea', rows: 4, value: n.text }],
+    confirmText: '저장',
+    busyText: '저장 중…',
+    validate: function (v) { return String(v.text || '').trim() ? null : '공지 내용을 입력하세요.'; },
+    onConfirm: async function (v) {
+      applyNoticesResult(await run('editNotice', n.row, n.when, String(v.text).trim(), getMe(), ME.token));
+      toast('✓ 공지를 수정했어요.', true);
+    }
+  });
 }
 
 async function submitNotice() {
@@ -2029,7 +2113,7 @@ async function loadCompletionLog() {
         (it.loc ? ' @ ' + esc(it.loc) : '');
       c.innerHTML = '<div class="nc-text">' + label + '</div>' +
         '<div class="nc-meta">' + esc(it.by) + ' · ' + esc(it.when) +
-        (it.people ? ' · 🧗 ' + esc(it.people) : '') + '</div>';
+        (it.people ? ' · 🧗 ' + esc(koSortStr(it.people)) : '') + '</div>';
       box.appendChild(c);
     });
   } catch (e) {
@@ -2271,6 +2355,9 @@ function renderLevelRanking() {
   if (!box || !LEVELBOARD) return;
   box.className = '';
   const levels = LEVELBOARD.levels || [];
+  // 시즌 라벨 (분기)
+  const seasonEl = document.getElementById('levelSeasonLabel');
+  if (seasonEl) seasonEl.textContent = LEVELBOARD.seasonLabel ? '· ' + LEVELBOARD.seasonLabel : '';
   // 내 완등 기록 버튼: 로그인 + 레벨 존재 시에만 노출
   const myBtn = document.getElementById('myLevelBtn');
   if (myBtn) myBtn.style.display = (getMe() && levels.length) ? '' : 'none';

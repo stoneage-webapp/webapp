@@ -1,51 +1,79 @@
 /**
  * 석기시대 부족 웹앱 — levels.gs
- * 레벨(난이도)별 완등 기록 + 순위.
+ * 레벨(난이도)별 완등 기록 + 순위. **분기(3개월) 시즌제.**
  *
- *  - 레벨 목록: Script Property 'levels' (JSON 배열, **낮은 → 높은 순**). 관리자가 앱에서 설정(setLevels).
- *    배열의 순서(index)가 곧 난이도다 — 마지막 원소가 가장 어려운 레벨.
- *  - 완등 횟수: '레벨완등' 시트 (행=이름, 열=레벨). '인증현황' 시트와 같은 "열=속성, 행=이름" 방식.
- *    셀 값은 정수 완등 수(0/빈칸=없음). 열은 레벨 **이름**으로 매칭하므로 물리적 열 순서는 무관하다.
- *  - 순위(getLevelBoard): **최고 완등 레벨 우선**(레벨 순서 기준) → 동점은 그 레벨 완등 수 → 총 완등 수 → 이름.
+ *  - 레벨 목록: Script Property 'levels' (시즌 무관, 전역). 낮은→높은 순.
+ *  - 완등 횟수: '레벨완등' 시트 A=시즌, B=이름, C~=레벨. 셀 값=정수 완등 수(0/빈칸=없음).
+ *  - 시즌: 분기(1~3=Q1, 4~6=Q2, 7~9=Q3, 10~12=Q4). 분기가 바뀌면 자연히 새 시즌(0부터), 지난 시즌 행은 보존.
+ *  - 순위(getLevelBoard): 요청 시즌(기본=현재 분기) 안에서 최고 레벨 우선 → 그 레벨 완등수 → 총완등 → 이름.
  *
- * 기록/설정은 관리자만(setLevels/setLevelRecord). 순위 조회(getLevelBoard)는 공개 — 로그인 화면처럼 이름은 이미 공개.
- * 이름을 키로 쓰므로 부족원 삭제/개명 시 과거 레벨 기록은 이전 이름으로 남을 수 있다(members.gs 와 동일 원칙).
+ * 순위 조회는 공개. 완등 기록은 본인(setMyLevelRecord)/관리자 정정(setLevelRecord), 레벨 목록 설정은 관리자(setLevels).
+ * 구(舊)형식 시트(A=이름, 시즌 열 없음)는 levelSheet_()가 첫 쓰기 때 시즌 열을 삽입해 현재 시즌으로 스탬프.
  */
+
+// 현재 분기 시즌 키 (예: '2026-Q3')
+function currentSeason_() {
+  const tz = Session.getScriptTimeZone();
+  const now = new Date();
+  const y = Utilities.formatDate(now, tz, 'yyyy');
+  const m = Number(Utilities.formatDate(now, tz, 'MM'));
+  return y + '-Q' + Math.ceil(m / 3);
+}
+// 시즌 키 → 라벨 (예: '2026 3분기')
+function seasonLabel_(key) {
+  const m = String(key || '').match(/^(\d{4})-Q([1-4])$/);
+  return m ? (m[1] + ' ' + m[2] + '분기') : (key || '');
+}
 
 function getLevels_() {
   const v = PropertiesService.getScriptProperties().getProperty('levels');
   try { const a = v ? JSON.parse(v) : []; return Array.isArray(a) ? a : []; } catch (e) { return []; }
 }
 
-// '레벨완등' 시트 확보 (없으면 생성, A1='이름' 헤더 보장)
+// '레벨완등' 시트 확보 + 헤더(A=시즌, B=이름) 보장 + 구형식 자동 마이그레이션
 function levelSheet_() {
   const s = ss_();
   let sh = s.getSheetByName(CONFIG.SHEETS.levels);
-  if (!sh) sh = s.insertSheet(CONFIG.SHEETS.levels);
-  if (!String(sh.getRange(1, 1).getValue()).trim()) sh.getRange(1, 1).setValue('이름');
+  if (!sh) { sh = s.insertSheet(CONFIG.SHEETS.levels); sh.getRange(1, 1, 1, 2).setValues([['시즌', '이름']]); return sh; }
+  const a1 = String(sh.getRange(1, 1).getValue()).trim();
+  if (a1 === '이름') {
+    // 구 형식(A=이름, B~=레벨) → 맨 앞에 시즌 열 삽입 후 기존 데이터를 현재 시즌으로 스탬프
+    sh.insertColumnBefore(1);
+    sh.getRange(1, 1).setValue('시즌');
+    const last = sh.getLastRow();
+    if (last >= 2) {
+      const season = currentSeason_();
+      const stamp = [];
+      for (let i = 0; i < last - 1; i++) stamp.push([season]);
+      sh.getRange(2, 1, stamp.length, 1).setValues(stamp);
+    }
+  } else if (a1 !== '시즌') {
+    sh.getRange(1, 1, 1, 2).setValues([['시즌', '이름']]);
+  }
+  if (String(sh.getRange(1, 2).getValue()).trim() !== '이름') sh.getRange(1, 2).setValue('이름');
   return sh;
 }
 
-// 헤더(1행)에서 레벨명 → 열번호(1-based) 맵. B열부터가 레벨.
+// 헤더에서 레벨명 → 열번호(1-based). C열(3)부터가 레벨.
 function levelColMap_(sh) {
   const map = {};
   const lastCol = sh.getLastColumn();
-  if (lastCol >= 2) {
-    const hdr = sh.getRange(1, 2, 1, lastCol - 1).getDisplayValues()[0];
+  if (lastCol >= 3) {
+    const hdr = sh.getRange(1, 3, 1, lastCol - 2).getDisplayValues()[0];
     for (let i = 0; i < hdr.length; i++) {
       const n = String(hdr[i]).trim();
-      if (n) map[n] = i + 2;
+      if (n) map[n] = i + 3;
     }
   }
   return map;
 }
 
-// 현재 레벨들에 대응하는 열이 없으면 오른쪽 끝에 추가. 반환: 레벨명 → 열번호
+// 현재 레벨들에 대응하는 열이 없으면 오른쪽 끝에 추가 (최소 C열부터). 반환: 레벨명 → 열번호
 function ensureLevelColumns_(sh, levels) {
   const map = levelColMap_(sh);
   levels.forEach(function (lv) {
     if (!map[lv]) {
-      const col = sh.getLastColumn() + 1;
+      const col = Math.max(sh.getLastColumn(), 2) + 1;
       sh.getRange(1, col).setValue(lv);
       map[lv] = col;
     }
@@ -53,41 +81,45 @@ function ensureLevelColumns_(sh, levels) {
   return map;
 }
 
-// 이름 → 행번호(1-based). 없고 create=true 면 새 행 추가.
-function levelRowOf_(sh, name, create) {
+// (시즌, 이름) → 행번호. 없고 create=true 면 새 행 추가.
+function levelRowOf_(sh, season, name, create) {
   const last = sh.getLastRow();
   if (last >= 2) {
-    const names = sh.getRange(2, 1, last - 1, 1).getDisplayValues();
-    for (let i = 0; i < names.length; i++) {
-      if (String(names[i][0]).trim() === name) return i + 2;
+    const vals = sh.getRange(2, 1, last - 1, 2).getDisplayValues();
+    for (let i = 0; i < vals.length; i++) {
+      if (String(vals[i][0]).trim() === season && String(vals[i][1]).trim() === name) return i + 2;
     }
   }
   if (!create) return 0;
   const row = sh.getLastRow() + 1;
-  sh.getRange(row, 1).setValue(name);
+  sh.getRange(row, 1, 1, 2).setValues([[season, name]]);
   return row;
 }
 
 /* ---------- 순위 조회 (공개) ----------
- * 로스터(부족원) 전원 포함 — 기록 없는 사람은 rank=null, total=0 으로 맨 뒤.
- * 반환: { levels:[...순서], rows:[{ name, counts:{레벨:수}, topLevel, topIdx, topCount, total, rank }] }
+ * season 미지정 시 현재 분기. 구형식 시트(시즌 열 없음)는 전 행을 요청 시즌으로 간주(마이그레이션 전 과도기).
+ * 반환: { levels, rows:[{name,counts,topLevel,topIdx,topCount,total,rank}], season, seasonLabel }
  */
-function getLevelBoard() {
+function getLevelBoard(season) {
+  season = String(season || '').trim() || currentSeason_();
   const levels = getLevels_();
   const s = ss_();
   const roster = splitBySupport_(s).all.map(function (m) { return m.name; });
 
-  // 완등 시트 → { 이름: { 레벨: 수 } }
-  const counts = {};
+  const counts = {}; // 이름 → { 레벨: 수 }
   const sh = s.getSheetByName(CONFIG.SHEETS.levels);
   if (sh && sh.getLastRow() > 1 && sh.getLastColumn() >= 2) {
+    const seasoned = String(sh.getRange(1, 1).getValue()).trim() === '시즌';
     const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getDisplayValues();
     const hdr = vals[0];
+    const nameCol = seasoned ? 1 : 0;       // B(시즌형) 또는 A(구형)
+    const firstLevelCol = seasoned ? 2 : 1; // C 또는 B
     for (let r = 1; r < vals.length; r++) {
-      const nm = String(vals[r][0]).trim();
+      if (seasoned && String(vals[r][0]).trim() !== season) continue; // 시즌 필터
+      const nm = String(vals[r][nameCol]).trim();
       if (!nm) continue;
       const c = {};
-      for (let col = 1; col < hdr.length; col++) {
+      for (let col = firstLevelCol; col < hdr.length; col++) {
         const lv = String(hdr[col]).trim();
         const n = parseInt(vals[r][col], 10);
         if (lv && n > 0) c[lv] = n;
@@ -98,7 +130,7 @@ function getLevelBoard() {
 
   const rows = roster.map(function (name) {
     const raw = counts[name] || {};
-    const c = {};                 // 현재 레벨 목록에 있는 것만 (삭제된 레벨은 집계/표시 제외)
+    const c = {};
     let topIdx = -1, total = 0;
     levels.forEach(function (lv, i) {
       const n = raw[lv] || 0;
@@ -108,16 +140,12 @@ function getLevelBoard() {
     return { name: name, counts: c, topLevel: topLevel, topIdx: topIdx,
              topCount: topLevel ? (c[topLevel] || 0) : 0, total: total };
   });
-
-  // 최고레벨 desc → 그 레벨 완등수 desc → 총완등 desc → 이름 asc
   rows.sort(function (a, b) {
     if (b.topIdx !== a.topIdx) return b.topIdx - a.topIdx;
     if (b.topCount !== a.topCount) return b.topCount - a.topCount;
     if (b.total !== a.total) return b.total - a.total;
     return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
   });
-
-  // 순위 부여 (동일 키 = 공동 순위). 기록 없는 사람은 rank=null.
   let rank = 0, shown = 0, prevKey = null;
   rows.forEach(function (r) {
     if (r.topIdx < 0 && r.total === 0) { r.rank = null; return; }
@@ -127,7 +155,7 @@ function getLevelBoard() {
     r.rank = rank;
   });
 
-  return { levels: levels, rows: rows };
+  return { levels: levels, rows: rows, season: season, seasonLabel: seasonLabel_(season) };
 }
 
 /* ---------- 레벨 목록 설정 (관리자) ---------- */
@@ -135,8 +163,7 @@ function setLevels(levels, requester, authToken) {
   requester = verify_(requester, authToken);
   if (!isAdmin_(requester)) throw new Error('관리자만 레벨을 설정할 수 있습니다.');
   if (!Array.isArray(levels)) throw new Error('레벨 배열이 필요합니다.');
-  const clean = [];
-  const seen = {};
+  const clean = []; const seen = {};
   levels.forEach(function (lv) {
     const n = String(lv).trim();
     if (!n) return;
@@ -151,9 +178,8 @@ function setLevels(levels, requester, authToken) {
   return getLevelBoard();
 }
 
-/* ---------- 한 구성원의 레벨별 완등 수 기록 ----------
- * counts = { 레벨명: 정수 } — 현재 레벨 목록에 있는 항목만 반영. 음수/비정수는 0 처리.
- * 공통 로직: 권한 검증은 호출부(setLevelRecord=관리자, setMyLevelRecord=본인)에서 이미 끝냈다고 가정.
+/* ---------- 한 구성원의 레벨별 완등 수 기록 (현재 시즌) ----------
+ * counts = { 레벨명: 정수 }. 권한 검증은 호출부에서 완료 가정.
  */
 function writeLevelRecord_(name, counts) {
   name = String(name || '').trim();
@@ -163,31 +189,31 @@ function writeLevelRecord_(name, counts) {
   const levels = getLevels_();
   if (!levels.length) throw new Error('아직 레벨이 설정되지 않았어요. (관리자에게 문의)');
   counts = (counts && typeof counts === 'object') ? counts : {};
+  const season = currentSeason_();
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
     const sh = levelSheet_();
     const colMap = ensureLevelColumns_(sh, levels);
-    const row = levelRowOf_(sh, name, true);
+    const row = levelRowOf_(sh, season, name, true);
     levels.forEach(function (lv) {
       let n = parseInt(counts[lv], 10);
       if (isNaN(n) || n < 0) n = 0;
-      sh.getRange(row, colMap[lv]).setValue(n || ''); // 0 은 빈칸으로 (시트 가독성)
+      sh.getRange(row, colMap[lv]).setValue(n || ''); // 0 은 빈칸으로
     });
   } finally {
     lock.releaseLock();
   }
-  return getLevelBoard();
+  return getLevelBoard(season);
 }
 
-// 관리자: 아무 구성원의 완등 기록 수정 (관리 탭 — 정정/대리 입력용)
+// 관리자: 아무 구성원의 완등 기록 정정
 function setLevelRecord(name, counts, requester, authToken) {
   requester = verify_(requester, authToken);
   if (!isAdmin_(requester)) throw new Error('관리자만 다른 구성원의 완등 기록을 수정할 수 있습니다.');
   return writeLevelRecord_(name, counts);
 }
-
-// 본인: 자기 완등 기록만 입력 (관리자 아니어도 가능). name 은 토큰으로 검증되므로 남의 기록은 못 바꾼다.
+// 본인: 자기 완등 기록만 (토큰으로 본인 확인)
 function setMyLevelRecord(counts, name, authToken) {
   name = verify_(name, authToken);
   return writeLevelRecord_(name, counts);
