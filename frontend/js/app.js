@@ -519,7 +519,40 @@ function applyLogin(session) {
   renderVotes();
   renderHome();
   loadLevelBoard(); // 홈 레벨 순위 (비동기)
+  initPush();       // 푸시 알림: 로그인 회원 태깅 + 권한 버튼 갱신
   setTab('home');
+}
+
+/* ---------- 푸시 알림 (OneSignal) — #4 ----------
+ * 목데이터/미로딩 환경에선 window.OneSignalDeferred 가 없으므로 조용히 무시.
+ * 로그인한 회원을 external_id 로 태깅 → 백엔드가 개인 지정 발송 가능(D-1·번개 인증 등).
+ */
+function initPush() {
+  if (typeof window.OneSignalDeferred === 'undefined') { updatePushBtn(); return; }
+  window.OneSignalDeferred.push(async function (OneSignal) {
+    try { if (getMe()) await OneSignal.login(getMe()); } catch (e) {}
+    updatePushBtn();
+  });
+}
+function updatePushBtn() {
+  const btn = document.getElementById('pushBtn');
+  if (!btn) return;
+  if (typeof window.OneSignalDeferred === 'undefined') { btn.style.display = 'none'; return; }
+  window.OneSignalDeferred.push(async function (OneSignal) {
+    try { btn.style.display = OneSignal.Notifications.permission ? 'none' : ''; }
+    catch (e) { btn.style.display = 'none'; }
+  });
+}
+function askPush() {
+  if (typeof window.OneSignalDeferred === 'undefined') return toast('이 환경에선 알림을 켤 수 없어요.');
+  window.OneSignalDeferred.push(async function (OneSignal) {
+    try {
+      await OneSignal.Notifications.requestPermission();
+      if (getMe()) await OneSignal.login(getMe());
+      toast('🔔 알림 설정을 확인했어요.', true);
+    } catch (e) {}
+    updatePushBtn();
+  });
 }
 
 function doLogout() {

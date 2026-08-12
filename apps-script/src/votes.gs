@@ -95,6 +95,7 @@ function addFlash(dateText, loc, creator, authToken) {
     const owners = getFlashOwners_();
     owners[label] = creator;
     setFlashOwners_(owners);
+    sendPush_('⚡ 번개 소집!', dateText + (loc ? ' @ ' + loc : '') + '\n같이 갈 사람 모여라 🔥', {}); // 전체 푸시
     return readVotes_(ss_(), CONFIG.SHEETS.disaster);
   } finally {
     lock.releaseLock();

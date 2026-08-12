@@ -16,6 +16,26 @@
 <meta name="apple-mobile-web-app-title" content="석기시대">
 
 <link rel="stylesheet" href="/css/style.css">
+
+<!-- 푸시 알림 (OneSignal) — 목데이터(?mock=1)에선 로드 생략. SW는 /onesignal/ 스코프로 격리(기존 sw.js와 분리) -->
+<script>
+  if (new URLSearchParams(location.search).get('mock') !== '1') {
+    var s = document.createElement('script');
+    s.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
+    s.defer = true;
+    document.head.appendChild(s);
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    window.OneSignalDeferred.push(async function (OneSignal) {
+      try {
+        await OneSignal.init({
+          appId: 'cead5388-da89-414a-8397-1ae49d049ae3',
+          serviceWorkerPath: 'onesignal/OneSignalSDKWorker.js',
+          serviceWorkerParam: { scope: '/onesignal/' }
+        });
+      } catch (e) {}
+    });
+  }
+</script>
 </head>
 <body>
 
@@ -81,6 +101,7 @@
     <button class="btn2" id="levelSetupBtn" style="display:none" onclick="openLevelSetup()">⚙️ 레벨 설정</button>
 
     <div class="cert-line" id="homeCertLine"></div>
+    <button class="btn2" id="pushBtn" style="display:none" onclick="askPush()">🔔 알림 켜기 (공지·모임 알림 받기)</button>
     <button class="btn2" onclick="openChat()">💬 오픈카톡방 바로가기</button>
     <button class="btn2" onclick="openAlbum()">🔥 부족 영상 앨범 (구글 포토)</button>
     <button class="btn2" onclick="openNotion()">📜 부족 안내문</button>

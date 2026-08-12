@@ -37,5 +37,11 @@ const CONFIG = {
 
   // 일정 확정 권한자 — 스크립트 속성 ADMINS 에 쉼표 구분(예: "김광훈,이희주"). 미설정 시 기본값.
   ADMINS: prop_('ADMINS', '김광훈').split(',').map(function (s) { return s.trim(); }).filter(String),
-  ADMIN_PIN: prop_('admin_pin', '0102')  // 확정 PIN — 스크립트 속성 admin_pin (auth.gs 의 getAdminPin_ 과 동일 소스)
+  ADMIN_PIN: prop_('admin_pin', '0102'),  // 확정 PIN — 스크립트 속성 admin_pin (auth.gs 의 getAdminPin_ 과 동일 소스)
+
+  // 푸시 알림 (OneSignal). APP_ID 는 공개값(프론트에도 있음) → 하드코딩 폴백 OK.
+  // REST 키는 **비밀** — 반드시 스크립트 속성 'onesignal_rest_key' 로만 넣는다(코드/커밋 금지).
+  ONESIGNAL_APP_ID: prop_('onesignal_app_id', 'cead5388-da89-414a-8397-1ae49d049ae3'),
+  ONESIGNAL_REST_KEY: prop_('onesignal_rest_key'),
+  SITE_URL: prop_('SITE_URL', 'https://stoneage202605.netlify.app')  // 알림 클릭 시 열 주소
 };

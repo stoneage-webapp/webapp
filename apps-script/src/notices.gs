@@ -60,6 +60,7 @@ function postNotice(text, name, authToken) {
   if (!text) throw new Error('공지 내용을 입력하세요.');
   if (text.length > 2000) throw new Error('공지는 2000자 이내로 작성하세요.');
   noticesSheet_().appendRow([new Date(), name, text, '']); // 신규는 고정 아님
+  sendPush_('📢 새 공지', text.slice(0, 120), {}); // 전체 푸시 (미설정이면 무시)
   return noticesPayload_();
 }
 
