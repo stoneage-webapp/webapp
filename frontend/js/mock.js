@@ -58,6 +58,7 @@
       murals: [{ kind: '사진', loc: '더클라임 강남', by: '이희주', when: '오늘 09:12' }],
       hall: [{ by: '박도윤', title: '오버행 돌파', when: '오늘 08:40' }]
     },
+    rsvp: { '2026-06': { '김광훈': 'yes', '이희주': 'no' } }, // 확정 6월 모임 참석 확정 (목)
     flashOwners: { '7/19 14:00 @ 클라이밍파크': '최서연' }
   };
 
@@ -333,6 +334,14 @@
         })(),
         runSettle: { ym: args[0], done: 2, total: 4, independent: 1, canceled: 1, copied: 1, uncovered: ['박도윤'] },
         setSettlers: { settlers: args[0] },
+        setRsvp: (function () {
+          if (fn !== 'setRsvp') return { rsvp: DATA.rsvp };
+          const month = args[0], status = args[1], name = args[2];
+          DATA.rsvp = DATA.rsvp || {};
+          const m = DATA.rsvp[month] || (DATA.rsvp[month] = {});
+          if (status === 'yes' || status === 'no') m[name] = status; else delete m[name];
+          return { rsvp: DATA.rsvp };
+        })(),
         setAdmins: (function () {
           if (fn !== 'setAdmins') return { admins: DATA.admins };
           DATA.admins = Array.isArray(args[0]) ? args[0].slice() : DATA.admins;

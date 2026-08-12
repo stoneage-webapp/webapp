@@ -722,17 +722,20 @@ function renderFlashReminder() {
   const me = getMe();
   if (!me || (DATA.certified && DATA.certified[me])) return; // 이미 인증했으면 생략
   const now = new Date();
-  const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   let hit = null;
   (DATA.disaster || []).forEach(function (r) {
-    if (!r.voters || r.voters.indexOf(me) < 0 || !isPastFlash_(r)) return; // 내가 참여한 지난 번개만
+    if (!r.voters || r.voters.indexOf(me) < 0) return; // 내가 참여한 번개만
     const iso = r.dateInfo && r.dateInfo.iso;
     if (!iso) return;
-    const d = new Date(iso + 'T00:00:00');
-    if (Math.round((todayMid - d) / 86400000) <= 2 && (!hit || d > hit)) hit = d; // 최근 2일 내
+    const time = (r.dateInfo && r.dateInfo.time) || '00:00';
+    const dt = new Date(iso + 'T' + time + ':00'); // 번개 시각
+    const hrs = (now - dt) / 3600000;              // 번개 시각 이후 경과 시간
+    if (hrs >= 0 && hrs <= 36 && (!hit || dt > hit)) hit = dt; // 시각 지난 직후 ~ 다음날까지
   });
   if (!hit) return;
-  el.innerHTML = '<div class="flash-remind">⚡ 최근 번개 다녀오셨죠? <b>사진 인증</b>을 아직 안 하셨어요.' +
+  const sameDay = (now - hit) / 3600000 < 12;
+  el.innerHTML = '<div class="flash-remind">⚡ 번개 다녀오셨죠? <b>지금 바로 사진 인증</b>하세요!' +
+    (sameDay ? ' <span class="dim" style="font-size:12px">그날 암장에서 바로!</span>' : '') +
     '<span class="fr-go">📸 인증하러 가기</span></div>';
   el.firstChild.onclick = function () { setTab('photo'); };
 }
@@ -923,6 +926,42 @@ function renderCalendar() {
   });
 }
 
+/* ---------- 참석 확정 (RSVP, #3) ---------- */
+// 확정 배너 b 에 참석/불참 + 인원수 + 명단을 붙인다.
+function appendRsvp_(b, month, me) {
+  const map = (DATA.rsvp && DATA.rsvp[month]) || {};
+  const going = Object.keys(map).filter(function (n) { return map[n] === 'yes'; });
+  const notGoing = Object.keys(map).filter(function (n) { return map[n] === 'no'; });
+  const mine = me ? map[me] : '';
+  const wrap = document.createElement('div');
+  wrap.className = 'rsvp';
+  wrap.innerHTML = '<div class="rsvp-count">🙋 참석 <b>' + going.length + '</b>' +
+    (notGoing.length ? ' · 불참 ' + notGoing.length : '') + '</div>' +
+    (going.length ? '<div class="rsvp-list">✅ ' + koSort(going).map(esc).join(' · ') + '</div>' : '');
+  if (me) {
+    const row = document.createElement('div');
+    row.className = 'rsvp-btns';
+    const yes = document.createElement('button');
+    yes.className = 'rsvp-btn' + (mine === 'yes' ? ' on-yes' : '');
+    yes.textContent = '✅ 갈게';
+    yes.onclick = function (e) { e.stopPropagation(); doRsvp(month, mine === 'yes' ? '' : 'yes'); };
+    const no = document.createElement('button');
+    no.className = 'rsvp-btn' + (mine === 'no' ? ' on-no' : '');
+    no.textContent = '❌ 못가';
+    no.onclick = function (e) { e.stopPropagation(); doRsvp(month, mine === 'no' ? '' : 'no'); };
+    row.appendChild(yes); row.appendChild(no);
+    wrap.appendChild(row);
+  }
+  b.appendChild(wrap);
+}
+async function doRsvp(month, status) {
+  try {
+    const res = await run('setRsvp', month, status, getMe(), ME.token);
+    DATA.rsvp = res.rsvp || DATA.rsvp;
+    renderVotes();
+  } catch (e) { toast(e.message || e); }
+}
+
 /* ---------- 정기공격 (월별) ---------- */
 function renderRaid(list) {
   const me = getMe();
@@ -982,6 +1021,7 @@ function renderRaid(list) {
         (g.confirmed.note ? '<div class="cnote">📝 ' + esc(g.confirmed.note).replace(/\n/g, '<br>') + '</div>' : '') +
         (expired ? '<div class="warn">⏰ 모임 날짜가 지났어요 — 완료 처리해 주세요</div>' : '') +
         '투표 마감';
+      appendRsvp_(b, g.month, me); // 참석 확정 (#3)
       const cal = document.createElement('button');
       cal.className = 'mini-btn';
       cal.textContent = '📅 캘린더 추가';
@@ -2446,6 +2486,12 @@ function renderLevelRanking(board) {
   const isCurrent = !LEVELBOARD || board.season === LEVELBOARD.season;
   const myBtn = document.getElementById('myLevelBtn');
   if (myBtn) myBtn.style.display = (getMe() && levels.length && isCurrent) ? '' : 'none';
+  // 레벨 설정 버튼: 누구나(로그인) 현재 시즌에서. 레벨 없으면 CTA로 강조
+  const setupBtn = document.getElementById('levelSetupBtn');
+  if (setupBtn) {
+    setupBtn.style.display = (getMe() && isCurrent) ? '' : 'none';
+    setupBtn.textContent = levels.length ? '⚙️ 레벨 설정' : '⚙️ 레벨 먼저 설정하기';
+  }
   if (!levels.length) {
     box.innerHTML = '<div class="dim" style="font-size:13px; padding:6px 2px">아직 레벨이 등록되지 않았어요.' +
       (ME.isAdmin ? ' 관리 탭에서 레벨을 먼저 등록해 주세요.' : '') + '</div>';
@@ -2601,6 +2647,67 @@ function editMemberLevelPrompt(name) {
       toast('✓ ' + name + ' 완등 기록을 저장했어요.', true);
     }
   });
+}
+
+/* 레벨(난이도) 목록 설정 — 누구나(#2). 홈에서 열리는 오버레이. 저장 시 setLevels. */
+function openLevelSetup() {
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = '';
+  let draft = ((LEVELBOARD && LEVELBOARD.levels) || []).slice();
+  const ov = document.createElement('div'); ov.className = 'modal-ov';
+  const card = document.createElement('div'); card.className = 'modal-card';
+  ov.appendChild(card); root.appendChild(ov);
+  ov.onclick = function (e) { if (e.target === ov) root.innerHTML = ''; };
+
+  function setStatus(msg, ok) { const s = card.querySelector('#lsStatus'); s.className = 'status ' + (ok ? 'ok' : 'err'); s.textContent = msg; }
+  async function save() {
+    const btn = card.querySelector('#lsSave'); btn.disabled = true; setStatus('저장 중…', true);
+    try {
+      LEVELBOARD = await run('setLevels', draft, getMe(), ME.token);
+      renderLevelRanking(LEVELBOARD);
+      if (adminLoaded && ME.isAdmin) { levelDraft = (LEVELBOARD.levels || []).slice(); renderLevelConfig(); renderLevelMemberList(); }
+      root.innerHTML = '';
+      toast('✓ 레벨 ' + (LEVELBOARD.levels || []).length + '단계 저장됨', true);
+    } catch (e) { btn.disabled = false; setStatus(e.message || e); }
+  }
+  function render() {
+    card.innerHTML = '<div class="modal-title">🧗 레벨 설정</div>' +
+      '<p class="modal-msg">우리 암장 레벨을 <b>낮은 것부터</b> 순서대로 넣어주세요. 누구나 설정할 수 있어요.</p>' +
+      '<div id="lsList"></div>' +
+      '<div class="field" style="display:flex; gap:8px; margin:6px 0 0">' +
+        '<input type="text" id="lsInput" placeholder="레벨 이름 (예: 흰 / V3)" maxlength="12" autocomplete="off" style="flex:1">' +
+        '<button class="btn2" id="lsAdd" style="width:auto; white-space:nowrap; margin:0">➕</button></div>' +
+      '<div class="status" id="lsStatus"></div>' +
+      '<div class="modal-btns"><button class="btn2" id="lsCancel">닫기</button>' +
+        '<button class="btn" id="lsSave">저장</button></div>';
+    const list = card.querySelector('#lsList');
+    if (!draft.length) list.innerHTML = '<div class="dim" style="font-size:12.5px">아직 레벨이 없어요. 아래에서 추가하세요.</div>';
+    draft.forEach(function (lv, i) {
+      const row = document.createElement('div'); row.className = 'lv-cfg-row';
+      const idx = document.createElement('span'); idx.className = 'lv-cfg-idx'; idx.textContent = i + 1;
+      const nm = document.createElement('span'); nm.className = 'lv-cfg-name'; nm.textContent = lv;
+      const up = document.createElement('button'); up.className = 'mini-btn'; up.textContent = '↑'; up.disabled = i === 0;
+      up.onclick = function () { const t = draft[i]; draft[i] = draft[i - 1]; draft[i - 1] = t; render(); };
+      const dn = document.createElement('button'); dn.className = 'mini-btn'; dn.textContent = '↓'; dn.disabled = i === draft.length - 1;
+      dn.onclick = function () { const t = draft[i]; draft[i] = draft[i + 1]; draft[i + 1] = t; render(); };
+      const rm = document.createElement('button'); rm.className = 'mini-btn danger'; rm.textContent = '✕';
+      rm.onclick = function () { draft.splice(i, 1); render(); };
+      row.appendChild(idx); row.appendChild(nm); row.appendChild(up); row.appendChild(dn); row.appendChild(rm);
+      list.appendChild(row);
+    });
+    const inp = card.querySelector('#lsInput');
+    card.querySelector('#lsAdd').onclick = function () {
+      const v = String(inp.value || '').trim();
+      if (!v) return;
+      if (v.length > 12) return setStatus('레벨 이름은 12자 이내로.');
+      if (draft.indexOf(v) > -1) return setStatus('이미 있는 레벨이에요.');
+      draft.push(v); render(); card.querySelector('#lsInput').focus();
+    };
+    inp.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); card.querySelector('#lsAdd').click(); } };
+    card.querySelector('#lsCancel').onclick = function () { root.innerHTML = ''; };
+    card.querySelector('#lsSave').onclick = save;
+  }
+  render();
 }
 
 // 본인 완등 기록 (홈 — 누구나 가능). 백엔드가 토큰으로 본인만 확인하므로 관리자 검증 없음.

@@ -60,6 +60,7 @@ const POST_ACTIONS = {
   editRaidOption:    { auth: 'requester', bust: true, fn: function (d) { return editRaidOption(d.month, d.dateText, d.newDate, d.newLoc, d.requester, d.token); } },
   deleteRaidOption:  { auth: 'requester', bust: true, fn: function (d) { return deleteRaidOption(d.month, d.dateText, d.requester, d.token); } },
   addRaidOption:     { auth: 'requester', bust: true, fn: function (d) { return addRaidOption(d.month, d.dateText, d.loc, d.requester, d.token); } }, // 후보 추가 (관리자)
+  setRsvp:           { auth: 'name', bust: true, fn: function (d) { return setRsvp(d.month, d.status, d.name, d.token); } }, // 참석 확정(RSVP)
 
   // 업로드 (요청자 토큰 필수 — 익명 업로드 차단)
   startUpload:       { auth: 'name', fn: function (d) { return startUpload(d.fileName, d.mimeType, d.fileSize, d.ym); } },
@@ -223,6 +224,7 @@ function getInitData() {
     settlers: getSettlers_(),      // 정산 담당자 (관리자 페이지 노출 판단용)
     notices: getHomeNotices_(),    // 홈 노출: 고정 공지 전부 + 최신 1건
     recent: getRecentActivity_(),  // 최근 24시간 벽화/전당 (홈 "새 소식")
+    rsvp: getRsvp_(),              // 확정 모임 참석 확정 { 월: {이름: 'yes'|'no'} }
     flashOwners: votes.flashOwners
   };
 }

@@ -161,10 +161,11 @@ function getLevelBoard(season) {
            seasons: Object.keys(seasonsSet).sort().reverse() }; // 최신 시즌 먼저
 }
 
-/* ---------- 레벨 목록 설정 (관리자) ---------- */
+/* ---------- 레벨 목록 설정 (누구나) ----------
+ * 레벨(난이도) 목록은 공용 설정 — 로그인한 회원이면 누구나 추가/순서변경 가능(각자 자기주도 운영).
+ */
 function setLevels(levels, requester, authToken) {
-  requester = verify_(requester, authToken);
-  if (!isAdmin_(requester)) throw new Error('관리자만 레벨을 설정할 수 있습니다.');
+  requester = verify_(requester, authToken); // 로그인만 확인 (관리자 아니어도 됨)
   if (!Array.isArray(levels)) throw new Error('레벨 배열이 필요합니다.');
   const clean = []; const seen = {};
   levels.forEach(function (lv) {
