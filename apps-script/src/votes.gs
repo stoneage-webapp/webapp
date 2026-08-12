@@ -413,6 +413,32 @@ function addRaidOption(month, dateText, loc, requester, authToken) {
   }
 }
 
+/* ---------- 참석 확정 (RSVP) ----------
+ * 확정된 정기공격 모임에 대해 회원이 참석(yes)/불참(no) 표시. Script Property 'rsvp' = { 월: { 이름: 'yes'|'no' } }.
+ */
+function getRsvp_() {
+  const v = PropertiesService.getScriptProperties().getProperty('rsvp');
+  try { return v ? JSON.parse(v) : {}; } catch (e) { return {}; }
+}
+function setRsvp(month, status, name, authToken) {
+  name = verify_(name, authToken); // 로그인 확인 (본인 것만 — name 은 토큰으로 검증)
+  month = String(month || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('월 형식 오류.');
+  status = String(status || '').trim();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const all = getRsvp_();
+    const m = all[month] || (all[month] = {});
+    if (status === 'yes' || status === 'no') m[name] = status;
+    else delete m[name]; // 빈 값 = 미정(취소)
+    PropertiesService.getScriptProperties().setProperty('rsvp', JSON.stringify(all));
+    return { rsvp: all };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /* ---------- 투표 (토글) ----------
  * 정기공격: toggleVote('raid', dateText, voter, token, month)
  * 자연재해: toggleVote('disaster', dateText, voter, token)

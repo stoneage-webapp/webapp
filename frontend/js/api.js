@@ -40,6 +40,7 @@ const API_POST = {
   editRaidOption:    ['month', 'dateText', 'newDate', 'newLoc', 'requester', 'token'],
   deleteRaidOption:  ['month', 'dateText', 'requester', 'token'],
   addRaidOption:     ['month', 'dateText', 'loc', 'requester', 'token'],
+  setRsvp:           ['month', 'status', 'name', 'token'],
   startUpload:       ['fileName', 'mimeType', 'fileSize', 'ym'],
   startHallUpload:   ['fileName', 'mimeType', 'fileSize'],
   uploadChunk:       ['uploadUrl', 'b64', 'start', 'end', 'total'],

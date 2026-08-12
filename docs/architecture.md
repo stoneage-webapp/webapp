@@ -100,7 +100,8 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `renameMember` | `oldName, newName, requester, token` | `{ members, support, settlers }` — 관리자 전용. A열 이름만 변경(PIN·지원여부 유지). 관리자 이름은 불가 |
 | `deleteMember` | `targetName, requester, token` | `{ members, support, settlers }` — 관리자 전용. 행 전체 삭제. 관리자 이름은 불가 |
 | `setAdmins` | `names(배열), requester, token` | `{ admins }` — 관리자 전용. Script Property `ADMINS` 설정(부관리자). 로스터 이름만, 최소 1명. 반영은 다음 실행부터 |
-| `setLevels` | `levels(배열, 낮은→높은 순), requester, token` | `getLevelBoard()` 결과 — 관리자 전용. Script Property `levels` 저장 + `레벨완등` 시트 열 보강 |
+| `setLevels` | `levels(배열, 낮은→높은 순), requester, token` | `getLevelBoard()` 결과 — **누구나(로그인)**. 공용 레벨 목록(Script Property `levels`) 저장 + 시트 열 보강. 홈 "⚙️ 레벨 설정"에서 |
+| `setRsvp` | `month('2026-08'), status('yes'\|'no'\|''), name, token` | `{ rsvp: {월:{이름:상태}} }` — **본인**. 확정 모임 참석 확정. 빈 값=미정(취소) |
 | `setLevelRecord` | `name, counts({레벨:정수}), requester, token` | `getLevelBoard()` — **관리자 전용**(다른 구성원 정정). 완등 수를 `레벨완등` 시트에 기록 |
 | `setMyLevelRecord` | `counts({레벨:정수}), name, token` | `getLevelBoard()` — **누구나(본인)**. 토큰으로 본인 확인 후 자기 완등 수만 기록 |
 | `postNotice` | `text, name, token` | `{ items(전체), home(고정+최신1) }` — 관리자 전용 |
@@ -139,7 +140,8 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 벽화 갤러리 | `getGallery`(월/사람 필터), `deleteProof` |
 | 명예의전당 | `getHallData`, `getHallArchive`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |
 | 공지 | 홈: `getInitData.notices`(고정 전부 + 최신 1건, 새 공지 뱃지), 더보기(관리자): `getNotices`, `postNotice`/`editNotice`/`deleteNotice`/`pinNotice` |
-| 레벨 순위 (홈, 모두 열람) | `getLevelBoard`(분기 시즌별), 본인 기록 `setMyLevelRecord`(누구나) |
+| 레벨 순위 (홈, 모두 열람) | `getLevelBoard`(분기 시즌별), 본인 기록 `setMyLevelRecord`·레벨 설정 `setLevels`(둘 다 누구나) |
+| 참석 확정(RSVP) · 번개 인증 리마인더 | 확정 배너 `setRsvp` · 홈 인앱 리마인더(그날 번개 시각 이후) |
 | 홈 새 소식 (최근 24h 벽화/전당) · 모임 D-1 리마인더 | `getInitData.recent` · 확정 모임 D-day |
 | 통계 | `getStats`(관리자 전체/일반 본인) |
 | 완료된 모임 기록 | `getCompletionLog` |

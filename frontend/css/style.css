@@ -328,6 +328,19 @@ textarea:focus { outline: none; border-color: var(--ember); }
 }
 .flash-remind .fr-go { color: var(--ember); font-weight: 800; margin-left: 6px; white-space: nowrap; }
 
+/* 참석 확정 (RSVP, #3) */
+.rsvp { margin: 8px 0 2px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.08); }
+.rsvp-count { font-size: 13px; color: var(--ink); }
+.rsvp-count b { color: var(--moss); font-size: 15px; }
+.rsvp-list { font-size: 12px; color: var(--ink-dim); margin-top: 3px; }
+.rsvp-btns { display: flex; gap: 8px; margin-top: 8px; }
+.rsvp-btn {
+  flex: 1; padding: 8px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 700;
+  background: var(--stone-hi); border: 1px solid var(--line); color: var(--ink-dim);
+}
+.rsvp-btn.on-yes { background: var(--moss); border-color: var(--moss); color: #14140f; }
+.rsvp-btn.on-no { background: #7a3b3b; border-color: #7a3b3b; color: #fff; }
+
 .stats-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .stats-table { border-collapse: collapse; width: 100%; font-size: 12.5px; white-space: nowrap; }
 .stats-table th, .stats-table td {
