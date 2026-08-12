@@ -435,14 +435,14 @@ async function softRefresh() {
   renderCertLine();
   renderVotes();
   renderHome();
-  await loadLevelBoard(); // 홈 레벨 순위 최신화 — 관리 탭 로더가 이 LEVELBOARD 를 재사용하므로 먼저 완료
 
   // 지연 로딩 탭은 플래그를 리셋해 다음 방문 때 새로 받게 하고, 지금 보고 있는 탭만 즉시 재로딩
-  galleryLoaded = hallLoaded = moreLoaded = adminLoaded = false;
+  galleryLoaded = hallLoaded = moreLoaded = adminLoaded = rankLoaded = false;
   if (currentTab === 'gallery') loadGallery();
   else if (currentTab === 'hall') loadHall();
+  else if (currentTab === 'rank') await loadLevelBoard();
   else if (currentTab === 'more') loadMore();
-  else if (currentTab === 'admin') loadAdmin();
+  else if (currentTab === 'admin') await loadAdmin(); // 관리 탭은 LEVELBOARD 를 재사용하므로 완료까지 대기
   else if (currentTab === 'photo') renderMyProofs();
 }
 
@@ -518,9 +518,8 @@ function applyLogin(session) {
   renderCertLine();
   renderVotes();
   renderHome();
-  loadLevelBoard(); // 홈 레벨 순위 (비동기)
   initPush();       // 푸시 알림: 로그인 회원 태깅 + 권한 버튼 갱신
-  setTab('home');
+  setTab('home');   // 레벨 순위는 랭킹 탭 진입 시 지연 로딩
 }
 
 /* ---------- 푸시 알림 (OneSignal) — #4 ----------
@@ -590,12 +589,13 @@ function changePinPrompt() {
 /* ---------- 탭 ---------- */
 function setTab(t) {
   currentTab = t;
-  ['home','vote','photo','gallery','hall','more','admin'].forEach(function(k) {
+  ['home','rank','vote','photo','gallery','hall','more','admin'].forEach(function(k) {
     document.getElementById('tab-' + k).classList.toggle('on', k === t);
     document.getElementById('nav-' + k).classList.toggle('on', k === t);
   });
   if (t === 'gallery' && !galleryLoaded) loadGallery();
   if (t === 'hall' && !hallLoaded) loadHall();
+  if (t === 'rank' && !rankLoaded) loadLevelBoard(); // 레벨 순위 (지연 로딩)
   if (t === 'more' && !moreLoaded) loadMore();
   if (t === 'admin' && !adminLoaded) loadAdmin();
   if (t === 'photo') renderMyProofs(); // 내 인증 목록(취소용) 갱신
@@ -2462,12 +2462,13 @@ async function deleteMemberClick(name) {
   }
 }
 
-/* ==================== 레벨 완등 순위/기록 ====================
+/* ==================== 레벨 완등 순위/기록 (랭킹 탭) ====================
  * 순위: 최고 완등 레벨 우선(레벨 목록 순서 기준) → 동점은 그 레벨 완등 수 → 총 완등 → 이름.
- * 순위는 홈에서 모두 열람. 완등 기록은 본인이 직접(누구나), 레벨 목록 설정만 관리자.
+ * 랭킹 탭에서 모두 열람. 완등 기록·레벨 설정 모두 각자(누구나) 가능.
  */
 let LEVELBOARD = null;  // { levels:[...], rows:[{name,counts,topLevel,topIdx,topCount,total,rank}] }
 let levelDraft = [];    // 관리자 레벨 편집용 작업 배열
+let rankLoaded = false; // 랭킹 탭 지연 로딩 플래그
 
 function levelRowMap_() {
   const map = {};
@@ -2475,22 +2476,23 @@ function levelRowMap_() {
   return map;
 }
 
-/* ---------- 순위 보기 (홈, 모두) ---------- */
+/* ---------- 순위 보기 (랭킹 탭, 모두) ---------- */
 async function loadLevelBoard() {
-  const box = document.getElementById('homeLevelBox');
+  const box = document.getElementById('rankBox');
   if (box) { box.className = 'loading'; box.textContent = '순위를 불러오는 중…'; }
   try {
     LEVELBOARD = await run('getLevelBoard'); // 항상 현재 시즌 (편집 기준)
+    rankLoaded = true;
     renderLevelRanking(LEVELBOARD);
   } catch (e) {
     if (box) { box.className = 'status err'; box.textContent = '순위 로딩 실패: ' + (e.message || e); }
   }
 }
 
-// 홈 시즌 셀렉트 변경 (#시즌): 현재 시즌이면 LEVELBOARD, 지난 시즌이면 열람용으로만 로드(LEVELBOARD 유지)
+// 시즌 셀렉트 변경 (#시즌): 현재 시즌이면 LEVELBOARD, 지난 시즌이면 열람용으로만 로드(LEVELBOARD 유지)
 async function onSeasonChange(season) {
   if (!season || (LEVELBOARD && season === LEVELBOARD.season)) { renderLevelRanking(LEVELBOARD); return; }
-  const box = document.getElementById('homeLevelBox');
+  const box = document.getElementById('rankBox');
   if (box) { box.className = 'loading'; box.textContent = '순위를 불러오는 중…'; }
   try { renderLevelRanking(await run('getLevelBoard', season)); }
   catch (e) { if (box) { box.className = 'status err'; box.textContent = e.message || e; } }
@@ -2502,7 +2504,7 @@ function seasonLabelKo_(s) {
 
 function renderLevelRanking(board) {
   board = board || LEVELBOARD;
-  const box = document.getElementById('homeLevelBox');
+  const box = document.getElementById('rankBox');
   if (!box || !board) return;
   box.className = '';
   const levels = board.levels || [];

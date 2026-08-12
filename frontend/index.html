@@ -95,16 +95,23 @@
     <div id="homeNotices"></div>
     <div id="homeCards"></div>
 
-    <div class="month-head">🧗 레벨 순위 <select id="levelSeasonSelect" class="season-sel"></select></div>
-    <div id="homeLevelBox" class="loading">순위를 불러오는 중…</div>
-    <button class="btn2" id="myLevelBtn" style="display:none" onclick="editMyLevelPrompt()">✏️ 내 완등 기록하기</button>
-    <button class="btn2" id="levelSetupBtn" style="display:none" onclick="openLevelSetup()">⚙️ 레벨 설정</button>
-
     <div class="cert-line" id="homeCertLine"></div>
     <button class="btn2" id="pushBtn" style="display:none" onclick="askPush()">🔔 알림 켜기 (공지·모임 알림 받기)</button>
     <button class="btn2" onclick="openChat()">💬 오픈카톡방 바로가기</button>
     <button class="btn2" onclick="openAlbum()">🔥 부족 영상 앨범 (구글 포토)</button>
     <button class="btn2" onclick="openNotion()">📜 부족 안내문</button>
+  </section>
+
+  <!-- 레벨 순위 -->
+  <section id="tab-rank" class="tab">
+    <div class="month-head" style="margin-top:0">🧗 레벨 순위 <select id="levelSeasonSelect" class="season-sel"></select></div>
+    <p class="dim" style="font-size:12.5px; margin-bottom:10px">
+      <b>가장 높이 완등한 레벨</b>이 우선이고, 같으면 그 레벨 완등 수로 가려요.<br>
+      완등 기록은 각자 직접 올려요. 시즌은 분기(3개월)마다 새로 시작합니다.
+    </p>
+    <div id="rankBox" class="loading">순위를 불러오는 중…</div>
+    <button class="btn2" id="myLevelBtn" style="display:none" onclick="editMyLevelPrompt()">✏️ 내 완등 기록하기</button>
+    <button class="btn2" id="levelSetupBtn" style="display:none" onclick="openLevelSetup()">⚙️ 레벨 설정</button>
   </section>
 
   <!-- 투표 -->
@@ -298,6 +305,7 @@
   <button id="nav-photo" onclick="setTab('photo')"><span class="ico">📸</span>인증</button>
   <button id="nav-gallery" onclick="setTab('gallery')"><span class="ico">🖼️</span>벽화</button>
   <button id="nav-hall" onclick="setTab('hall')"><span class="ico">🏆</span>전당</button>
+  <button id="nav-rank" onclick="setTab('rank')"><span class="ico">🧗</span>랭킹</button>
   <button id="nav-more" onclick="setTab('more')"><span class="ico">📋</span>더보기</button>
   <button id="nav-admin" style="display:none" onclick="setTab('admin')"><span class="ico">🛠️</span>관리</button>
 </nav>
