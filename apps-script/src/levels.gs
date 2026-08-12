@@ -107,6 +107,7 @@ function getLevelBoard(season) {
   const roster = splitBySupport_(s).all.map(function (m) { return m.name; });
 
   const counts = {}; // 이름 → { 레벨: 수 }
+  const seasonsSet = {}; seasonsSet[currentSeason_()] = true; // 드롭다운용 시즌 목록(항상 현재 포함)
   const sh = s.getSheetByName(CONFIG.SHEETS.levels);
   if (sh && sh.getLastRow() > 1 && sh.getLastColumn() >= 2) {
     const seasoned = String(sh.getRange(1, 1).getValue()).trim() === '시즌';
@@ -115,6 +116,7 @@ function getLevelBoard(season) {
     const nameCol = seasoned ? 1 : 0;       // B(시즌형) 또는 A(구형)
     const firstLevelCol = seasoned ? 2 : 1; // C 또는 B
     for (let r = 1; r < vals.length; r++) {
+      if (seasoned) { const sv = String(vals[r][0]).trim(); if (/^\d{4}-Q[1-4]$/.test(sv)) seasonsSet[sv] = true; }
       if (seasoned && String(vals[r][0]).trim() !== season) continue; // 시즌 필터
       const nm = String(vals[r][nameCol]).trim();
       if (!nm) continue;
@@ -155,7 +157,8 @@ function getLevelBoard(season) {
     r.rank = rank;
   });
 
-  return { levels: levels, rows: rows, season: season, seasonLabel: seasonLabel_(season) };
+  return { levels: levels, rows: rows, season: season, seasonLabel: seasonLabel_(season),
+           seasons: Object.keys(seasonsSet).sort().reverse() }; // 최신 시즌 먼저
 }
 
 /* ---------- 레벨 목록 설정 (관리자) ---------- */

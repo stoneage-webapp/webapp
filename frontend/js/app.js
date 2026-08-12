@@ -52,6 +52,12 @@ function dateKey_(x) { return (x && x.dateInfo && x.dateInfo.iso) || (x && x.dat
 function koSortStr(s) {
   return koSort(String(s || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean)).join(', ');
 }
+// 암장/장소를 구글 지도 검색 링크로 (#지도링크). 카드 탭 이벤트는 막는다.
+function locHtml(loc, prefix) {
+  if (!loc) return '';
+  return (prefix == null ? '📍 ' : prefix) + '<a class="maplink" href="https://www.google.com/maps/search/?api=1&query=' +
+    encodeURIComponent(loc) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">' + esc(loc) + '</a>';
+}
 
 // run(액션, 인자...) 은 js/api.js 가 제공 (fetch 기반 — 호출부는 GAS 시절과 동일)
 
@@ -665,7 +671,7 @@ function renderDday() {
     (remind ? '<div class="remind">' + remind + '</div>' : '') +
     '🔥 다음 정기공격 <b>' + ddayText(next.d) + '</b>' +
     '<div class="cdate">' + esc(next.conf.date) + '</div>' +
-    (next.conf.loc ? '📍 ' + esc(next.conf.loc) : '') + '</div>';
+    (next.conf.loc ? locHtml(next.conf.loc) : '') + '</div>';
   el.firstChild.onclick = function () { goVote('raid'); };
 }
 
@@ -947,7 +953,7 @@ function renderRaid(list) {
       const cdisp = cinfo ? fmtVoteDate(cinfo) : g.confirmed.date;
       const expired = !!(cinfo && cinfo.dateInfo && isPastIso_(cinfo.dateInfo.iso)); // 완료 처리 (#완료처리)
       b.innerHTML = '📌 ' + mm + '월 확정<div class="cdate">' + esc(cdisp) + '</div>' +
-        (g.confirmed.loc ? '📍 ' + esc(g.confirmed.loc) + '<br>' : '') +
+        (g.confirmed.loc ? locHtml(g.confirmed.loc) + '<br>' : '') +
         (g.confirmed.note ? '<div class="cnote">📝 ' + esc(g.confirmed.note).replace(/\n/g, '<br>') + '</div>' : '') +
         (expired ? '<div class="warn">⏰ 모임 날짜가 지났어요 — 완료 처리해 주세요</div>' : '') +
         '투표 마감';
@@ -1005,7 +1011,7 @@ function renderRaid(list) {
       card.innerHTML =
         '<div class="top"><span class="date">' + esc(dateTxt) + (isC ? ' ✅' : '') + '</span>' +
         '<span class="count">' + r.voters.length + '명</span></div>' +
-        (r.loc ? '<div class="vloc">📍 ' + esc(r.loc) + '</div>' : '') +
+        (r.loc ? '<div class="vloc">' + locHtml(r.loc) + '</div>' : '') +
         (r.voters.length ? '<div class="voters">' + koSort(r.voters).map(esc).join(' · ') + '</div>' : '') +
         (!blocked && mine ? '<div class="hint">✓ 참여 중 — 탭하면 취소</div>' : '');
       if (!blocked) {
@@ -1031,6 +1037,15 @@ function renderRaid(list) {
       }
       list.appendChild(card);
     });
+    // 후보 날짜 추가 (관리자, 확정 전) — #후보추가
+    if (isAdmin && !g.confirmed) {
+      const addb = document.createElement('button');
+      addb.className = 'btn2';
+      addb.style.marginBottom = '12px';
+      addb.textContent = '➕ 후보 날짜 추가';
+      addb.onclick = function () { addRaidOptionPrompt(g.month); };
+      list.appendChild(addb);
+    }
   });
   if (past.length && !sel) appendPastToggle_(list, past.length);
 }
@@ -1646,6 +1661,29 @@ function editRaidOptionPrompt(month, r) {
       renderVotes();
       renderHome();
       toast('✏️ 후보를 수정했어요.', true);
+    }
+  });
+}
+
+// 정기공격 후보 추가 (관리자) — #후보추가. 날짜(+시간)로 후보 생성, 날짜의 월로 자동 분류
+function addRaidOptionPrompt(month) {
+  modal({
+    title: '➕ 후보 날짜 추가',
+    message: (month ? month + ' ' : '') + '정기공격 후보를 추가해요.',
+    fields: [
+      { key: 'date', label: '날짜', type: 'date' },
+      { key: 'time', label: '시간 (선택)', type: 'time' },
+      { key: 'loc', label: '위치 (선택)', type: 'text', placeholder: '예: 더클라임 강남' }
+    ],
+    confirmText: '추가',
+    busyText: '추가 중…',
+    validate: function (v) { return v.date ? null : '날짜를 선택하세요.'; },
+    onConfirm: async function (v) {
+      const dateText = v.date + (v.time ? ' ' + v.time : '');
+      const m = v.date.slice(0, 7);
+      DATA.raidMonths = await run('addRaidOption', m, dateText, String(v.loc || '').trim(), getMe(), ME.token);
+      buildMonthFilter(); buildDateSelect('photo'); renderVotes(); renderHome();
+      toast('✓ 후보를 추가했어요.', true);
     }
   });
 }
@@ -2343,31 +2381,52 @@ async function loadLevelBoard() {
   const box = document.getElementById('homeLevelBox');
   if (box) { box.className = 'loading'; box.textContent = '순위를 불러오는 중…'; }
   try {
-    LEVELBOARD = await run('getLevelBoard');
-    renderLevelRanking();
+    LEVELBOARD = await run('getLevelBoard'); // 항상 현재 시즌 (편집 기준)
+    renderLevelRanking(LEVELBOARD);
   } catch (e) {
     if (box) { box.className = 'status err'; box.textContent = '순위 로딩 실패: ' + (e.message || e); }
   }
 }
 
-function renderLevelRanking() {
+// 홈 시즌 셀렉트 변경 (#시즌): 현재 시즌이면 LEVELBOARD, 지난 시즌이면 열람용으로만 로드(LEVELBOARD 유지)
+async function onSeasonChange(season) {
+  if (!season || (LEVELBOARD && season === LEVELBOARD.season)) { renderLevelRanking(LEVELBOARD); return; }
   const box = document.getElementById('homeLevelBox');
-  if (!box || !LEVELBOARD) return;
+  if (box) { box.className = 'loading'; box.textContent = '순위를 불러오는 중…'; }
+  try { renderLevelRanking(await run('getLevelBoard', season)); }
+  catch (e) { if (box) { box.className = 'status err'; box.textContent = e.message || e; } }
+}
+
+function seasonLabelKo_(s) {
+  return /^\d{4}-Q[1-4]$/.test(s) ? (s.slice(0, 4) + ' ' + s.slice(6) + '분기') : s;
+}
+
+function renderLevelRanking(board) {
+  board = board || LEVELBOARD;
+  const box = document.getElementById('homeLevelBox');
+  if (!box || !board) return;
   box.className = '';
-  const levels = LEVELBOARD.levels || [];
-  // 시즌 라벨 (분기)
-  const seasonEl = document.getElementById('levelSeasonLabel');
-  if (seasonEl) seasonEl.textContent = LEVELBOARD.seasonLabel ? '· ' + LEVELBOARD.seasonLabel : '';
-  // 내 완등 기록 버튼: 로그인 + 레벨 존재 시에만 노출
+  const levels = board.levels || [];
+  // 시즌 셀렉트 (#시즌) — 지난 분기 열람
+  const sel = document.getElementById('levelSeasonSelect');
+  if (sel) {
+    const seasons = (board.seasons && board.seasons.length) ? board.seasons : [board.season];
+    sel.innerHTML = seasons.map(function (s) {
+      return '<option value="' + esc(s) + '"' + (s === board.season ? ' selected' : '') + '>' + esc(seasonLabelKo_(s)) + '</option>';
+    }).join('');
+    sel.onchange = function () { onSeasonChange(sel.value); };
+  }
+  // 내 완등 기록 버튼: 현재 시즌 볼 때 + 로그인 + 레벨 존재 (지난 시즌은 열람만)
+  const isCurrent = !LEVELBOARD || board.season === LEVELBOARD.season;
   const myBtn = document.getElementById('myLevelBtn');
-  if (myBtn) myBtn.style.display = (getMe() && levels.length) ? '' : 'none';
+  if (myBtn) myBtn.style.display = (getMe() && levels.length && isCurrent) ? '' : 'none';
   if (!levels.length) {
     box.innerHTML = '<div class="dim" style="font-size:13px; padding:6px 2px">아직 레벨이 등록되지 않았어요.' +
       (ME.isAdmin ? ' 관리 탭에서 레벨을 먼저 등록해 주세요.' : '') + '</div>';
     return;
   }
-  const ranked = LEVELBOARD.rows.filter(function (r) { return r.rank != null; });
-  const none = LEVELBOARD.rows.filter(function (r) { return r.rank == null; });
+  const ranked = board.rows.filter(function (r) { return r.rank != null; });
+  const none = board.rows.filter(function (r) { return r.rank == null; });
   const badge = function (rank) { return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank + '위'; };
 
   let html = '';
@@ -2574,6 +2633,7 @@ function loadAdmin() {
   if (ME.isAdmin) {
     buildSupportChips();
     buildSettlerChips();
+    buildAdminChips();
     buildResetPinSelect();
     renderMemberAdmin();
     loadLevelAdmin();
@@ -2669,6 +2729,43 @@ async function saveSettlers() {
     busyHide();
     st.className = 'status ok';
     st.textContent = '✓ 저장됨: ' + (res.settlers.length ? res.settlers.join(', ') : '(없음)');
+  } catch (e) {
+    busyHide(false);
+    st.className = 'status err';
+    st.textContent = e.message || e;
+  }
+}
+
+/* ---------- 관리자(부관리자) 설정 (관리자) — #부관리자 ---------- */
+function buildAdminChips() {
+  const box = document.getElementById('adminChips');
+  if (!box) return;
+  box.innerHTML = '';
+  const cur = DATA.admins || [];
+  DATA.members.forEach(function (m) {
+    const c = document.createElement('span');
+    c.className = 'chip' + (cur.indexOf(m) > -1 ? ' on' : '');
+    c.dataset.name = m;
+    c.textContent = m;
+    c.onclick = function () { c.classList.toggle('on'); };
+    box.appendChild(c);
+  });
+}
+
+async function saveAdmins() {
+  const names = Array.prototype.slice.call(document.querySelectorAll('#adminChips .chip.on'))
+    .map(function (c) { return c.dataset.name; });
+  const st = document.getElementById('adminStatus');
+  if (!names.length) { st.className = 'status err'; st.textContent = '관리자는 최소 1명이어야 해요.'; return; }
+  if (names.indexOf(getMe()) < 0 &&
+      !(await modalConfirm('본인을 관리자에서 제외합니다. 저장하면 다음 로그인부터 관리 권한이 사라져요. 계속할까요?'))) return;
+  busyShow('관리자 저장 중…');
+  try {
+    const res = await run('setAdmins', names, getMe(), ME.token);
+    DATA.admins = res.admins;
+    busyHide();
+    st.className = 'status ok';
+    st.textContent = '✓ 저장됨: ' + res.admins.join(', ') + ' (반영은 각자 다음 로그인부터)';
   } catch (e) {
     busyHide(false);
     st.className = 'status err';

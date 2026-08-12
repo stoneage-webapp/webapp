@@ -385,6 +385,34 @@ function deleteRaidOption(month, dateText, requester, authToken) {
   }
 }
 
+// 관리자만 후보 추가. 확정된 월엔 불가. 같은 날짜 후보 중복 방지. (C=마감일은 그 월 첫 행에서 상속)
+function addRaidOption(month, dateText, loc, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!isAdmin_(requester)) throw new Error('관리자만 후보를 추가할 수 있습니다.');
+  ensureLocationColumns_();
+  month = String(month || '').trim();
+  dateText = String(dateText || '').trim();
+  loc = String(loc || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('대상 월 형식 오류 (yyyy-MM).');
+  if (!dateText) throw new Error('날짜 후보를 입력하세요.');
+  if (getRaidConfirmedAll_()[month]) throw new Error('확정된 월은 후보를 추가할 수 없습니다. 먼저 확정을 취소하세요.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = ss_().getSheetByName(CONFIG.SHEETS.raid);
+    const vals = sh.getDataRange().getDisplayValues();
+    for (let i = 1; i < vals.length; i++) {
+      if (String(vals[i][0]).trim() === month && String(vals[i][1]).trim() === dateText) {
+        throw new Error('같은 날짜 후보가 이미 있습니다.');
+      }
+    }
+    sh.appendRow([month, dateText, '', loc]); // A=월, B=날짜, C=마감(상속), D=위치
+    return readRaidByMonth_(ss_());
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /* ---------- 투표 (토글) ----------
  * 정기공격: toggleVote('raid', dateText, voter, token, month)
  * 자연재해: toggleVote('disaster', dateText, voter, token)

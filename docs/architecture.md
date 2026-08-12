@@ -17,7 +17,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 
 | 파일 | 역할 |
 |---|---|
-| `Code.gs` | 웹앱 진입점 `doGet`/`doPost` + **action 레지스트리**(auth/bust/cache 플래그) + 조회 캐시 + `getInitData` |
+| `Code.gs` | 웹앱 진입점 `doGet`/`doPost` + **action 레지스트리**(auth/bust/cache 플래그) + 조회 캐시 + `getInitData`(+`recent`) + 예기치 못한 오류 로깅(`logError_`→`오류로그` 시트) |
 | `config.gs` | 전역 상수 `CONFIG` (실제 값은 커밋 금지 — `v3.0.2/Code.local.md` 참고) |
 | `auth.gs` | PIN 로그인, 서명 토큰, 요청 검증, 관리자 판별, PIN 초기화 |
 | `members.gs` | 부족원 명단 관리(관리자) — 추가/이름수정/삭제. 부족원 시트 A열만 조작 |
@@ -56,7 +56,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `getSettleStatus` | `ym`(선택, 기본 이번 달) | `{ ym, months:[존재하는 월들], rows:[{name,status}] }` — 인증현황 시트, 지정한 월 한 열만 |
 | `getVenueStats` | — | `{ total:[{loc,count}], thisMonth:[{loc,count}], month }` — 암장별 방문 집계 |
 | `getCompletionLog` | `limit`(기본10) | `{ items:[{when,kind,month,date,loc,people,by}] }` — `완료기록` 시트 최신순. 정기공격 무산 종료는 `date`가 `'(모임 없음)'` |
-| `getLevelBoard` | `season(선택, 예 '2026-Q3')` | `{ levels, rows:[{name,counts,topLevel,topIdx,topCount,total,rank}], season, seasonLabel }` — 레벨 완등 순위(공개, **분기 시즌별**, 기본=현재 분기). **최고 레벨 우선** → 그 레벨 완등수 → 총완등 → 이름. 기록 없으면 `rank:null` |
+| `getLevelBoard` | `season(선택, 예 '2026-Q3')` | `{ levels, rows:[{name,counts,topLevel,topIdx,topCount,total,rank}], season, seasonLabel, seasons:[존재 시즌들] }` — 레벨 완등 순위(공개, **분기 시즌별**, 기본=현재 분기). **최고 레벨 우선** → 그 레벨 완등수 → 총완등 → 이름. 기록 없으면 `rank:null`. `seasons`로 지난 시즌 열람 |
 
 > - `driveApiKey`는 익명 `getInitData`에서 **제거됨** → `loginWithPin`/`changePin` 응답으로 이동.
 > - `certNudge`도 같은 이유로 로그인 응답 전용: "이번 달 완료 처리된 모임에 참여했는데 아직 인증 안 함" 여부를 **본인 것만** 알려준다 (`needsCertNudge_`, votes.gs). 다른 사람의 인증 여부를 노출하지 않기 위해 `getInitData` 등 익명 GET에는 포함하지 않는다.
@@ -85,6 +85,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `completeRaid` | `month, requester, token` | `raidMonths` 배열 — 관리자 전용. 확정된 월이면 "완료", 확정 없이 마감된 월이면 "모임 없음"으로 종료. `완료기록` 시트에 기록 후 목록에서 제외 |
 | `editRaidOption` | `month, dateText, newDate, newLoc, requester, token` | `raidMonths` 배열 — 관리자 전용. 후보 날짜(B)/위치(D) 수정, 투표자 보존. **확정된 월은 불가**(먼저 확정 취소) |
 | `deleteRaidOption` | `month, dateText, requester, token` | `raidMonths` 배열 — 관리자 전용. 후보 행 삭제(그 날짜 투표도 함께 삭제). **확정된 월은 불가** |
+| `addRaidOption` | `month, dateText, loc, requester, token` | `raidMonths` 배열 — **관리자 전용**. 후보 날짜 추가(A=월,B=날짜,D=위치). 중복·확정월 방지 |
 | `startUpload` | `fileName, mimeType, fileSize, ym, **name, token**` | Drive resumable 업로드 URL(문자열) |
 | `startHallUpload` | `fileName, mimeType, fileSize, **name, token**` | Drive resumable 업로드 URL(문자열) |
 | `uploadChunk` | `uploadUrl, b64, start, end, total, **name, token**` | `{ done, fileId? }` |
@@ -98,6 +99,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `addMember` | `newName, requester, token` | `{ members, support, settlers }` — 관리자 전용. 부족원 시트 A열에 이름 추가 |
 | `renameMember` | `oldName, newName, requester, token` | `{ members, support, settlers }` — 관리자 전용. A열 이름만 변경(PIN·지원여부 유지). 관리자 이름은 불가 |
 | `deleteMember` | `targetName, requester, token` | `{ members, support, settlers }` — 관리자 전용. 행 전체 삭제. 관리자 이름은 불가 |
+| `setAdmins` | `names(배열), requester, token` | `{ admins }` — 관리자 전용. Script Property `ADMINS` 설정(부관리자). 로스터 이름만, 최소 1명. 반영은 다음 실행부터 |
 | `setLevels` | `levels(배열, 낮은→높은 순), requester, token` | `getLevelBoard()` 결과 — 관리자 전용. Script Property `levels` 저장 + `레벨완등` 시트 열 보강 |
 | `setLevelRecord` | `name, counts({레벨:정수}), requester, token` | `getLevelBoard()` — **관리자 전용**(다른 구성원 정정). 완등 수를 `레벨완등` 시트에 기록 |
 | `setMyLevelRecord` | `counts({레벨:정수}), name, token` | `getLevelBoard()` — **누구나(본인)**. 토큰으로 본인 확인 후 자기 완등 수만 기록 |
