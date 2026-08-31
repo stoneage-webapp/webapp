@@ -130,7 +130,8 @@ function settleMonthPrompt() {
     (r.uncovered.length ? '\n\n⚠ 사진 누락: ' + r.uncovered.join(', ') : ''));
 }
 
-function settleMonth(ym) {
+// by = 정산 처리자(예산 적립 기록용). 시트 메뉴에서 실행하면 생략 가능.
+function settleMonth(ym, by) {
   const tz = Session.getScriptTimeZone();
   const s = ss_();
 
@@ -212,9 +213,14 @@ function settleMonth(ym) {
 
   const done = needed.length;
   const uncovered = needed.filter(function(m) { return !covered[m]; });
+
+  // 부족 예산 적립 — 정산된(인증 완료) 인원 × 인당 적립액. 같은 달 재정산 시 갱신(중복 없음).
+  creditSettlement_(ym, done, by || '');
+
   return {
     done: done, total: members.length, independent: independent.length,
-    dormant: dormant.length, canceled: canceled.length, copied: copied, uncovered: uncovered
+    dormant: dormant.length, canceled: canceled.length, copied: copied, uncovered: uncovered,
+    credited: done * CONFIG.BUDGET_PER_PERSON
   };
 }
 
@@ -433,7 +439,7 @@ function runSettle(ym, requester, authToken) {
   ym = String(ym || '').trim() ||
     Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
   if (!/^\d{4}-\d{2}$/.test(ym)) throw new Error('형식 오류: yyyy-MM (예: 2026-07)');
-  const r = settleMonth(ym);
+  const r = settleMonth(ym, requester);
   r.ym = ym;
   return r;
 }

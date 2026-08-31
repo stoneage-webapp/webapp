@@ -94,7 +94,12 @@ const POST_ACTIONS = {
   setSettlers:       { auth: 'requester', bust: true, fn: function (d) { return setSettlers(d.names, d.requester, d.token); } }, // 담당자 지정 (관리자)
   setSupports:       { auth: 'requester', bust: true, fn: function (d) { return setSupports(d.names, d.requester, d.token); } }, // 지원 대상 지정 (관리자, J열)
   cancelSettle:      { auth: 'requester', bust: true, fn: function (d) { return cancelSettle(d.ym, d.targetName, d.requester, d.token); } }, // 인원별 이번 달 정산 취소/복구
-  resetSettle:       { auth: 'requester', bust: true, fn: function (d) { return resetSettle(d.ym, d.requester, d.token); } }              // 이번 달 정산 초기화
+  resetSettle:       { auth: 'requester', bust: true, fn: function (d) { return resetSettle(d.ym, d.requester, d.token); } },             // 이번 달 정산 초기화
+
+  // 부족 예산 (정산 담당자/관리자만)
+  getBudget:         { auth: 'name', fn: function (d) { return getBudget(d.name, d.token); } },
+  addExpense:        { auth: 'name', bust: true, fn: function (d) { return addExpense(d.amount, d.note, d.name, d.token); } },
+  deleteBudgetItem:  { auth: 'name', bust: true, fn: function (d) { return deleteBudgetItem(d.row, d.when, d.name, d.token); } }
 };
 
 /* ---------- 진입점 ---------- */

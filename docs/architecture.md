@@ -22,6 +22,8 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `auth.gs` | PIN 로그인, 서명 토큰, 요청 검증, 관리자 판별, PIN 초기화 |
 | `members.gs` | 부족원 명단 관리(관리자) — 추가/이름수정/삭제. 부족원 시트 A열만 조작 |
 | `levels.gs` | 레벨(난이도)별 완등 기록/순위 — 레벨 목록(Script Property)·`레벨완등` 시트, 최고 레벨 우선 순위 |
+| `budget.gs` | 부족 예산 — 정산 적립(자동)·사용 이력. `예산` 시트. 정산 담당자/관리자 전용 |
+| `push.gs` | 푸시 알림(OneSignal) — 공지/번개 즉시 발송, D-1·번개 인증 시간 트리거 |
 | `votes.gs` | 정기공격/자연재해 투표, 번개, 일정 확정, 완료 처리, 마감 판정 |
 | `photos.gs` | Drive 업로드(청크), Photos 업로드, 벽화 갤러리, 사진 삭제 |
 | `hall.gs` | 명예의전당 출품/투표/영상 삭제 |
@@ -102,6 +104,9 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `setAdmins` | `names(배열), requester, token` | `{ admins }` — 관리자 전용. Script Property `ADMINS` 설정(부관리자). 로스터 이름만, 최소 1명. 반영은 다음 실행부터 |
 | `setDormant` | `targetName, until('yyyy-MM-dd' 또는 ''), requester, token` | 멤버 스냅샷 — 관리자 전용. **휴면**(부족원 K열). 최대 3개월, 종료일 경과 시 자동 복귀. 빈 값=즉시 해제 |
 | `setRole` | `targetName, role, requester, token` | 멤버 스냅샷 — 관리자 전용. **직책**(부족원 L열): 부족심사중/조약돌/간석기/고인돌 |
+| `getBudget` | `name, token` | `{ balance, credit, spent, perPerson, items:[{when,kind,amount,note,by,month,row}] }` — **정산 담당자/관리자만** |
+| `addExpense` | `amount, note, name, token` | `getBudget()` 결과 — 예산 사용 등록 (정산 담당자/관리자) |
+| `deleteBudgetItem` | `row, when, name, token` | `getBudget()` 결과 — 예산 기록 삭제. `when` 대조 |
 | `setLevels` | `levels(배열, 낮은→높은 순), requester, token` | `getLevelBoard()` 결과 — **누구나(로그인)**. 공용 레벨 목록(Script Property `levels`) 저장 + 시트 열 보강. 홈 "⚙️ 레벨 설정"에서 |
 | `setRsvp` | `month('2026-08'), status('yes'\|'no'\|''), name, token` | `{ rsvp: {월:{이름:상태}} }` — **본인**. 확정 모임 참석 확정. 빈 값=미정(취소) |
 | `setLevelRecord` | `name, counts({레벨:정수}), requester, token` | `getLevelBoard()` — **관리자 전용**(다른 구성원 정정). 완등 수를 `레벨완등` 시트에 기록 |

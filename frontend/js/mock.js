@@ -90,6 +90,18 @@
              settlers: DATA.settlers };
   }
 
+  // ── 부족 예산 목데이터 (정산 적립 / 사용 이력) ──
+  const BUDGET = [
+    { when: ym + '-01 10:00', kind: '적립', amount: 15000, note: '2026-07 정산 적립 (3명 × 5,000원)', by: '김광훈', month: '2026-07', row: 2 },
+    { when: ym + '-05 19:20', kind: '사용', amount: 42000, note: '뒤풀이 치킨', by: '이희주', month: '', row: 3 }
+  ];
+  function budgetSnap() {
+    let credit = 0, spent = 0;
+    BUDGET.forEach(function (b) { if (b.kind === '적립') credit += b.amount; else spent += b.amount; });
+    return { balance: credit - spent, credit: credit, spent: spent, perPerson: 5000,
+             items: BUDGET.slice().reverse() };
+  }
+
   // ── 레벨(난이도)별 완등 순위 목데이터 ──
   let LEVELS = ['흰', '노', '주', '초', '파', '빨'];       // 낮은→높은 순
   const LEVEL_COUNTS = {                                   // { 이름: { 레벨: 완등수 } }
@@ -337,7 +349,21 @@
           }
           return levelBoard();
         })(),
-        runSettle: { ym: args[0], done: 2, total: 4, independent: 1, canceled: 1, copied: 1, uncovered: ['박도윤'] },
+        runSettle: { ym: args[0], done: 2, total: 4, independent: 1, dormant: 0, canceled: 1, copied: 1, uncovered: ['박도윤'], credited: 10000 },
+        getBudget: budgetSnap(),
+        addExpense: (function () {
+          if (fn !== 'addExpense') return budgetSnap();
+          const amt = parseInt(String(args[0]).replace(/[^\d]/g, ''), 10) || 0;
+          const maxRow = BUDGET.reduce(function (m, b) { return Math.max(m, b.row); }, 1);
+          if (amt > 0) BUDGET.push({ when: 'now', kind: '사용', amount: amt, note: String(args[1] || ''), by: args[2], month: '', row: maxRow + 1 });
+          return budgetSnap();
+        })(),
+        deleteBudgetItem: (function () {
+          if (fn !== 'deleteBudgetItem') return budgetSnap();
+          const i = BUDGET.findIndex(function (b) { return b.row === Number(args[0]); });
+          if (i > -1) BUDGET.splice(i, 1);
+          return budgetSnap();
+        })(),
         setSettlers: { settlers: args[0] },
         setRsvp: (function () {
           if (fn !== 'setRsvp') return { rsvp: DATA.rsvp };

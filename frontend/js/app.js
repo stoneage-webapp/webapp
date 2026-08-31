@@ -2906,6 +2906,7 @@ function loadAdmin() {
   ymSel.value = now.getFullYear() + '-' + pad2(now.getMonth() + 1);
   ymSel.onchange = function () { loadSettle(); }; // 월 변경 시 그 달 정산 현황으로 갱신
   loadSettle();
+  loadBudget(); // 부족 예산 (정산 담당자/관리자만 접근 가능한 탭이라 별도 가드 불필요)
   if (ME.isAdmin) {
     buildSupportChips();
     buildSettlerChips();
@@ -2913,6 +2914,92 @@ function loadAdmin() {
     buildResetPinSelect();
     renderMemberAdmin();
     loadLevelAdmin();
+  }
+}
+
+/* ==================== 부족 예산 (정산 담당자/관리자) ====================
+ * 정산 실행 시 인당 적립액이 자동 적립되고, 사용 이력은 담당자가 직접 등록한다.
+ */
+function won_(n) { return (Number(n) || 0).toLocaleString('ko-KR') + '원'; }
+
+async function loadBudget() {
+  const box = document.getElementById('budgetSummary');
+  if (!box) return;
+  box.className = 'loading'; box.textContent = '예산을 불러오는 중…';
+  try {
+    renderBudget(await run('getBudget', getMe(), ME.token));
+  } catch (e) {
+    box.className = 'status err';
+    box.textContent = '예산 로딩 실패: ' + (e.message || e);
+  }
+}
+
+function renderBudget(b) {
+  const box = document.getElementById('budgetSummary');
+  const list = document.getElementById('budgetList');
+  if (!box || !b) return;
+  box.className = '';
+  box.innerHTML = '<div class="budget-card">' +
+    '<div class="bd-balance">잔액 <b>' + won_(b.balance) + '</b></div>' +
+    '<div class="bd-sub">적립 ' + won_(b.credit) + ' · 사용 ' + won_(b.spent) +
+    (b.perPerson ? ' <span class="dim">· 정산 인당 ' + won_(b.perPerson) + '</span>' : '') + '</div></div>';
+
+  if (!list) return;
+  list.innerHTML = '';
+  if (!b.items || !b.items.length) {
+    list.innerHTML = '<div class="dim" style="font-size:12.5px; margin-top:8px">아직 예산 기록이 없어요.</div>';
+    return;
+  }
+  b.items.forEach(function (it) {
+    const row = document.createElement('div');
+    row.className = 'budget-row ' + (it.kind === '적립' ? 'credit' : 'spend');
+    const txt = document.createElement('span');
+    txt.className = 'bd-txt';
+    txt.innerHTML = '<b>' + (it.kind === '적립' ? '+' : '−') + won_(it.amount) + '</b> ' + esc(it.note || '') +
+      '<span class="bd-meta">' + esc(it.when || '') + (it.by ? ' · ' + esc(it.by) : '') + '</span>';
+    row.appendChild(txt);
+    const del = document.createElement('button');
+    del.className = 'mini-btn danger';
+    del.textContent = '삭제';
+    del.onclick = function () { deleteBudgetClick(it); };
+    row.appendChild(del);
+    list.appendChild(row);
+  });
+}
+
+async function addExpenseClick() {
+  const amtEl = document.getElementById('expenseAmount');
+  const noteEl = document.getElementById('expenseNote');
+  const st = document.getElementById('budgetStatus');
+  const amount = parseInt(String(amtEl.value || '').replace(/[^\d]/g, ''), 10);
+  const note = String(noteEl.value || '').trim();
+  if (!amount || amount <= 0) { st.className = 'status err'; st.textContent = '금액을 입력하세요.'; return; }
+  if (!note) { st.className = 'status err'; st.textContent = '사용 내용을 입력하세요.'; return; }
+  busyShow('사용 등록 중…');
+  try {
+    renderBudget(await run('addExpense', amount, note, getMe(), ME.token));
+    amtEl.value = ''; noteEl.value = '';
+    busyHide();
+    st.className = 'status ok';
+    st.textContent = '✓ ' + won_(amount) + ' 사용을 등록했어요.';
+  } catch (e) {
+    busyHide(false);
+    st.className = 'status err';
+    st.textContent = e.message || e;
+  }
+}
+
+async function deleteBudgetClick(it) {
+  if (!(await modalConfirm('이 기록을 삭제할까요?\n' + (it.kind === '적립' ? '+' : '−') + won_(it.amount) + ' · ' + (it.note || ''),
+    { title: '💰 예산 기록 삭제', confirmText: '삭제' }))) return;
+  busyShow('삭제 중…');
+  try {
+    renderBudget(await run('deleteBudgetItem', it.row, it.when, getMe(), ME.token));
+    busyHide();
+    toast('🗑️ 삭제했어요.', true);
+  } catch (e) {
+    busyHide(false);
+    toast(e.message || e);
   }
 }
 
@@ -2969,8 +3056,10 @@ async function runSettleClick() {
       '인증(지원 대상): <b>' + r.done + '</b> / ' + r.total + '명 · 지원 제외: ' + r.independent + '명' +
       (r.dormant ? ' · 😴 휴면: ' + r.dormant + '명' : '') + '<br>' +
       '추출 사진: ' + r.copied + '장' +
+      (r.credited ? '<br>💰 예산 적립: <b>' + won_(r.credited) + '</b>' : '') +
       (r.uncovered && r.uncovered.length ? '<br>⚠ 사진 누락: ' + r.uncovered.map(esc).join(', ') : '');
     loadSettle(); // 정산 현황 새로고침
+    loadBudget(); // 적립 반영된 예산 새로고침
   } catch (e) {
     busyHide(false);
     st.className = 'status err';
