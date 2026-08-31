@@ -141,8 +141,16 @@ function modal(opts) {
         w.appendChild(s);
       }
       const isTA = f.type === 'textarea';
-      const inp = document.createElement(isTA ? 'textarea' : 'input');
-      if (isTA) { inp.rows = f.rows || 3; } else { inp.type = f.type || 'text'; }
+      const isSel = f.type === 'select';
+      const inp = document.createElement(isSel ? 'select' : (isTA ? 'textarea' : 'input'));
+      if (isSel) {
+        (f.options || []).forEach(function (o) {
+          const op = document.createElement('option');
+          op.value = (o && o.value !== undefined) ? o.value : o;
+          op.textContent = (o && o.label !== undefined) ? o.label : o;
+          inp.appendChild(op);
+        });
+      } else if (isTA) { inp.rows = f.rows || 3; } else { inp.type = f.type || 'text'; }
       if (f.placeholder) inp.placeholder = f.placeholder;
       if (f.value !== undefined) inp.value = f.value;
       if (f.inputmode) inp.setAttribute('inputmode', f.inputmode);
@@ -2352,6 +2360,9 @@ function applyMemberData(res) {
   if (!res) return;
   if (res.members) DATA.members = res.members;
   if (res.support) DATA.support = res.support;
+  if (res.dormant) DATA.dormant = res.dormant; // 휴면 맵 (K열, 만료는 서버가 자동 제외)
+  if (res.roles) DATA.roles = res.roles;       // 직책 맵 (L열)
+  if (res.roleList) DATA.roleList = res.roleList;
   if (res.settlers) DATA.settlers = res.settlers;
   fillNameSelects();
   buildChips('photoChips');   // 인증 참여자 선택
@@ -2370,15 +2381,25 @@ function renderMemberAdmin() {
   if (!box) return;
   box.innerHTML = '';
   const admins = DATA.admins || [];
+  const dormant = DATA.dormant || {};
   DATA.members.forEach(function (m) {
     const isAdm = admins.indexOf(m) > -1;
+    const until = dormant[m] || ''; // 휴면 종료일 (없으면 활동 중)
     const row = document.createElement('div');
-    row.className = 'member-row';
+    row.className = 'member-row' + (until ? ' dormant' : '');
 
     const nm = document.createElement('span');
     nm.className = 'member-name';
-    nm.textContent = m + (isAdm ? ' 👑' : '');
+    nm.innerHTML = esc(m) + (isAdm ? ' 👑' : '') + roleBadge_(m) +
+      (until ? ' <span class="dormant-tag">😴 휴면 ~' + esc(until) + '</span>' : '');
     row.appendChild(nm);
+
+    // 직책 변경 (관리자)
+    const rb = document.createElement('button');
+    rb.className = 'mini-btn';
+    rb.textContent = '직책';
+    rb.onclick = function () { rolePrompt(m); };
+    row.appendChild(rb);
 
     if (isAdm) {
       const tag = document.createElement('span');
@@ -2395,8 +2416,95 @@ function renderMemberAdmin() {
       row.appendChild(edit);
       row.appendChild(del);
     }
+    // 휴면 설정/해제 (관리자 본인 포함 누구나 대상 가능 — 권한엔 영향 없고 정산만 빠짐)
+    const dz = document.createElement('button');
+    dz.className = 'mini-btn';
+    dz.textContent = until ? '😴 해제' : '😴 휴면';
+    dz.onclick = function () { until ? clearDormantClick(m, until) : dormantPrompt(m); };
+    row.appendChild(dz);
+
     box.appendChild(row);
   });
+}
+
+/* ---------- 직책 (관리자) ----------
+ * 부족심사중 → 조약돌 → 간석기 → 고인돌 (낮은→높은). 부족원 시트 L열.
+ */
+const ROLE_ICON = { '부족심사중': '🌱', '조약돌': '🪨', '간석기': '🔨', '고인돌': '🗿' };
+
+function roleOf_(name) {
+  const roles = DATA.roles || {};
+  const list = DATA.roleList || ['부족심사중', '조약돌', '간석기', '고인돌'];
+  const r = roles[name];
+  return (list.indexOf(r) > -1) ? r : list[0];
+}
+// 이름 옆에 붙일 직책 배지 HTML
+function roleBadge_(name) {
+  const r = roleOf_(name);
+  return ' <span class="role-tag">' + (ROLE_ICON[r] || '') + ' ' + esc(r) + '</span>';
+}
+
+function rolePrompt(name) {
+  const list = DATA.roleList || ['부족심사중', '조약돌', '간석기', '고인돌'];
+  const cur = roleOf_(name);
+  modal({
+    title: '🏷️ 직책 변경 — ' + name,
+    message: '현재: ' + (ROLE_ICON[cur] || '') + ' ' + cur,
+    fields: [{ key: 'role', label: '새 직책', type: 'select', value: cur,
+               options: list.map(function (r) { return { value: r, label: (ROLE_ICON[r] || '') + ' ' + r }; }) }],
+    confirmText: '변경',
+    busyText: '변경 중…',
+    onConfirm: async function (v) {
+      const r = String(v.role || '').trim();
+      if (r === cur) return; // 변화 없음
+      applyMemberData(await run('setRole', name, r, getMe(), ME.token));
+      toast('✓ ' + name + ' 님 직책을 ' + r + '(으)로 바꿨어요.', true);
+    }
+  });
+}
+
+/* ---------- 휴면 회원 (관리자) ----------
+ * 최대 3개월. 종료일이 지나면 자동 복귀(별도 해제 불필요).
+ * 휴면 중에는 정산 대상에서 빠지고 인증현황에 '휴면'으로 표시된다.
+ */
+function dormantPrompt(name) {
+  const today = new Date();
+  const iso = function (d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
+  const plusMonths = function (n) { const d = new Date(); d.setMonth(d.getMonth() + n); return iso(d); };
+  const maxISO = plusMonths(3);
+  modal({
+    title: '😴 휴면 설정 — ' + name,
+    message: '휴면 기간에는 정산 대상에서 빠지고, 인증현황에 "휴면"으로 표시돼요.\n' +
+             '종료일이 지나면 자동으로 복귀합니다. (최대 3개월 · ' + maxISO + ' 이내)',
+    fields: [{ key: 'until', label: '휴면 종료일', type: 'date', value: plusMonths(1) }],
+    confirmText: '휴면 설정',
+    busyText: '설정 중…',
+    validate: function (v) {
+      const u = String(v.until || '').trim();
+      if (!u) return '종료일을 선택하세요.';
+      if (u < iso(today)) return '오늘 이후 날짜로 선택하세요.';
+      if (u > maxISO) return '휴면은 최대 3개월까지예요. (' + maxISO + ' 이내)';
+      return null;
+    },
+    onConfirm: async function (v) {
+      applyMemberData(await run('setDormant', name, String(v.until).trim(), getMe(), ME.token));
+      toast('😴 ' + name + ' 님을 휴면 처리했어요.', true);
+    }
+  });
+}
+
+async function clearDormantClick(name, until) {
+  if (!(await modalConfirm(name + ' 님의 휴면(~' + until + ')을 지금 해제할까요?\n다음 정산부터 다시 대상에 포함돼요.',
+    { title: '😴 휴면 해제', confirmText: '해제' }))) return;
+  busyShow('휴면 해제 중…');
+  try {
+    applyMemberData(await run('setDormant', name, '', getMe(), ME.token));
+    busyHide();
+    toast('✓ ' + name + ' 님 휴면을 해제했어요.', true);
+  } catch (e) {
+    busyHide(false);
+    toast(e.message || e);
+  }
 }
 
 function addMemberPrompt() {
@@ -2546,7 +2654,7 @@ function renderLevelRanking(board) {
       return '<div class="lv-row' + (r.name === getMe() ? ' me' : '') + '">' +
         '<span class="lv-rank">' + badge(r.rank) + '</span>' +
         '<div class="lv-body">' +
-          '<div class="lv-head"><span class="lv-name">' + esc(r.name) + '</span>' +
+          '<div class="lv-head"><span class="lv-name">' + esc(r.name) + roleBadge_(r.name) + '</span>' +
             '<span class="lv-top">최고 <b>' + esc(r.topLevel) + '</b></span></div>' +
           '<div class="lv-sub"><span class="lv-brk">' + (brk || '-') + '</span>' +
             '<span class="lv-total">총 ' + r.total + '</span></div>' +
@@ -2798,6 +2906,7 @@ function loadAdmin() {
   ymSel.value = now.getFullYear() + '-' + pad2(now.getMonth() + 1);
   ymSel.onchange = function () { loadSettle(); }; // 월 변경 시 그 달 정산 현황으로 갱신
   loadSettle();
+  loadBudget(); // 부족 예산 (정산 담당자/관리자만 접근 가능한 탭이라 별도 가드 불필요)
   if (ME.isAdmin) {
     buildSupportChips();
     buildSettlerChips();
@@ -2805,6 +2914,92 @@ function loadAdmin() {
     buildResetPinSelect();
     renderMemberAdmin();
     loadLevelAdmin();
+  }
+}
+
+/* ==================== 부족 예산 (정산 담당자/관리자) ====================
+ * 정산 실행 시 인당 적립액이 자동 적립되고, 사용 이력은 담당자가 직접 등록한다.
+ */
+function won_(n) { return (Number(n) || 0).toLocaleString('ko-KR') + '원'; }
+
+async function loadBudget() {
+  const box = document.getElementById('budgetSummary');
+  if (!box) return;
+  box.className = 'loading'; box.textContent = '예산을 불러오는 중…';
+  try {
+    renderBudget(await run('getBudget', getMe(), ME.token));
+  } catch (e) {
+    box.className = 'status err';
+    box.textContent = '예산 로딩 실패: ' + (e.message || e);
+  }
+}
+
+function renderBudget(b) {
+  const box = document.getElementById('budgetSummary');
+  const list = document.getElementById('budgetList');
+  if (!box || !b) return;
+  box.className = '';
+  box.innerHTML = '<div class="budget-card">' +
+    '<div class="bd-balance">잔액 <b>' + won_(b.balance) + '</b></div>' +
+    '<div class="bd-sub">적립 ' + won_(b.credit) + ' · 사용 ' + won_(b.spent) +
+    (b.perPerson ? ' <span class="dim">· 정산 인당 ' + won_(b.perPerson) + '</span>' : '') + '</div></div>';
+
+  if (!list) return;
+  list.innerHTML = '';
+  if (!b.items || !b.items.length) {
+    list.innerHTML = '<div class="dim" style="font-size:12.5px; margin-top:8px">아직 예산 기록이 없어요.</div>';
+    return;
+  }
+  b.items.forEach(function (it) {
+    const row = document.createElement('div');
+    row.className = 'budget-row ' + (it.kind === '적립' ? 'credit' : 'spend');
+    const txt = document.createElement('span');
+    txt.className = 'bd-txt';
+    txt.innerHTML = '<b>' + (it.kind === '적립' ? '+' : '−') + won_(it.amount) + '</b> ' + esc(it.note || '') +
+      '<span class="bd-meta">' + esc(it.when || '') + (it.by ? ' · ' + esc(it.by) : '') + '</span>';
+    row.appendChild(txt);
+    const del = document.createElement('button');
+    del.className = 'mini-btn danger';
+    del.textContent = '삭제';
+    del.onclick = function () { deleteBudgetClick(it); };
+    row.appendChild(del);
+    list.appendChild(row);
+  });
+}
+
+async function addExpenseClick() {
+  const amtEl = document.getElementById('expenseAmount');
+  const noteEl = document.getElementById('expenseNote');
+  const st = document.getElementById('budgetStatus');
+  const amount = parseInt(String(amtEl.value || '').replace(/[^\d]/g, ''), 10);
+  const note = String(noteEl.value || '').trim();
+  if (!amount || amount <= 0) { st.className = 'status err'; st.textContent = '금액을 입력하세요.'; return; }
+  if (!note) { st.className = 'status err'; st.textContent = '사용 내용을 입력하세요.'; return; }
+  busyShow('사용 등록 중…');
+  try {
+    renderBudget(await run('addExpense', amount, note, getMe(), ME.token));
+    amtEl.value = ''; noteEl.value = '';
+    busyHide();
+    st.className = 'status ok';
+    st.textContent = '✓ ' + won_(amount) + ' 사용을 등록했어요.';
+  } catch (e) {
+    busyHide(false);
+    st.className = 'status err';
+    st.textContent = e.message || e;
+  }
+}
+
+async function deleteBudgetClick(it) {
+  if (!(await modalConfirm('이 기록을 삭제할까요?\n' + (it.kind === '적립' ? '+' : '−') + won_(it.amount) + ' · ' + (it.note || ''),
+    { title: '💰 예산 기록 삭제', confirmText: '삭제' }))) return;
+  busyShow('삭제 중…');
+  try {
+    renderBudget(await run('deleteBudgetItem', it.row, it.when, getMe(), ME.token));
+    busyHide();
+    toast('🗑️ 삭제했어요.', true);
+  } catch (e) {
+    busyHide(false);
+    toast(e.message || e);
   }
 }
 
@@ -2858,10 +3053,13 @@ async function runSettleClick() {
     busyHide();
     st.className = 'status ok';
     st.innerHTML = '✓ ' + esc(r.ym) + ' 정산 완료<br>' +
-      '인증(지원 대상): <b>' + r.done + '</b> / ' + r.total + '명 · 지원 제외: ' + r.independent + '명<br>' +
+      '인증(지원 대상): <b>' + r.done + '</b> / ' + r.total + '명 · 지원 제외: ' + r.independent + '명' +
+      (r.dormant ? ' · 😴 휴면: ' + r.dormant + '명' : '') + '<br>' +
       '추출 사진: ' + r.copied + '장' +
+      (r.credited ? '<br>💰 예산 적립: <b>' + won_(r.credited) + '</b>' : '') +
       (r.uncovered && r.uncovered.length ? '<br>⚠ 사진 누락: ' + r.uncovered.map(esc).join(', ') : '');
     loadSettle(); // 정산 현황 새로고침
+    loadBudget(); // 적립 반영된 예산 새로고침
   } catch (e) {
     busyHide(false);
     st.className = 'status err';

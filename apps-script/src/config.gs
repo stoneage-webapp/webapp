@@ -31,7 +31,8 @@ const CONFIG = {
     status: '인증현황',     // settleMonth 가 생성/갱신하는 정산 결과
     completion: '완료기록', // 정기공격/자연재해 완료 처리 기록 (첫 완료 처리 시 앱이 자동 생성)
     levels: '레벨완등',     // 레벨(난이도)별 완등 횟수 — 행=이름, 열=레벨 (첫 기록 시 앱이 자동 생성)
-    errorlog: '오류로그'    // 예기치 못한 백엔드 오류 로그 (첫 오류 시 앱이 자동 생성)
+    errorlog: '오류로그',   // 예기치 못한 백엔드 오류 로그 (첫 오류 시 앱이 자동 생성)
+    budget: '예산'          // 부족 예산 — 정산 적립 / 사용 이력 (첫 기록 시 앱이 자동 생성)
   },
   PHOTOS_MAX_BYTES: 45 * 1024 * 1024,  // 45MB 초과 파일은 Drive에만 저장 (Apps Script 응답 한도)
 
@@ -43,5 +44,8 @@ const CONFIG = {
   // REST 키는 **비밀** — 반드시 스크립트 속성 'onesignal_rest_key' 로만 넣는다(코드/커밋 금지).
   ONESIGNAL_APP_ID: prop_('onesignal_app_id', 'cead5388-da89-414a-8397-1ae49d049ae3'),
   ONESIGNAL_REST_KEY: prop_('onesignal_rest_key'),
-  SITE_URL: prop_('SITE_URL', 'https://stoneage202605.netlify.app')  // 알림 클릭 시 열 주소
+  SITE_URL: prop_('SITE_URL', 'https://stoneage202605.netlify.app'),  // 알림 클릭 시 열 주소
+
+  // 예산: 정산 1회당 **인당** 적립액 (스크립트 속성 budget_per_person 으로 변경 가능)
+  BUDGET_PER_PERSON: Number(prop_('budget_per_person', '5000')) || 5000
 };

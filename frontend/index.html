@@ -234,6 +234,17 @@
     <div class="month-head" style="margin-top:22px">📋 정산 현황</div>
     <div id="settleBox" class="loading">정산 현황을 여는 중…</div>
 
+    <!-- 부족 예산 (정산 담당자·관리자만 노출) -->
+    <div class="month-head" style="margin-top:22px">💰 부족 예산</div>
+    <div id="budgetSummary" class="loading">예산을 불러오는 중…</div>
+    <div style="display:flex; gap:8px; margin-top:8px">
+      <div class="field" style="flex:1; margin:0"><input type="number" id="expenseAmount" inputmode="numeric" placeholder="금액 (원)"></div>
+      <div class="field" style="flex:1.4; margin:0"><input type="text" id="expenseNote" placeholder="사용 내용 (예: 뒤풀이)"></div>
+    </div>
+    <button class="btn2" onclick="addExpenseClick()">💸 사용 등록</button>
+    <div class="status" id="budgetStatus"></div>
+    <div id="budgetList"></div>
+
     <div class="admin-only" style="display:none">
       <div class="month-head" style="margin-top:22px">👥 부족원 관리</div>
       <p class="dim" style="font-size:12.5px; margin-bottom:8px">

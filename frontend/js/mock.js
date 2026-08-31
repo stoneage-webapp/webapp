@@ -58,6 +58,9 @@
       murals: [{ kind: '사진', loc: '더클라임 강남', by: '이희주', when: '오늘 09:12' }],
       hall: [{ by: '박도윤', title: '오버행 돌파', when: '오늘 08:40' }]
     },
+    dormant: {}, // { 이름: 'yyyy-MM-dd' } — 휴면 중 (K열)
+    roles: { '김광훈': '고인돌', '박도윤': '조약돌', '이희주': '간석기', '정민재': '부족심사중', '최서연': '조약돌' },
+    roleList: ['부족심사중', '조약돌', '간석기', '고인돌'],
     rsvp: { '2026-06': { '김광훈': 'yes', '이희주': 'no' } }, // 확정 6월 모임 참석 확정 (목)
     flashOwners: { '7/19 14:00 @ 클라이밍파크': '최서연' }
   };
@@ -80,9 +83,23 @@
     });
   }
 
-  // 부족원 추가/수정/삭제 후 백엔드가 돌려주는 스냅샷 형식 흉내 (members·support·settlers)
+  // 부족원 추가/수정/삭제 후 백엔드가 돌려주는 스냅샷 형식 흉내 (members·support·dormant·settlers)
   function memberSnap() {
-    return { members: MEMBERS.slice().sort(), support: DATA.support, settlers: DATA.settlers };
+    return { members: MEMBERS.slice().sort(), support: DATA.support,
+             dormant: DATA.dormant, roles: DATA.roles, roleList: DATA.roleList,
+             settlers: DATA.settlers };
+  }
+
+  // ── 부족 예산 목데이터 (정산 적립 / 사용 이력) ──
+  const BUDGET = [
+    { when: ym + '-01 10:00', kind: '적립', amount: 15000, note: '2026-07 정산 적립 (3명 × 5,000원)', by: '김광훈', month: '2026-07', row: 2 },
+    { when: ym + '-05 19:20', kind: '사용', amount: 42000, note: '뒤풀이 치킨', by: '이희주', month: '', row: 3 }
+  ];
+  function budgetSnap() {
+    let credit = 0, spent = 0;
+    BUDGET.forEach(function (b) { if (b.kind === '적립') credit += b.amount; else spent += b.amount; });
+    return { balance: credit - spent, credit: credit, spent: spent, perPerson: 5000,
+             items: BUDGET.slice().reverse() };
   }
 
   // ── 레벨(난이도)별 완등 순위 목데이터 ──
@@ -332,7 +349,21 @@
           }
           return levelBoard();
         })(),
-        runSettle: { ym: args[0], done: 2, total: 4, independent: 1, canceled: 1, copied: 1, uncovered: ['박도윤'] },
+        runSettle: { ym: args[0], done: 2, total: 4, independent: 1, dormant: 0, canceled: 1, copied: 1, uncovered: ['박도윤'], credited: 10000 },
+        getBudget: budgetSnap(),
+        addExpense: (function () {
+          if (fn !== 'addExpense') return budgetSnap();
+          const amt = parseInt(String(args[0]).replace(/[^\d]/g, ''), 10) || 0;
+          const maxRow = BUDGET.reduce(function (m, b) { return Math.max(m, b.row); }, 1);
+          if (amt > 0) BUDGET.push({ when: 'now', kind: '사용', amount: amt, note: String(args[1] || ''), by: args[2], month: '', row: maxRow + 1 });
+          return budgetSnap();
+        })(),
+        deleteBudgetItem: (function () {
+          if (fn !== 'deleteBudgetItem') return budgetSnap();
+          const i = BUDGET.findIndex(function (b) { return b.row === Number(args[0]); });
+          if (i > -1) BUDGET.splice(i, 1);
+          return budgetSnap();
+        })(),
         setSettlers: { settlers: args[0] },
         setRsvp: (function () {
           if (fn !== 'setRsvp') return { rsvp: DATA.rsvp };
@@ -346,6 +377,20 @@
           if (fn !== 'setAdmins') return { admins: DATA.admins };
           DATA.admins = Array.isArray(args[0]) ? args[0].slice() : DATA.admins;
           return { admins: DATA.admins };
+        })(),
+        setDormant: (function () {
+          if (fn !== 'setDormant') return memberSnap();
+          const nm = String(args[0] || '').trim(), until = String(args[1] || '').trim();
+          DATA.dormant = DATA.dormant || {};
+          if (until) DATA.dormant[nm] = until; else delete DATA.dormant[nm];
+          return memberSnap();
+        })(),
+        setRole: (function () {
+          if (fn !== 'setRole') return memberSnap();
+          const nm = String(args[0] || '').trim(), role = String(args[1] || '').trim();
+          DATA.roles = DATA.roles || {};
+          if (DATA.roleList.indexOf(role) > -1) DATA.roles[nm] = role;
+          return memberSnap();
         })(),
         setSupports: (function () { const on = Array.isArray(args[0]) ? args[0] : []; const s = {}; MEMBERS.forEach(function (m) { s[m] = on.indexOf(m) > -1; }); return { support: s }; })(),
         voteHall: HALL, deleteHallEntry: HALL, finalizeHallEntry: HALL,

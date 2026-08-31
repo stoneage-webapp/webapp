@@ -67,24 +67,44 @@ function sortNames_(arr) {
   return arr.slice().sort(function (a, b) { return a < b ? -1 : a > b ? 1 : 0; });
 }
 
-// 부족원 명단을 지원/제외로 분리 (J열 기준). 항상 이름 오름차순.
-// 반환: { members:[지원], excluded:[제외], all:[{name,supported}] }
+// 오늘 날짜 (yyyy-MM-dd, 스크립트 표준시). 휴면 만료 판정 기준.
+function todayISO_() {
+  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+// K열 휴면종료일 문자열 → 아직 휴면 중이면 'yyyy-MM-dd', 아니면 ''(만료/미설정)
+// 종료일 당일까지 휴면으로 본다(종료일 >= 오늘).
+function dormantUntil_(v) {
+  const s = String(v == null ? '' : v).trim();
+  const m = s.match(/^(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/);
+  if (!m) return '';
+  const iso = m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
+  return iso >= todayISO_() ? iso : '';
+}
+
+// 부족원 명단을 정산대상/지원제외/휴면으로 분리 (J열=지원여부, K열=휴면종료일). 항상 이름 오름차순.
+// 휴면이 우선 — 휴면 중이면 지원여부와 무관하게 정산에서 빠진다(기간이 지나면 자동 복귀).
+// 반환: { members:[정산대상], excluded:[지원제외], dormant:[휴면], all:[{name,supported,dormantUntil}] }
 function splitBySupport_(s) {
   const sh = s.getSheetByName(CONFIG.SHEETS.members);
   const last = sh.getLastRow();
-  if (last < 2) return { members: [], excluded: [], all: [] };
-  const bySupport = {}; const names = [];
-  sh.getRange('A2:J' + last).getDisplayValues().forEach(function (r) {
+  if (last < 2) return { members: [], excluded: [], dormant: [], all: [] };
+  const bySupport = {}; const byDormant = {}; const byRole = {}; const names = [];
+  sh.getRange('A2:L' + last).getDisplayValues().forEach(function (r) {
     const name = String(r[0]).trim();
     if (!name) return;
     names.push(name);
     bySupport[name] = String(r[9]).trim().toUpperCase() !== 'FALSE';
+    byDormant[name] = dormantUntil_(r[10]);            // K열 휴면종료일
+    byRole[name] = normalizeRole_(r[11]);              // L열 직책 (빈칸 = 부족심사중)
   });
   const sorted = sortNames_(names);
-  const members = sorted.filter(function (n) { return bySupport[n]; });
-  const excluded = sorted.filter(function (n) { return !bySupport[n]; });
-  const all = sorted.map(function (n) { return { name: n, supported: bySupport[n] }; });
-  return { members: members, excluded: excluded, all: all };
+  const dormant = sorted.filter(function (n) { return byDormant[n]; });
+  const members = sorted.filter(function (n) { return !byDormant[n] && bySupport[n]; });
+  const excluded = sorted.filter(function (n) { return !byDormant[n] && !bySupport[n]; });
+  const all = sorted.map(function (n) {
+    return { name: n, supported: bySupport[n], dormantUntil: byDormant[n], role: byRole[n] };
+  });
+  return { members: members, excluded: excluded, dormant: dormant, all: all };
 }
 
 function onOpen() {
@@ -110,16 +130,18 @@ function settleMonthPrompt() {
     (r.uncovered.length ? '\n\n⚠ 사진 누락: ' + r.uncovered.join(', ') : ''));
 }
 
-function settleMonth(ym) {
+// by = 정산 처리자(예산 적립 기록용). 시트 메뉴에서 실행하면 생략 가능.
+function settleMonth(ym, by) {
   const tz = Session.getScriptTimeZone();
   const s = ss_();
 
-  // 부족원: J열 지원여부 기준 분리 (FALSE = 지원 제외) + 이번 달 인원별 정산 취소
+  // 부족원: J열 지원여부(FALSE=지원 제외) · K열 휴면 기준 분리 + 이번 달 인원별 정산 취소
   const split = splitBySupport_(s);
   const canceledMap = getSettleExcluded_()[ym] || {}; // { 이름: true } — 이번 달만 제외
   const members = split.members.filter(function (m) { return !canceledMap[m]; });
   const canceled = split.members.filter(function (m) { return canceledMap[m]; });
   const independent = split.excluded;
+  const dormant = split.dormant || []; // 휴면 — 정산 대상에서 제외
   const memberSet = {};
   members.forEach(function(m) { memberSet[m] = true; });
 
@@ -169,6 +191,7 @@ function settleMonth(ym) {
   const statusMap = {};
   members.forEach(function (m) { statusMap[m] = firstCertRow[m] ? 'O' : 'X'; });
   independent.forEach(function (m) { statusMap[m] = '지원 제외'; });
+  dormant.forEach(function (m) { statusMap[m] = '휴면'; });
   canceled.forEach(function (m) { statusMap[m] = '정산 취소'; });
   writeStatusColumn_(ym, statusMap);
 
@@ -190,9 +213,14 @@ function settleMonth(ym) {
 
   const done = needed.length;
   const uncovered = needed.filter(function(m) { return !covered[m]; });
+
+  // 부족 예산 적립 — 정산된(인증 완료) 인원 × 인당 적립액. 같은 달 재정산 시 갱신(중복 없음).
+  creditSettlement_(ym, done, by || '');
+
   return {
     done: done, total: members.length, independent: independent.length,
-    canceled: canceled.length, copied: copied, uncovered: uncovered
+    dormant: dormant.length, canceled: canceled.length, copied: copied, uncovered: uncovered,
+    credited: done * CONFIG.BUDGET_PER_PERSON
   };
 }
 
@@ -411,7 +439,7 @@ function runSettle(ym, requester, authToken) {
   ym = String(ym || '').trim() ||
     Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
   if (!/^\d{4}-\d{2}$/.test(ym)) throw new Error('형식 오류: yyyy-MM (예: 2026-07)');
-  const r = settleMonth(ym);
+  const r = settleMonth(ym, requester);
   r.ym = ym;
   return r;
 }
