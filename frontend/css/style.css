@@ -552,6 +552,15 @@ body > header { flex-shrink: 0; }
 .member-row .member-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; }
 .member-row .mini-btn { margin-top: 0; }
 .member-row .mini-btn.danger { border-color: #7a3b3b; color: #d98a8a; }
+/* 휴면 회원 */
+.member-row.dormant { opacity: .62; border-style: dashed; }
+.dormant-tag { font-size: 11.5px; font-weight: 600; color: var(--ink-dim); margin-left: 4px; white-space: nowrap; }
+/* 직책 배지 */
+.role-tag {
+  font-size: 11px; font-weight: 700; color: var(--ink-dim);
+  background: var(--stone-hi); border: 1px solid var(--line);
+  border-radius: 999px; padding: 2px 7px; margin-left: 5px; white-space: nowrap;
+}
 
 /* ==================== 레벨 완등 순위 ==================== */
 .lv-board { display: flex; flex-direction: column; gap: 8px; }

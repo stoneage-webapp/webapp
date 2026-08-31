@@ -141,8 +141,16 @@ function modal(opts) {
         w.appendChild(s);
       }
       const isTA = f.type === 'textarea';
-      const inp = document.createElement(isTA ? 'textarea' : 'input');
-      if (isTA) { inp.rows = f.rows || 3; } else { inp.type = f.type || 'text'; }
+      const isSel = f.type === 'select';
+      const inp = document.createElement(isSel ? 'select' : (isTA ? 'textarea' : 'input'));
+      if (isSel) {
+        (f.options || []).forEach(function (o) {
+          const op = document.createElement('option');
+          op.value = (o && o.value !== undefined) ? o.value : o;
+          op.textContent = (o && o.label !== undefined) ? o.label : o;
+          inp.appendChild(op);
+        });
+      } else if (isTA) { inp.rows = f.rows || 3; } else { inp.type = f.type || 'text'; }
       if (f.placeholder) inp.placeholder = f.placeholder;
       if (f.value !== undefined) inp.value = f.value;
       if (f.inputmode) inp.setAttribute('inputmode', f.inputmode);
@@ -2352,6 +2360,9 @@ function applyMemberData(res) {
   if (!res) return;
   if (res.members) DATA.members = res.members;
   if (res.support) DATA.support = res.support;
+  if (res.dormant) DATA.dormant = res.dormant; // 휴면 맵 (K열, 만료는 서버가 자동 제외)
+  if (res.roles) DATA.roles = res.roles;       // 직책 맵 (L열)
+  if (res.roleList) DATA.roleList = res.roleList;
   if (res.settlers) DATA.settlers = res.settlers;
   fillNameSelects();
   buildChips('photoChips');   // 인증 참여자 선택
@@ -2370,15 +2381,25 @@ function renderMemberAdmin() {
   if (!box) return;
   box.innerHTML = '';
   const admins = DATA.admins || [];
+  const dormant = DATA.dormant || {};
   DATA.members.forEach(function (m) {
     const isAdm = admins.indexOf(m) > -1;
+    const until = dormant[m] || ''; // 휴면 종료일 (없으면 활동 중)
     const row = document.createElement('div');
-    row.className = 'member-row';
+    row.className = 'member-row' + (until ? ' dormant' : '');
 
     const nm = document.createElement('span');
     nm.className = 'member-name';
-    nm.textContent = m + (isAdm ? ' 👑' : '');
+    nm.innerHTML = esc(m) + (isAdm ? ' 👑' : '') + roleBadge_(m) +
+      (until ? ' <span class="dormant-tag">😴 휴면 ~' + esc(until) + '</span>' : '');
     row.appendChild(nm);
+
+    // 직책 변경 (관리자)
+    const rb = document.createElement('button');
+    rb.className = 'mini-btn';
+    rb.textContent = '직책';
+    rb.onclick = function () { rolePrompt(m); };
+    row.appendChild(rb);
 
     if (isAdm) {
       const tag = document.createElement('span');
@@ -2395,8 +2416,95 @@ function renderMemberAdmin() {
       row.appendChild(edit);
       row.appendChild(del);
     }
+    // 휴면 설정/해제 (관리자 본인 포함 누구나 대상 가능 — 권한엔 영향 없고 정산만 빠짐)
+    const dz = document.createElement('button');
+    dz.className = 'mini-btn';
+    dz.textContent = until ? '😴 해제' : '😴 휴면';
+    dz.onclick = function () { until ? clearDormantClick(m, until) : dormantPrompt(m); };
+    row.appendChild(dz);
+
     box.appendChild(row);
   });
+}
+
+/* ---------- 직책 (관리자) ----------
+ * 부족심사중 → 조약돌 → 간석기 → 고인돌 (낮은→높은). 부족원 시트 L열.
+ */
+const ROLE_ICON = { '부족심사중': '🌱', '조약돌': '🪨', '간석기': '🔨', '고인돌': '🗿' };
+
+function roleOf_(name) {
+  const roles = DATA.roles || {};
+  const list = DATA.roleList || ['부족심사중', '조약돌', '간석기', '고인돌'];
+  const r = roles[name];
+  return (list.indexOf(r) > -1) ? r : list[0];
+}
+// 이름 옆에 붙일 직책 배지 HTML
+function roleBadge_(name) {
+  const r = roleOf_(name);
+  return ' <span class="role-tag">' + (ROLE_ICON[r] || '') + ' ' + esc(r) + '</span>';
+}
+
+function rolePrompt(name) {
+  const list = DATA.roleList || ['부족심사중', '조약돌', '간석기', '고인돌'];
+  const cur = roleOf_(name);
+  modal({
+    title: '🏷️ 직책 변경 — ' + name,
+    message: '현재: ' + (ROLE_ICON[cur] || '') + ' ' + cur,
+    fields: [{ key: 'role', label: '새 직책', type: 'select', value: cur,
+               options: list.map(function (r) { return { value: r, label: (ROLE_ICON[r] || '') + ' ' + r }; }) }],
+    confirmText: '변경',
+    busyText: '변경 중…',
+    onConfirm: async function (v) {
+      const r = String(v.role || '').trim();
+      if (r === cur) return; // 변화 없음
+      applyMemberData(await run('setRole', name, r, getMe(), ME.token));
+      toast('✓ ' + name + ' 님 직책을 ' + r + '(으)로 바꿨어요.', true);
+    }
+  });
+}
+
+/* ---------- 휴면 회원 (관리자) ----------
+ * 최대 3개월. 종료일이 지나면 자동 복귀(별도 해제 불필요).
+ * 휴면 중에는 정산 대상에서 빠지고 인증현황에 '휴면'으로 표시된다.
+ */
+function dormantPrompt(name) {
+  const today = new Date();
+  const iso = function (d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
+  const plusMonths = function (n) { const d = new Date(); d.setMonth(d.getMonth() + n); return iso(d); };
+  const maxISO = plusMonths(3);
+  modal({
+    title: '😴 휴면 설정 — ' + name,
+    message: '휴면 기간에는 정산 대상에서 빠지고, 인증현황에 "휴면"으로 표시돼요.\n' +
+             '종료일이 지나면 자동으로 복귀합니다. (최대 3개월 · ' + maxISO + ' 이내)',
+    fields: [{ key: 'until', label: '휴면 종료일', type: 'date', value: plusMonths(1) }],
+    confirmText: '휴면 설정',
+    busyText: '설정 중…',
+    validate: function (v) {
+      const u = String(v.until || '').trim();
+      if (!u) return '종료일을 선택하세요.';
+      if (u < iso(today)) return '오늘 이후 날짜로 선택하세요.';
+      if (u > maxISO) return '휴면은 최대 3개월까지예요. (' + maxISO + ' 이내)';
+      return null;
+    },
+    onConfirm: async function (v) {
+      applyMemberData(await run('setDormant', name, String(v.until).trim(), getMe(), ME.token));
+      toast('😴 ' + name + ' 님을 휴면 처리했어요.', true);
+    }
+  });
+}
+
+async function clearDormantClick(name, until) {
+  if (!(await modalConfirm(name + ' 님의 휴면(~' + until + ')을 지금 해제할까요?\n다음 정산부터 다시 대상에 포함돼요.',
+    { title: '😴 휴면 해제', confirmText: '해제' }))) return;
+  busyShow('휴면 해제 중…');
+  try {
+    applyMemberData(await run('setDormant', name, '', getMe(), ME.token));
+    busyHide();
+    toast('✓ ' + name + ' 님 휴면을 해제했어요.', true);
+  } catch (e) {
+    busyHide(false);
+    toast(e.message || e);
+  }
 }
 
 function addMemberPrompt() {
@@ -2546,7 +2654,7 @@ function renderLevelRanking(board) {
       return '<div class="lv-row' + (r.name === getMe() ? ' me' : '') + '">' +
         '<span class="lv-rank">' + badge(r.rank) + '</span>' +
         '<div class="lv-body">' +
-          '<div class="lv-head"><span class="lv-name">' + esc(r.name) + '</span>' +
+          '<div class="lv-head"><span class="lv-name">' + esc(r.name) + roleBadge_(r.name) + '</span>' +
             '<span class="lv-top">최고 <b>' + esc(r.topLevel) + '</b></span></div>' +
           '<div class="lv-sub"><span class="lv-brk">' + (brk || '-') + '</span>' +
             '<span class="lv-total">총 ' + r.total + '</span></div>' +
@@ -2858,7 +2966,8 @@ async function runSettleClick() {
     busyHide();
     st.className = 'status ok';
     st.innerHTML = '✓ ' + esc(r.ym) + ' 정산 완료<br>' +
-      '인증(지원 대상): <b>' + r.done + '</b> / ' + r.total + '명 · 지원 제외: ' + r.independent + '명<br>' +
+      '인증(지원 대상): <b>' + r.done + '</b> / ' + r.total + '명 · 지원 제외: ' + r.independent + '명' +
+      (r.dormant ? ' · 😴 휴면: ' + r.dormant + '명' : '') + '<br>' +
       '추출 사진: ' + r.copied + '장' +
       (r.uncovered && r.uncovered.length ? '<br>⚠ 사진 누락: ' + r.uncovered.map(esc).join(', ') : '');
     loadSettle(); // 정산 현황 새로고침

@@ -55,6 +55,8 @@ const API_POST = {
   renameMember:      ['oldName', 'newName', 'requester', 'token'],
   deleteMember:      ['targetName', 'requester', 'token'],
   setAdmins:         ['names', 'requester', 'token'],
+  setDormant:        ['targetName', 'until', 'requester', 'token'],
+  setRole:           ['targetName', 'role', 'requester', 'token'],
   setLevels:         ['levels', 'requester', 'token'],
   setLevelRecord:    ['name', 'counts', 'requester', 'token'],
   setMyLevelRecord:  ['counts', 'name', 'token'],

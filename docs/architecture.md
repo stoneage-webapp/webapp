@@ -100,6 +100,8 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `renameMember` | `oldName, newName, requester, token` | `{ members, support, settlers }` — 관리자 전용. A열 이름만 변경(PIN·지원여부 유지). 관리자 이름은 불가 |
 | `deleteMember` | `targetName, requester, token` | `{ members, support, settlers }` — 관리자 전용. 행 전체 삭제. 관리자 이름은 불가 |
 | `setAdmins` | `names(배열), requester, token` | `{ admins }` — 관리자 전용. Script Property `ADMINS` 설정(부관리자). 로스터 이름만, 최소 1명. 반영은 다음 실행부터 |
+| `setDormant` | `targetName, until('yyyy-MM-dd' 또는 ''), requester, token` | 멤버 스냅샷 — 관리자 전용. **휴면**(부족원 K열). 최대 3개월, 종료일 경과 시 자동 복귀. 빈 값=즉시 해제 |
+| `setRole` | `targetName, role, requester, token` | 멤버 스냅샷 — 관리자 전용. **직책**(부족원 L열): 부족심사중/조약돌/간석기/고인돌 |
 | `setLevels` | `levels(배열, 낮은→높은 순), requester, token` | `getLevelBoard()` 결과 — **누구나(로그인)**. 공용 레벨 목록(Script Property `levels`) 저장 + 시트 열 보강. 홈 "⚙️ 레벨 설정"에서 |
 | `setRsvp` | `month('2026-08'), status('yes'\|'no'\|''), name, token` | `{ rsvp: {월:{이름:상태}} }` — **본인**. 확정 모임 참석 확정. 빈 값=미정(취소) |
 | `setLevelRecord` | `name, counts({레벨:정수}), requester, token` | `getLevelBoard()` — **관리자 전용**(다른 구성원 정정). 완등 수를 `레벨완등` 시트에 기록 |

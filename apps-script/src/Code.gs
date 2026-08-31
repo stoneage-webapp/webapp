@@ -81,6 +81,8 @@ const POST_ACTIONS = {
   renameMember:      { auth: 'requester', bust: true, fn: function (d) { return renameMember(d.oldName, d.newName, d.requester, d.token); } }, // 부족원 이름 수정 (관리자)
   deleteMember:      { auth: 'requester', bust: true, fn: function (d) { return deleteMember(d.targetName, d.requester, d.token); } },        // 부족원 삭제 (관리자)
   setAdmins:         { auth: 'requester', bust: true, fn: function (d) { return setAdmins(d.names, d.requester, d.token); } },                // 관리자(부관리자) 목록 설정 (관리자)
+  setDormant:        { auth: 'requester', bust: true, fn: function (d) { return setDormant(d.targetName, d.until, d.requester, d.token); } }, // 휴면 설정/해제 (관리자, 최대 3개월)
+  setRole:           { auth: 'requester', bust: true, fn: function (d) { return setRole(d.targetName, d.role, d.requester, d.token); } },     // 직책 변경 (관리자)
   setLevels:         { auth: 'requester', bust: true, fn: function (d) { return setLevels(d.levels, d.requester, d.token); } },              // 레벨 목록 설정 (관리자)
   setLevelRecord:    { auth: 'requester', bust: true, fn: function (d) { return setLevelRecord(d.name, d.counts, d.requester, d.token); } }, // 다른 구성원 완등 기록 (관리자)
   setMyLevelRecord:  { auth: 'name',      bust: true, fn: function (d) { return setMyLevelRecord(d.counts, d.name, d.token); } },           // 본인 완등 기록 (누구나)
@@ -202,15 +204,22 @@ function ss_() {
  */
 function getInitData() {
   const s = ss_();
-  const split = splitBySupport_(s); // 부족원 + 지원여부(J열)
+  const split = splitBySupport_(s); // 부족원 + 지원여부(J열) + 휴면(K열)
   const members = split.all.map(function (m) { return m.name; });
-  const support = {};
-  split.all.forEach(function (m) { support[m.name] = m.supported; });
+  const support = {}; const dormant = {}; const roles = {};
+  split.all.forEach(function (m) {
+    support[m.name] = m.supported;
+    roles[m.name] = m.role;
+    if (m.dormantUntil) dormant[m.name] = m.dormantUntil;
+  });
   const cert = getCertified_(s);
   const votes = getVotes('');
   return {
     members: members,
     support: support,              // { 이름: true/false } — 지원(정산) 대상 여부 (J열)
+    dormant: dormant,              // { 이름: 'yyyy-MM-dd' } — 휴면 중인 사람만 (K열, 만료 시 자동 제외)
+    roles: roles,                  // { 이름: 직책 } — L열 (빈칸이면 부족심사중)
+    roleList: ROLES,               // 직책 단계 (낮은→높은)
     months: votes.months,          // 존재하는 투표 월 목록 (필터 드롭다운용)
     raidMonths: votes.raidMonths,  // [{month, deadline, closed, confirmed, options:[{date,dateInfo,voters}]}]
     disaster: votes.disaster,      // [{date, loc, dateInfo, voters}]

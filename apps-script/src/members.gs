@@ -36,14 +36,21 @@ function memberRowMap_(sheet) {
   return map;
 }
 
-// 변경 후 프론트가 즉시 반영할 최신 명단/지원맵/담당자. (getInitData 의 members·support 와 동일 형식)
+// 변경 후 프론트가 즉시 반영할 최신 명단/지원맵/휴면맵/담당자. (getInitData 의 members·support·dormant 와 동일 형식)
 function memberSnapshot_() {
   const split = splitBySupport_(ss_());
-  const support = {};
-  split.all.forEach(function (m) { support[m.name] = m.supported; });
+  const support = {}; const dormant = {}; const roles = {};
+  split.all.forEach(function (m) {
+    support[m.name] = m.supported;
+    roles[m.name] = m.role;
+    if (m.dormantUntil) dormant[m.name] = m.dormantUntil; // 휴면 중인 사람만 (만료는 자동 제외)
+  });
   return {
     members: split.all.map(function (m) { return m.name; }), // 이름 오름차순
     support: support,
+    dormant: dormant,
+    roles: roles,
+    roleList: ROLES,
     settlers: getSettlers_()
   };
 }
@@ -103,6 +110,79 @@ function deleteMember(targetName, requester, authToken) {
     sheet.deleteRow(map[targetName]);  // 행 전체 제거 (PIN·지원여부 포함)
     removeFromSettlers_(targetName);
     clearPinFail_(targetName);
+    return memberSnapshot_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* ---------- 직책 (관리자) ----------
+ * 부족원 시트 **L열(직책)**. 낮은 → 높은 순서. 빈칸/미인식 값은 첫 단계(부족심사중)로 본다.
+ */
+const ROLES = ['부족심사중', '조약돌', '간석기', '고인돌'];
+
+function normalizeRole_(v) {
+  const s = String(v == null ? '' : v).trim();
+  return ROLES.indexOf(s) > -1 ? s : ROLES[0];
+}
+
+function setRole(targetName, role, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!isAdmin_(requester)) throw new Error('관리자만 직책을 변경할 수 있습니다.');
+  targetName = String(targetName || '').trim();
+  if (!targetName) throw new Error('대상 이름이 없습니다.');
+  role = String(role || '').trim();
+  if (ROLES.indexOf(role) < 0) throw new Error('알 수 없는 직책입니다: ' + role);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sheet = ss_().getSheetByName(CONFIG.SHEETS.members);
+    const row = memberRowMap_(sheet)[targetName];
+    if (!row) throw new Error('명단에 없는 이름입니다: ' + targetName);
+    if (String(sheet.getRange(1, 12).getValue()).trim() !== '직책') {
+      sheet.getRange(1, 12).setValue('직책'); // L열 헤더 보강(최초 1회)
+    }
+    sheet.getRange(row, 12).setValue(role);
+    return memberSnapshot_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* ---------- 휴면 회원 (관리자) ----------
+ * 부족원 시트 **K열(휴면종료일)** 에 yyyy-MM-dd 기록. 종료일 당일까지 휴면이며, 지나면 **자동 복귀**(별도 해제 불필요).
+ * 휴면 중에는 정산 대상에서 빠지고 인증현황에 '휴면'으로 표시된다(지원여부 J열보다 우선).
+ * until 이 빈 값이면 즉시 해제. 최대 3개월(오늘 기준)까지만 설정 가능.
+ */
+const DORMANT_MAX_MONTHS = 3;
+
+function setDormant(targetName, until, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!isAdmin_(requester)) throw new Error('관리자만 휴면을 설정할 수 있습니다.');
+  targetName = String(targetName || '').trim();
+  if (!targetName) throw new Error('대상 이름이 없습니다.');
+  until = String(until || '').trim();
+
+  if (until) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) throw new Error('날짜 형식 오류 (yyyy-MM-dd).');
+    const today = todayISO_();
+    if (until < today) throw new Error('오늘 이후 날짜로 설정하세요.');
+    const max = new Date();
+    max.setMonth(max.getMonth() + DORMANT_MAX_MONTHS);
+    const maxISO = Utilities.formatDate(max, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    if (until > maxISO) throw new Error('휴면은 최대 ' + DORMANT_MAX_MONTHS + '개월까지예요. (' + maxISO + ' 이내)');
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sheet = ss_().getSheetByName(CONFIG.SHEETS.members);
+    const row = memberRowMap_(sheet)[targetName];
+    if (!row) throw new Error('명단에 없는 이름입니다: ' + targetName);
+    if (String(sheet.getRange(1, 11).getValue()).trim() !== '휴면종료일') {
+      sheet.getRange(1, 11).setValue('휴면종료일'); // K열 헤더 보강(최초 1회)
+    }
+    sheet.getRange(row, 11).setValue(until ? "'" + until : ''); // 텍스트로 저장(자동 날짜 변환 방지)
     return memberSnapshot_();
   } finally {
     lock.releaseLock();
