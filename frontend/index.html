@@ -103,16 +103,14 @@
   </section>
 
   <!-- 투표 -->
-  <section id="tab-vote" class="tab">
-    <div class="seg">
-      <button id="segRaid" class="on" onclick="setCategory('raid')">⚔️ 정기공격일자</button>
-      <button id="segDisaster" onclick="setCategory('disaster')">🌋 자연재해</button>
-    </div>
+  <section id="tab-schedule" class="tab">
     <div class="field" style="margin-bottom:10px">
       <select id="voteMonth"></select>
     </div>
     <div id="voteCalendar"></div>
-    <div id="voteList"></div>
+    <div id="raidSection"></div>
+    <div id="openSessionSection"></div>
+    <div id="disasterSection"></div>
   </section>
 
   <!-- 벽화 갤러리 -->
@@ -293,7 +291,7 @@
 
 <nav>
   <button id="nav-home" class="on" onclick="setTab('home')"><span class="ico">🗿</span>홈<span id="homeNoticeDot" class="nav-dot" style="display:none"></span></button>
-  <button id="nav-vote" onclick="setTab('vote')"><span class="ico">🗳️</span>투표</button>
+  <button id="nav-schedule" onclick="setTab('schedule')"><span class="ico">📅</span>일정</button>
   <button id="nav-photo" onclick="setTab('photo')"><span class="ico">📸</span>인증</button>
   <button id="nav-gallery" onclick="setTab('gallery')"><span class="ico">🖼️</span>벽화</button>
   <button id="nav-hall" onclick="setTab('hall')"><span class="ico">🏆</span>전당</button>

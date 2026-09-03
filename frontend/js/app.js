@@ -39,7 +39,6 @@ function dismissKakao() {
 
 const CHUNK = 8 * 1024 * 1024; // 릴레이 폴백용 8MB (Drive resumable: 256KB 배수 필수)
 let DATA = { members: [], raid: [], disaster: [] };
-let category = 'raid';
 let currentTab = 'home'; // 현재 보고 있는 탭 (당겨 새로고침이 이 탭을 유지)
 
 // 이름 목록을 가나다순으로 (표시용 — 원본 배열은 그대로 둠, 번개 개설자=첫 투표자 로직 보존)
@@ -596,7 +595,7 @@ function changePinPrompt() {
 /* ---------- 탭 ---------- */
 function setTab(t) {
   currentTab = t;
-  ['home','vote','photo','gallery','hall','more','admin'].forEach(function(k) {
+  ['home','schedule','photo','gallery','hall','more','admin'].forEach(function(k) {
     document.getElementById('tab-' + k).classList.toggle('on', k === t);
     document.getElementById('nav-' + k).classList.toggle('on', k === t);
   });
@@ -668,11 +667,6 @@ async function refreshCertified() {
   } catch (e) {}
 }
 
-function goVote(cat) {
-  setCategory(cat);
-  setTab('vote');
-}
-
 function openNotion() {
   if (DATA.notionUrl) window.open(DATA.notionUrl, '_blank');
   else toast('안내문 링크가 아직 설정되지 않았어요. 추장에게 문의!');
@@ -710,7 +704,7 @@ function renderDday() {
     '🔥 다음 정기공격 <b>' + ddayText(next.d) + '</b>' +
     '<div class="cdate">' + esc(next.entry.date) + '</div>' +
     (next.entry.loc ? locHtml(next.entry.loc) : '') + '</div>';
-  el.firstChild.onclick = function () { goVote('raid'); };
+  el.firstChild.onclick = function () { setTab('schedule'); };
 }
 
 // 개인 활동 요약 (#2): 로그인한 나의 이번 달 인증/투표 상태
@@ -828,7 +822,7 @@ function renderHome() {
       const mm = parseInt((g.month || '').split('-')[1], 10);
       return '📌 ' + mm + '월: <b>' + esc(g.date) + '</b>' + (g.loc ? ' @' + esc(g.loc) : '');
     }).join('<br>') : '등록된 일정 없음') + '</div>';
-  raidCard.onclick = function() { goVote('raid'); };
+  raidCard.onclick = function() { setTab('schedule'); };
   months.forEach(function(g) {
     const mm = parseInt((g.month || '').split('-')[1], 10);
     const cb = document.createElement('button');
@@ -847,7 +841,7 @@ function renderHome() {
     '<div class="hc-status">' +
     (flashes.length ? '⚡ 열린 번개 ' + flashes.length + '개' : '열린 번개 없음 — 직접 열어보자') +
     '</div>';
-  disCard.onclick = function() { goVote('disaster'); };
+  disCard.onclick = function() { setTab('schedule'); };
   box.appendChild(disCard);
 
   const done = DATA.members.filter(function(m) { return DATA.certified[m]; }).length;
@@ -856,25 +850,21 @@ function renderHome() {
     '🖼️ ' + mm + '월 벽화 인증: <b>' + done + '</b> / ' + DATA.members.length + '명';
 }
 
-/* ---------- 투표 ---------- */
-function setCategory(c) {
-  category = c;
-  document.getElementById('segRaid').classList.toggle('on', c === 'raid');
-  document.getElementById('segDisaster').classList.toggle('on', c === 'disaster');
-  renderVotes();
-}
-
+/* ---------- 일정 (정기공격 · 정기 오픈 세션 · 자연재해를 한 화면에) ---------- */
 function renderVotes() {
-  const list = document.getElementById('voteList');
-  list.innerHTML = '';
   renderCalendar();
-  if (category === 'raid') renderRaid(list);
-  else renderDisaster(list);
+  const raidList = document.getElementById('raidSection');
+  raidList.innerHTML = '';
+  renderRaid(raidList);
+  renderOpenSessions(document.getElementById('openSessionSection'));
+  const disList = document.getElementById('disasterSection');
+  disList.innerHTML = '';
+  renderDisaster(disList);
 }
 
-/* ---------- 투표 달력 (#6) ----------
- * 선택 월(없으면 이번 달)의 일정을 한눈에. 정기공격 고정일정=꽉찬 원, 번개=주황 테두리.
- * 날짜 탭 → 아래 목록에서 해당 항목으로 스크롤.
+/* ---------- 일정 달력 (#6) ----------
+ * 선택 월(없으면 이번 달)의 정기공격 고정일정(꽉찬 원)·번개(주황 테두리)·정기 오픈 세션(요일마다 초록 점)을 한 캘린더에서 확인.
+ * 날짜 탭 → 아래 해당 섹션으로 스크롤. 아무 일정도 없는 날을 탭하면 그 날짜로 번개 열기를 제안.
  */
 function renderCalendar() {
   const el = document.getElementById('voteCalendar');
@@ -884,7 +874,7 @@ function renderCalendar() {
   const y = +ym.slice(0, 4), mo = +ym.slice(5, 7);
 
   // 날짜별 마킹 수집
-  const marks = {}; // iso → {confirmed, flash}
+  const marks = {}; // iso → {confirmed, flash, open}
   function mark(iso, key) { if (!iso) return; (marks[iso] = marks[iso] || {})[key] = true; }
   (DATA.raidSchedule || []).forEach(function (g) {
     if (g.month !== ym || !g.dateInfo) return;
@@ -894,6 +884,8 @@ function renderCalendar() {
 
   const first = new Date(y, mo - 1, 1).getDay();
   const days = new Date(y, mo, 0).getDate();
+  const openWeekdays = {};
+  (DATA.openSessions || []).forEach(function (s) { openWeekdays[s.weekday] = true; });
   const todayIso = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
   const wd = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -902,31 +894,39 @@ function renderCalendar() {
   for (let i = 0; i < first; i++) html += '<div></div>';
   for (let d = 1; d <= days; d++) {
     const iso = ym + '-' + pad2(d);
+    const weekday = new Date(y, mo - 1, d).getDay();
+    if (openWeekdays[weekday]) mark(iso, 'open');
     const m = marks[iso] || {};
     const cls = ['cal-day'];
     if (m.confirmed) cls.push('confirmed');
     if (m.flash) cls.push('flash');
     if (iso === todayIso) cls.push('today');
-    const dot = (m.confirmed || m.flash) ? '<span class="cal-dot"></span>' : '';
-    html += '<div class="' + cls.join(' ') + '" data-iso="' + iso + '">' + d + dot + '</div>';
+    const dots = ['confirmed', 'open', 'flash'].filter(function (k) { return m[k]; })
+      .map(function (k) { return '<i class="cal-dot ' + k + '"></i>'; }).join('');
+    html += '<div class="' + cls.join(' ') + '" data-iso="' + iso + '">' + d +
+      (dots ? '<span class="cal-dots">' + dots + '</span>' : '') + '</div>';
   }
   html += '</div>';
   el.innerHTML = html;
 
-  // 날짜 탭 → 해당 항목으로 스크롤 (표시된 카드 중 날짜 일치)
-  el.querySelectorAll('.cal-day').forEach(function (c) {
-    if (!c.querySelector('.cal-dot')) return;
+  // 날짜 탭 → 해당 섹션/카드로 스크롤. 아무 일정도 없으면 그 날짜로 번개 열기 제안.
+  el.querySelectorAll('.cal-day[data-iso]').forEach(function (c) {
     c.onclick = function () {
       const iso = c.dataset.iso;
-      // 번개 표시면 disaster 탭으로, 아니면 raid 유지
       const m = marks[iso] || {};
-      if (m.flash && !m.confirmed && category !== 'disaster') { setCategory('disaster'); }
-      else if (m.confirmed && category !== 'raid') { setCategory('raid'); }
-      setTimeout(function () {
-        const card = Array.prototype.find.call(document.querySelectorAll('#voteList .vote-card .date'),
-          function (e) { return e.textContent.indexOf(iso) > -1 || (e.textContent.match(/\d{4}-\d{2}-\d{2}/) || [''])[0] === iso; });
-        if (card) card.closest('.vote-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 30);
+      if (m.flash) {
+        setTimeout(function () {
+          const card = Array.prototype.find.call(document.querySelectorAll('#disasterSection .vote-card .date'),
+            function (e) { return (e.textContent.match(/\d{4}-\d{2}-\d{2}/) || [''])[0] === iso; });
+          if (card) card.closest('.vote-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 30);
+      } else if (m.confirmed) {
+        document.getElementById('raidSection').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (m.open) {
+        document.getElementById('openSessionSection').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        openFlashPrompt(iso);
+      }
     };
   });
 }
@@ -1146,6 +1146,116 @@ function renderDisaster(list) {
   if (past.length && !sel) appendPastToggle_(list, past.length);
 }
 
+/* ---------- 정기 오픈 세션 (요일+장소 매주 반복, 투표/참석확정 없음) ----------
+ * 개설: 관리자 또는 DATA.openSessionRoles(기본 팀장)에 포함된 직책. 수정/삭제: 개설자 또는 관리자.
+ */
+const WEEKDAY_FULL_ = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+
+function canOpenSession_() {
+  if (ME.isAdmin) return true;
+  const roles = DATA.openSessionRoles || ['팀장'];
+  return roles.indexOf(roleOf_(getMe())) > -1;
+}
+
+function renderOpenSessions(box) {
+  box.innerHTML = '';
+  const head = document.createElement('div');
+  head.className = 'month-head';
+  head.textContent = '🧭 정기 오픈 세션';
+  box.appendChild(head);
+
+  const items = (DATA.openSessions || []).slice().sort(function (a, b) { return a.weekday - b.weekday; });
+  if (!items.length) {
+    box.insertAdjacentHTML('beforeend', '<div class="loading">아직 열린 정기 오픈 세션이 없어요</div>');
+  }
+  items.forEach(function (s) {
+    const card = document.createElement('div');
+    card.className = 'vote-card';
+    card.innerHTML =
+      '<div class="top"><span class="date">🗓️ 매주 ' + WEEKDAY_FULL_[s.weekday] + '</span></div>' +
+      '<div class="vloc">' + locHtml(s.loc) + '</div>' +
+      (s.note ? '<div class="voters">' + esc(s.note) + '</div>' : '') +
+      '<div class="hint">개설: ' + esc(s.createdBy) + '</div>';
+    if (s.createdBy === getMe() || ME.isAdmin) {
+      const ed = document.createElement('button');
+      ed.className = 'mini-btn';
+      ed.textContent = '✏️ 수정';
+      ed.onclick = function (e) { e.stopPropagation(); editOpenSessionPrompt(s); };
+      card.appendChild(ed);
+      const del = document.createElement('button');
+      del.className = 'mini-btn';
+      del.textContent = '🗑️ 삭제';
+      del.onclick = function (e) { e.stopPropagation(); deleteOpenSessionClick(s.id); };
+      card.appendChild(del);
+    }
+    box.appendChild(card);
+  });
+
+  if (canOpenSession_()) {
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn2';
+    addBtn.style.marginTop = '10px';
+    addBtn.textContent = '🧭 오픈 세션 열기';
+    addBtn.onclick = addOpenSessionPrompt;
+    box.appendChild(addBtn);
+  }
+}
+
+function weekdaySelectOptions_() {
+  return WEEKDAY_FULL_.map(function (w, i) { return { value: String(i), label: w }; });
+}
+
+function addOpenSessionPrompt() {
+  modal({
+    title: '🧭 오픈 세션 열기',
+    fields: [
+      { key: 'weekday', label: '요일', type: 'select', value: '5', options: weekdaySelectOptions_() },
+      { key: 'loc', label: '장소', type: 'text', placeholder: '예: 더클라임 강남' },
+      { key: 'note', label: '설명 (선택)', type: 'text', placeholder: '예: 초보 환영' }
+    ],
+    confirmText: '열기',
+    busyText: '여는 중…',
+    validate: function (v) { return v.loc.trim() ? null : '장소를 입력하세요.'; },
+    onConfirm: async function (v) {
+      const res = await run('addOpenSession', Number(v.weekday), v.loc.trim(), v.note.trim(), getMe(), ME.token);
+      DATA.openSessions = res.items;
+      renderVotes();
+      toast('🧭 정기 오픈 세션을 열었어요.', true);
+    }
+  });
+}
+
+function editOpenSessionPrompt(s) {
+  modal({
+    title: '✏️ 오픈 세션 수정',
+    fields: [
+      { key: 'weekday', label: '요일', type: 'select', value: String(s.weekday), options: weekdaySelectOptions_() },
+      { key: 'loc', label: '장소', type: 'text', value: s.loc },
+      { key: 'note', label: '설명 (선택)', type: 'text', value: s.note || '' }
+    ],
+    confirmText: '수정 완료',
+    busyText: '수정하는 중…',
+    validate: function (v) { return v.loc.trim() ? null : '장소를 입력하세요.'; },
+    onConfirm: async function (v) {
+      const res = await run('editOpenSession', s.id, Number(v.weekday), v.loc.trim(), v.note.trim(), getMe(), ME.token);
+      DATA.openSessions = res.items;
+      renderVotes();
+      toast('✏️ 오픈 세션을 수정했어요.', true);
+    }
+  });
+}
+
+async function deleteOpenSessionClick(id) {
+  if (!(await modalConfirm('이 정기 오픈 세션을 삭제할까요?'))) return;
+  try {
+    const res = await run('deleteOpenSession', id, getMe(), ME.token);
+    DATA.openSessions = res.items;
+    renderVotes();
+  } catch (e) {
+    toast(e.message || e);
+  }
+}
+
 /* ---------- 마감 자동 정리 헬퍼 (#3) ---------- */
 let showPastVotes = false;
 
@@ -1171,13 +1281,14 @@ function appendPastToggle_(list, n) {
 }
 
 /* ---------- 번개(자연재해) 등록/수정/완료/삭제 ---------- */
-function openFlashPrompt() {
+// prefIso('yyyy-MM-dd', 선택): 캘린더에서 빈 날짜를 탭했을 때 그 날짜로 미리 채운다.
+function openFlashPrompt(prefIso) {
   const today = new Date();
   modal({
     title: '⚡ 번개 열기',
     fields: [
       { key: 'date', label: '날짜', type: 'date',
-        value: today.getFullYear() + '-' + pad2(today.getMonth() + 1) + '-' + pad2(today.getDate()) },
+        value: prefIso || (today.getFullYear() + '-' + pad2(today.getMonth() + 1) + '-' + pad2(today.getDate())) },
       { key: 'time', label: '시간 (선택)', type: 'time' },
       { key: 'loc', label: '위치', type: 'text', placeholder: '예: 더클라임 강남' }
     ],
