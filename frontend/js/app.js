@@ -1267,15 +1267,21 @@ function canOpenFlash_() {
 
 // 오픈 세션 카드 하나(수정/삭제 버튼 포함). 일정 탭 목록과 날짜별 모달 둘 다에서 재사용.
 function buildOpenSessionCard_(s) {
+  const me = getMe();
+  const voters = s.voters || [];
+  const mine = me && voters.indexOf(me) > -1;
   const card = document.createElement('div');
-  card.className = 'vote-card open-session';
+  card.className = 'vote-card open-session' + (mine ? ' mine' : '');
   const dateTxt = s.dateInfo ? s.dateInfo.display : s.date;
   card.innerHTML =
     '<div class="type-tag open">🧭 오픈세션</div>' +
-    '<div class="top"><span class="date">' + esc(dateTxt) + '</span></div>' +
+    '<div class="top"><span class="date">' + esc(dateTxt) + '</span>' +
+    '<span class="count">' + voters.length + '명</span></div>' +
     '<div class="vloc">' + locHtml(s.loc) + '</div>' +
     (s.note ? '<div class="voters">' + esc(s.note) + '</div>' : '') +
-    '<div class="hint">개설: ' + esc(s.createdBy) + '</div>';
+    (voters.length ? '<div class="voters">' + koSort(voters).map(esc).join(' · ') + '</div>' : '') +
+    '<div class="hint">개설: ' + esc(s.createdBy) + (mine ? ' · ✓ 참여 중 — 탭하면 취소' : '') + '</div>';
+  card.onclick = function () { voteOpenSession(s.id); };
   if (s.createdBy === getMe() || ME.isAdmin) {
     const ed = document.createElement('button');
     ed.className = 'mini-btn';
@@ -1934,6 +1940,19 @@ function voteFlash(dateText) {
   toggleVoterLocal_(row, me);
   renderVotes(); renderHome();
   run('toggleVote', dateText, me, ME.token)
+    .then(function (r) { row.voters = r.voters; renderVotes(); renderHome(); })
+    .catch(function (e) { row.voters = before; renderVotes(); renderHome(); toast(e.message || e); });
+}
+
+function voteOpenSession(id) {
+  const me = getMe();
+  const row = (DATA.openSessions || []).find(function (x) { return x.id === id; });
+  if (!row) return;
+  if (!row.voters) row.voters = [];
+  const before = row.voters.slice();
+  toggleVoterLocal_(row, me);
+  renderVotes(); renderHome();
+  run('toggleOpenSessionVote', id, me, ME.token)
     .then(function (r) { row.voters = r.voters; renderVotes(); renderHome(); })
     .catch(function (e) { row.voters = before; renderVotes(); renderHome(); toast(e.message || e); });
 }

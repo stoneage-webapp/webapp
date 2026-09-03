@@ -60,7 +60,7 @@
     // 정기 오픈 세션 (특정 날짜+장소, 캘린더에서 여러 날짜 선택해 등록)
     openSessions: [
       { id: 'os1', date: ym + '-09', loc: '더클라임 강남', note: '초보 환영', createdBy: '이희주',
-        createdAt: '2026-07-01T00:00:00.000Z', dateInfo: DI(ym + '-09', '') }
+        createdAt: '2026-07-01T00:00:00.000Z', voters: ['이희주'], dateInfo: DI(ym + '-09', '') }
     ],
     openSessionRoles: ['팀장'],
     flashRoles: ['부족심사중', '조약돌', '간석기', '고인돌', '팀장'], // 기본값: 전체 허용
@@ -311,10 +311,19 @@
           dates.forEach(function (date, i) {
             DATA.openSessions.push({
               id: 'os' + (DATA.openSessions.length + 1 + i), date: date, loc: loc, note: note,
-              createdBy: args[3], createdAt: now, dateInfo: DI(date, '')
+              createdBy: args[3], createdAt: now, voters: [args[3]], dateInfo: DI(date, '')
             });
           });
           return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+        })(),
+        toggleOpenSessionVote: (function () {
+          if (fn !== 'toggleOpenSessionVote') return { id: args[0], voters: [] };
+          const row = DATA.openSessions.find(function (x) { return x.id === args[0]; });
+          if (!row) return { id: args[0], voters: [] };
+          if (!row.voters) row.voters = [];
+          const i = row.voters.indexOf(args[1]);
+          if (i > -1) row.voters.splice(i, 1); else row.voters.push(args[1]);
+          return { id: args[0], voters: row.voters };
         })(),
         editOpenSession: (function () {
           if (fn !== 'editOpenSession') return { items: DATA.openSessions, roles: DATA.openSessionRoles };

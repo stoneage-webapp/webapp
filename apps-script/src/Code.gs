@@ -85,6 +85,7 @@ const POST_ACTIONS = {
   // 정기 오픈 세션 (날짜+장소, 팀장 등 지정 직책 또는 관리자만 개설)
   addOpenSession:    { auth: 'requester', bust: true, fn: function (d) { return addOpenSession(d.dates, d.loc, d.note, d.requester, d.token); } },
   editOpenSession:   { auth: 'requester', bust: true, fn: function (d) { return editOpenSession(d.id, d.date, d.loc, d.note, d.requester, d.token); } },
+  toggleOpenSessionVote: { auth: 'voter', bust: true, fn: function (d) { return toggleOpenSessionVote(d.id, d.voter, d.token); } },
   deleteOpenSession: { auth: 'requester', bust: true, fn: function (d) { return deleteOpenSession(d.id, d.requester, d.token); } },
   setOpenSessionRoles: { auth: 'requester', bust: true, fn: function (d) { return setOpenSessionRoles(d.roles, d.requester, d.token); } }, // 관리자 전용
   setFlashRoles:     { auth: 'requester', bust: true, fn: function (d) { return setFlashRoles(d.roles, d.requester, d.token); } }, // 관리자 전용
@@ -244,7 +245,7 @@ function getInitData() {
     recent: getRecentActivity_(),  // 최근 24시간 벽화/전당 (홈 "새 소식")
     rsvp: getRsvp_(),              // 확정 모임 참석 확정 { 월: {이름: 'yes'|'no'} }
     flashOwners: votes.flashOwners,
-    openSessions: openSessions.items,      // [{id, date, loc, note, createdBy, createdAt, dateInfo}]
+    openSessions: openSessions.items,      // [{id, date, loc, note, createdBy, createdAt, voters, dateInfo}]
     openSessionRoles: openSessions.roles,  // 오픈 세션 개설 가능 직책 (기본 ['팀장'])
     flashRoles: getFlashRoles_(),          // 번개 개설 가능 직책 (기본 전체 — 제한 없음)
     raidLocations: CONFIG.RAID_LOCATIONS   // 정기공격 기본 위치 로테이션 순서 (관리자 편집용)
