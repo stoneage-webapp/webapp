@@ -266,6 +266,14 @@
       <button class="btn2" onclick="saveSettlers()">담당자 저장</button>
       <div class="status" id="settlerStatus"></div>
 
+      <div class="month-head" style="margin-top:22px">🧭 정기 오픈 세션 개설 가능 직책</div>
+      <p class="dim" style="font-size:12.5px; margin-bottom:8px">
+        선택된 직책(또는 관리자)만 일정 탭에서 정기 오픈 세션(요일+장소 반복)을 열 수 있어요. 기본값은 팀장. (탭해서 선택)
+      </p>
+      <div class="chips" id="openSessionRoleChips" style="margin-bottom:10px"></div>
+      <button class="btn2" onclick="saveOpenSessionRoles()">개설 가능 직책 저장</button>
+      <div class="status" id="openSessionRoleStatus"></div>
+
       <div class="month-head" style="margin-top:22px">🔑 PIN 초기화</div>
       <div class="field">
         <select id="resetPinName"><option value="">부족원 선택</option></select>
