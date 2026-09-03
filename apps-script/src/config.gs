@@ -38,7 +38,8 @@ const CONFIG = {
   // 일정 확정 권한자 — 스크립트 속성 ADMINS 에 쉼표 구분(예: "김광훈,이희주"). 미설정 시 기본값.
   ADMINS: prop_('ADMINS', '김광훈').split(',').map(function (s) { return s.trim(); }).filter(String),
 
-  // 정기공격 기본 장소 로테이션 (스크립트 속성 raid_locations, JSON 배열로 순서 변경 가능). 월 기준으로 결정적 순환.
+  // 정기공격 기본 장소 로테이션 (스크립트 속성 raid_locations, JSON 배열). 월 기준으로 결정적 순환.
+  // 관리 탭(관리자, setRaidLocations)에서 순서 편집 가능 — 스크립트 속성 직접 수정 불필요.
   RAID_LOCATIONS: (function () {
     const v = prop_('raid_locations');
     if (v) {
