@@ -2,13 +2,14 @@
  * 석기시대 부족 웹앱 — opensessions.gs
  * 정기 오픈 세션 — 특정 날짜(들) + 장소로 여는 자유 참가 세션. 투표/참석확정 없이 정보 게시용.
  *
- * 저장: '오픈세션' 시트 — A=ID, B=날짜('yyyy-MM-dd'), C=장소, D=설명, E=개설자, F=등록일시.
+ * 저장: '오픈세션' 시트 — A=ID, B=날짜('yyyy-MM-dd'), C=장소, D=설명, E=개설자, F=등록일시, G=참여자(쉼표).
  *      첫 개설 시 앱이 자동 생성. ID는 Utilities.getUuid() — 행 순서가 바뀌어도(삭제 등) 안전하게 찾기 위함.
  *      Script Property 'open_session_roles' = 개설 가능 직책 배열(기본 ['팀장'])
  *
  * 권한: 개설(add)은 관리자 또는 open_session_roles 에 포함된 직책만(canOpenSession_).
  *      수정/삭제는 개설자 또는 관리자만(자연재해 번개와 동일한 소유권 패턴).
  *      개설 가능 직책 설정(setOpenSessionRoles)은 관리자 전용.
+ *      참여의사(toggleOpenSessionVote)는 번개(toggleVote)와 동일하게 로그인한 누구나. 개설자는 자동으로 첫 참여자.
  * 개설 시 번개(addFlash)와 동일하게 sendPush_ 로 전체 푸시를 보낸다.
  */
 
@@ -33,13 +34,15 @@ function canOpenSession_(name) {
   return getOpenSessionRoles_().indexOf(role) > -1;
 }
 
-// '오픈세션' 시트 확보 + 헤더 보장 (첫 개설 시 자동 생성)
+// '오픈세션' 시트 확보 + 헤더 보장 (첫 개설 시 자동 생성, G열은 기존 시트에도 멱등하게 보강)
 function openSessionSheet_() {
   const s = ss_();
   let sh = s.getSheetByName(CONFIG.SHEETS.opensessions);
   if (!sh) {
     sh = s.insertSheet(CONFIG.SHEETS.opensessions);
-    sh.appendRow(['ID', '날짜', '장소', '설명', '개설자', '등록일시']);
+    sh.appendRow(['ID', '날짜', '장소', '설명', '개설자', '등록일시', '참여자']);
+  } else if (String(sh.getRange(1, 7).getDisplayValue()).trim() !== '참여자') {
+    sh.getRange(1, 7).setValue('참여자');
   }
   return sh;
 }
@@ -48,9 +51,10 @@ function getOpenSessionsRaw_() {
   const sh = openSessionSheet_();
   const last = sh.getLastRow();
   if (last < 2) return [];
-  const vals = sh.getRange(2, 1, last - 1, 6).getDisplayValues();
+  const vals = sh.getRange(2, 1, last - 1, 7).getDisplayValues();
   return vals.filter(function (r) { return r[0]; }).map(function (r) {
-    return { id: r[0], date: r[1], loc: r[2], note: r[3], createdBy: r[4], createdAt: r[5] };
+    return { id: r[0], date: r[1], loc: r[2], note: r[3], createdBy: r[4], createdAt: r[5],
+      voters: String(r[6] || '').split(',').map(function (n) { return n.trim(); }).filter(Boolean) };
   });
 }
 
@@ -69,7 +73,7 @@ function findOpenSessionRow_(sh, id) {
 function getOpenSessions() {
   const items = getOpenSessionsRaw_().map(function (s) {
     return { id: s.id, date: s.date, loc: s.loc, note: s.note, createdBy: s.createdBy,
-      createdAt: s.createdAt, dateInfo: dateInfo_(s.date, String(s.date || '').slice(0, 7)) };
+      createdAt: s.createdAt, voters: s.voters, dateInfo: dateInfo_(s.date, String(s.date || '').slice(0, 7)) };
   });
   return { items: items, roles: getOpenSessionRoles_() };
 }
@@ -97,7 +101,8 @@ function addOpenSession(dates, loc, note, requester, authToken) {
     clean.forEach(function (date) {
       // 날짜는 앞에 ' 를 붙여 텍스트로 저장 — 안 그러면 시트가 자동으로 날짜 타입으로 바꿔서
       // getDisplayValues()가 로캘 형식으로 돌려주기 때문에 'yyyy-MM-dd' 파싱이 깨진다(PIN·휴면종료일과 동일 이유).
-      sh.appendRow([Utilities.getUuid(), "'" + date, loc, note, requester, now]);
+      // G열(참여자)엔 개설자를 자동으로 첫 참여자로 기록(번개와 동일한 관례).
+      sh.appendRow([Utilities.getUuid(), "'" + date, loc, note, requester, now, requester]);
     });
     const label = clean.map(function (d) { return (+d.slice(5, 7)) + '/' + (+d.slice(8, 10)); }).join(', ');
     sendPush_('🧭 정기 오픈 세션 개설!', label + ' @ ' + loc +
@@ -148,6 +153,28 @@ function deleteOpenSession(id, requester, authToken) {
     }
     sh.deleteRow(row);
     return getOpenSessions();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 참여의사 토글 — 번개(toggleVote)와 동일하게 로그인한 누구나
+function toggleOpenSessionVote(id, voter, authToken) {
+  voter = verify_(voter, authToken);
+  id = String(id || '').trim();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = openSessionSheet_();
+    const row = findOpenSessionRow_(sh, id);
+    if (!row) throw new Error('해당 오픈 세션을 찾을 수 없습니다.');
+    let voters = String(sh.getRange(row, 7).getDisplayValue() || '')
+      .split(',').map(function (n) { return n.trim(); }).filter(Boolean);
+    voters = voters.indexOf(voter) > -1
+      ? voters.filter(function (v) { return v !== voter; })
+      : voters.concat(voter);
+    sh.getRange(row, 7).setValue(voters.join(', '));
+    return { id: id, voters: voters };
   } finally {
     lock.releaseLock();
   }
