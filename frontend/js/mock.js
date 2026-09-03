@@ -52,7 +52,7 @@
       murals: [{ kind: '사진', loc: '더클라임 강남', by: '이희주', when: '오늘 09:12' }],
       hall: [{ by: '박도윤', title: '오버행 돌파', when: '오늘 08:40' }]
     },
-    dormant: {}, // { 이름: 'yyyy-MM-dd' } — 휴면 중 (K열)
+    dormant: { '박도윤': '2026-11-30' }, // { 이름: 'yyyy-MM-dd' } — 휴면 중 (K열). 갤러리 투명도 미리보기용
     roles: { '김광훈': '고인돌', '박도윤': '조약돌', '이희주': '간석기', '정민재': '부족심사중', '최서연': '조약돌' },
     roleList: ['부족심사중', '조약돌', '간석기', '고인돌'],
     rsvp: { '2026-06': { '김광훈': 'yes', '이희주': 'no' } }, // 확정 6월 모임 참석 확정 (목)
@@ -104,7 +104,8 @@
         getHallArchive: { winners: [{ ym: '2026-06', title: '보라 완등', by: '이희주', voters: ['김광훈', '박도윤'], link: '#', fileId: 'x', when: '' }] },
         getGallery: { items: [
           { when: ym + '-05', actDate: ym + '-05', loc: '더클라임 강남', people: '김광훈, 이희주', by: '김광훈', fileId: 'mk1', link: '#' },
-          { when: ym + '-02', actDate: ym + '-02', loc: '클라이밍파크', people: '김광훈', by: '김광훈', fileId: 'mk2', link: '#' }
+          { when: ym + '-02', actDate: ym + '-02', loc: '클라이밍파크', people: '김광훈', by: '김광훈', fileId: 'mk2', link: '#' },
+          { when: ym + '-01', actDate: ym + '-01', loc: '더클라임 강남', people: '박도윤', by: '박도윤', fileId: 'mk3', link: '#' } // 휴면 회원 — 투명도 미리보기
         ], hasMore: false },
         getNotices: { items: NOTICES.slice() },
         getStats: (function () {

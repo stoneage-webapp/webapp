@@ -147,6 +147,9 @@
     color: var(--ink); border-radius: 6px; padding: 5px; font-size: 11px; cursor: pointer;
   }
   .grid-cell .cell-info .open-link { color: var(--ember); border-color: var(--ember); }
+  /* 휴면 회원(업로더)의 인증 내역은 투명도를 낮춰 구분 — 눌러서 펼치면 원래대로 */
+  .grid-cell.dormant-entry { opacity: .5; }
+  .grid-cell.dormant-entry.show { opacity: 1; }
   .feed-card {
     background: var(--stone); border: 1px solid var(--line);
     border-radius: var(--radius); overflow: hidden; margin-bottom: 14px;
