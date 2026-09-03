@@ -30,7 +30,6 @@ const CONFIG = {
     notices: '공지',        // 공지사항 (첫 등록 시 앱이 자동 생성)
     status: '인증현황',     // settleMonth 가 생성/갱신하는 정산 결과
     completion: '완료기록', // 정기공격/자연재해 완료 처리 기록 (첫 완료 처리 시 앱이 자동 생성)
-    levels: '레벨완등',     // 레벨(난이도)별 완등 횟수 — 행=이름, 열=레벨 (첫 기록 시 앱이 자동 생성)
     errorlog: '오류로그',   // 예기치 못한 백엔드 오류 로그 (첫 오류 시 앱이 자동 생성)
     budget: '예산'          // 부족 예산 — 정산 적립 / 사용 이력 (첫 기록 시 앱이 자동 생성)
   },
@@ -38,7 +37,18 @@ const CONFIG = {
 
   // 일정 확정 권한자 — 스크립트 속성 ADMINS 에 쉼표 구분(예: "김광훈,이희주"). 미설정 시 기본값.
   ADMINS: prop_('ADMINS', '김광훈').split(',').map(function (s) { return s.trim(); }).filter(String),
-  ADMIN_PIN: prop_('admin_pin', '0102'),  // 확정 PIN — 스크립트 속성 admin_pin (auth.gs 의 getAdminPin_ 과 동일 소스)
+
+  // 정기공격 기본 장소 로테이션 (스크립트 속성 raid_locations, JSON 배열로 순서 변경 가능). 월 기준으로 결정적 순환.
+  RAID_LOCATIONS: (function () {
+    const v = prop_('raid_locations');
+    if (v) {
+      try {
+        const arr = JSON.parse(v);
+        if (Array.isArray(arr) && arr.length) return arr;
+      } catch (e) {}
+    }
+    return ['신림', '사당', '이수', '논현', '양재'];
+  })(),
 
   // 푸시 알림 (OneSignal). APP_ID 는 공개값(프론트에도 있음) → 하드코딩 폴백 OK.
   // REST 키는 **비밀** — 반드시 스크립트 속성 'onesignal_rest_key' 로만 넣는다(코드/커밋 금지).

@@ -102,30 +102,15 @@
     <button class="btn2" onclick="openNotion()">📜 부족 안내문</button>
   </section>
 
-  <!-- 레벨 순위 -->
-  <section id="tab-rank" class="tab">
-    <div class="month-head" style="margin-top:0">🧗 레벨 순위 <select id="levelSeasonSelect" class="season-sel"></select></div>
-    <p class="dim" style="font-size:12.5px; margin-bottom:10px">
-      <b>가장 높이 완등한 레벨</b>이 우선이고, 같으면 그 레벨 완등 수로 가려요.<br>
-      완등 기록은 각자 직접 올려요. 시즌은 분기(3개월)마다 새로 시작합니다.
-    </p>
-    <div id="rankBox" class="loading">순위를 불러오는 중…</div>
-    <button class="btn2" id="myLevelBtn" style="display:none" onclick="editMyLevelPrompt()">✏️ 내 완등 기록하기</button>
-    <button class="btn2" id="levelSetupBtn" style="display:none" onclick="openLevelSetup()">⚙️ 레벨 설정</button>
-  </section>
-
   <!-- 투표 -->
-  <section id="tab-vote" class="tab">
-    <div class="seg">
-      <button id="segRaid" class="on" onclick="setCategory('raid')">⚔️ 정기공격일자</button>
-      <button id="segDisaster" onclick="setCategory('disaster')">🌋 자연재해</button>
-    </div>
+  <section id="tab-schedule" class="tab">
     <div class="field" style="margin-bottom:10px">
       <select id="voteMonth"></select>
     </div>
     <div id="voteCalendar"></div>
-    <div class="deadline-line" id="deadlineLine"></div>
-    <div id="voteList"></div>
+    <div id="raidSection"></div>
+    <div id="openSessionSection"></div>
+    <div id="disasterSection"></div>
   </section>
 
   <!-- 벽화 갤러리 -->
@@ -254,20 +239,6 @@
       <button class="btn2" onclick="addMemberPrompt()">➕ 부족원 추가</button>
       <div id="memberAdminList" class="member-list"></div>
 
-      <div class="month-head" style="margin-top:22px">🧗 레벨 완등 기록</div>
-      <p class="dim" style="font-size:12.5px; margin-bottom:8px">
-        먼저 레벨(난이도)을 <b>낮은 것부터</b> 순서대로 등록하세요. 그다음 구성원을 눌러 레벨별 완등 횟수를 입력합니다.<br>
-        순위는 <b>가장 높이 완등한 레벨</b>이 우선이고, 같으면 그 레벨 완등 수로 가려요.
-      </p>
-      <div id="levelConfig"></div>
-      <div style="display:flex; gap:8px; margin-top:8px">
-        <div class="field" style="flex:1; margin:0"><input type="text" id="newLevelInput" placeholder="레벨 이름 (예: 빨강 / V3)" maxlength="12"></div>
-        <button class="btn2" style="width:auto; white-space:nowrap; margin:0" onclick="addLevelDraft()">➕ 추가</button>
-      </div>
-      <button class="btn2" onclick="saveLevels()">레벨 순서 저장</button>
-      <div class="status" id="levelCfgStatus"></div>
-      <div id="levelMemberList" class="member-list" style="margin-top:12px"></div>
-
       <div class="month-head" style="margin-top:22px">👑 관리자 설정</div>
       <p class="dim" style="font-size:12.5px; margin-bottom:8px">
         선택된 부족원이 관리자(추장) 권한을 가져요. 부관리자를 추가해 두면 인계·부재 시 안전합니다.<br>
@@ -293,6 +264,14 @@
       <button class="btn2" onclick="saveSettlers()">담당자 저장</button>
       <div class="status" id="settlerStatus"></div>
 
+      <div class="month-head" style="margin-top:22px">🧭 정기 오픈 세션 개설 가능 직책</div>
+      <p class="dim" style="font-size:12.5px; margin-bottom:8px">
+        선택된 직책(또는 관리자)만 일정 탭에서 정기 오픈 세션(요일+장소 반복)을 열 수 있어요. 기본값은 팀장. (탭해서 선택)
+      </p>
+      <div class="chips" id="openSessionRoleChips" style="margin-bottom:10px"></div>
+      <button class="btn2" onclick="saveOpenSessionRoles()">개설 가능 직책 저장</button>
+      <div class="status" id="openSessionRoleStatus"></div>
+
       <div class="month-head" style="margin-top:22px">🔑 PIN 초기화</div>
       <div class="field">
         <select id="resetPinName"><option value="">부족원 선택</option></select>
@@ -312,11 +291,10 @@
 
 <nav>
   <button id="nav-home" class="on" onclick="setTab('home')"><span class="ico">🗿</span>홈<span id="homeNoticeDot" class="nav-dot" style="display:none"></span></button>
-  <button id="nav-vote" onclick="setTab('vote')"><span class="ico">🗳️</span>투표</button>
+  <button id="nav-schedule" onclick="setTab('schedule')"><span class="ico">📅</span>일정</button>
   <button id="nav-photo" onclick="setTab('photo')"><span class="ico">📸</span>인증</button>
   <button id="nav-gallery" onclick="setTab('gallery')"><span class="ico">🖼️</span>벽화</button>
   <button id="nav-hall" onclick="setTab('hall')"><span class="ico">🏆</span>전당</button>
-  <button id="nav-rank" onclick="setTab('rank')"><span class="ico">🧗</span>랭킹</button>
   <button id="nav-more" onclick="setTab('more')"><span class="ico">📋</span>더보기</button>
   <button id="nav-admin" style="display:none" onclick="setTab('admin')"><span class="ico">🛠️</span>관리</button>
 </nav>

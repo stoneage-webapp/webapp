@@ -118,8 +118,9 @@ function deleteMember(targetName, requester, authToken) {
 
 /* ---------- 직책 (관리자) ----------
  * 부족원 시트 **L열(직책)**. 낮은 → 높은 순서. 빈칸/미인식 값은 첫 단계(부족심사중)로 본다.
+ * '팀장'은 사다리의 5번째(최상위) 단계 — 정기 오픈 세션 개설 권한의 기본 대상(opensessions.gs 참고).
  */
-const ROLES = ['부족심사중', '조약돌', '간석기', '고인돌'];
+const ROLES = ['부족심사중', '조약돌', '간석기', '고인돌', '팀장'];
 
 function normalizeRole_(v) {
   const s = String(v == null ? '' : v).trim();

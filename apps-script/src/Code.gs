@@ -3,7 +3,7 @@
  * Front(Netlify) → Back(Apps Script) → DB(Sheet/Drive/Photos)
  *
  * 이 파일은 웹앱 진입점(doGet/doPost)과 action 레지스트리만 담당한다.
- * 실제 로직은 auth.gs / votes.gs / photos.gs / hall.gs / settle.gs / notices.gs 에 있다.
+ * 실제 로직은 auth.gs / votes.gs / opensessions.gs / photos.gs / hall.gs / settle.gs / notices.gs 에 있다.
  * (Apps Script는 모든 .gs가 전역 스코프를 공유하므로 파일 분리는 순수 정리 목적이다.)
  *
  * ── 통신 규약 (docs/architecture.md 의 API 명세와 일치) ──
@@ -31,7 +31,7 @@ const GET_ACTIONS = {
   getSettleStatus: { cache: true, fn: function (p) { return getSettleStatus(p.ym || ''); } }, // #21 정산 현황 (월 지정)
   getVenueStats:   { cache: true, fn: function (p) { return getVenueStats(); } },            // 암장별 방문 통계
   getCompletionLog:{ cache: true, fn: function (p) { return getCompletionLog(Number(p.limit) || 10); } }, // 완료된 모임 최근 기록
-  getLevelBoard:   { cache: true, fn: function (p) { return getLevelBoard(p.season || ''); } }             // 레벨별 완등 순위 (공개, 시즌별)
+  getOpenSessions: { cache: true, fn: function (p) { return getOpenSessions(); } }            // 정기 오픈 세션 목록 + 개설 가능 직책
 };
 
 /* ---------- 인증 조회 / 변경 (POST) ---------- */
@@ -49,17 +49,14 @@ const POST_ACTIONS = {
     return getNotices(Number(d.limit) || 20);
   } },
 
-  // 투표
-  toggleVote:        { auth: 'voter',     bust: true, fn: function (d) { return toggleVote(d.category, d.dateText, d.voter, d.token, d.month); } },
+  // 투표 (자연재해만 — 정기공격은 고정 일정, setRaidDate 참고)
+  toggleVote:        { auth: 'voter',     bust: true, fn: function (d) { return toggleVote(d.dateText, d.voter, d.token); } },
   addFlash:          { auth: 'creator',   bust: true, fn: function (d) { return addFlash(d.dateText, d.loc, d.creator, d.token); } },
   deleteFlash:       { auth: 'requester', bust: true, fn: function (d) { return deleteFlash(d.dateText, d.requester, d.token); } },
   editFlash:         { auth: 'requester', bust: true, fn: function (d) { return editFlash(d.dateText, d.newDate, d.newLoc, d.requester, d.token); } },
   completeFlash:     { auth: 'requester', bust: true, fn: function (d) { return completeFlash(d.dateText, d.requester, d.token); } },
-  completeRaid:      { auth: 'requester', bust: true, fn: function (d) { return completeRaid(d.month, d.requester, d.token); } },
-  confirmDate:       { bust: true, fn: function (d) { return confirmDate(d.month, d.dateText, d.loc, d.name, d.pin, d.note); } }, // 관리자 PIN은 함수 내부 검증
-  editRaidOption:    { auth: 'requester', bust: true, fn: function (d) { return editRaidOption(d.month, d.dateText, d.newDate, d.newLoc, d.requester, d.token); } },
-  deleteRaidOption:  { auth: 'requester', bust: true, fn: function (d) { return deleteRaidOption(d.month, d.dateText, d.requester, d.token); } },
-  addRaidOption:     { auth: 'requester', bust: true, fn: function (d) { return addRaidOption(d.month, d.dateText, d.loc, d.requester, d.token); } }, // 후보 추가 (관리자)
+  completeRaid:      { auth: 'requester', bust: true, fn: function (d) { return completeRaid(d.month, d.requester, d.token, d.cancelled); } },
+  setRaidDate:       { auth: 'requester', bust: true, fn: function (d) { return setRaidDate(d.month, d.date, d.loc, d.note, d.requester, d.token); } }, // 정기공격 고정 일정 지정 (관리자)
   setRsvp:           { auth: 'name', bust: true, fn: function (d) { return setRsvp(d.month, d.status, d.name, d.token); } }, // 참석 확정(RSVP)
 
   // 업로드 (요청자 토큰 필수 — 익명 업로드 차단)
@@ -83,9 +80,13 @@ const POST_ACTIONS = {
   setAdmins:         { auth: 'requester', bust: true, fn: function (d) { return setAdmins(d.names, d.requester, d.token); } },                // 관리자(부관리자) 목록 설정 (관리자)
   setDormant:        { auth: 'requester', bust: true, fn: function (d) { return setDormant(d.targetName, d.until, d.requester, d.token); } }, // 휴면 설정/해제 (관리자, 최대 3개월)
   setRole:           { auth: 'requester', bust: true, fn: function (d) { return setRole(d.targetName, d.role, d.requester, d.token); } },     // 직책 변경 (관리자)
-  setLevels:         { auth: 'requester', bust: true, fn: function (d) { return setLevels(d.levels, d.requester, d.token); } },              // 레벨 목록 설정 (관리자)
-  setLevelRecord:    { auth: 'requester', bust: true, fn: function (d) { return setLevelRecord(d.name, d.counts, d.requester, d.token); } }, // 다른 구성원 완등 기록 (관리자)
-  setMyLevelRecord:  { auth: 'name',      bust: true, fn: function (d) { return setMyLevelRecord(d.counts, d.name, d.token); } },           // 본인 완등 기록 (누구나)
+
+  // 정기 오픈 세션 (요일+장소 반복, 팀장 등 지정 직책 또는 관리자만 개설)
+  addOpenSession:    { auth: 'requester', bust: true, fn: function (d) { return addOpenSession(d.weekday, d.loc, d.note, d.requester, d.token); } },
+  editOpenSession:   { auth: 'requester', bust: true, fn: function (d) { return editOpenSession(d.id, d.weekday, d.loc, d.note, d.requester, d.token); } },
+  deleteOpenSession: { auth: 'requester', bust: true, fn: function (d) { return deleteOpenSession(d.id, d.requester, d.token); } },
+  setOpenSessionRoles: { auth: 'requester', bust: true, fn: function (d) { return setOpenSessionRoles(d.roles, d.requester, d.token); } }, // 관리자 전용
+
   postNotice:        { auth: 'name', bust: true, fn: function (d) { return postNotice(d.text, d.name, d.token); } },   // #24
   deleteNotice:      { auth: 'name', bust: true, fn: function (d) { return deleteNotice(d.row, d.when, d.name, d.token); } }, // #24
   editNotice:        { auth: 'name', bust: true, fn: function (d) { return editNotice(d.row, d.when, d.text, d.name, d.token); } }, // 공지 수정 (관리자)
@@ -219,15 +220,16 @@ function getInitData() {
   });
   const cert = getCertified_(s);
   const votes = getVotes('');
+  const openSessions = getOpenSessions();
   return {
     members: members,
     support: support,              // { 이름: true/false } — 지원(정산) 대상 여부 (J열)
     dormant: dormant,              // { 이름: 'yyyy-MM-dd' } — 휴면 중인 사람만 (K열, 만료 시 자동 제외)
     roles: roles,                  // { 이름: 직책 } — L열 (빈칸이면 부족심사중)
     roleList: ROLES,               // 직책 단계 (낮은→높은)
-    months: votes.months,          // 존재하는 투표 월 목록 (필터 드롭다운용)
-    raidMonths: votes.raidMonths,  // [{month, deadline, closed, confirmed, options:[{date,dateInfo,voters}]}]
-    disaster: votes.disaster,      // [{date, loc, dateInfo, voters}]
+    months: votes.months,            // 존재하는 일정 월 목록 (필터 드롭다운용)
+    raidSchedule: votes.raidSchedule, // [{month, date, loc, note, isOverride, dateInfo}] — 정기공격 고정 일정(투표 없음)
+    disaster: votes.disaster,        // [{date, loc, dateInfo, voters}]
     certified: cert.map,           // { 이름: true } — 이번 달 사진 인증 완료자
     month: cert.ym,                // 'yyyy-MM'
     shareUrl: CONFIG.PHOTOS_SHARE_URL,
@@ -239,7 +241,9 @@ function getInitData() {
     notices: getHomeNotices_(),    // 홈 노출: 고정 공지 전부 + 최신 1건
     recent: getRecentActivity_(),  // 최근 24시간 벽화/전당 (홈 "새 소식")
     rsvp: getRsvp_(),              // 확정 모임 참석 확정 { 월: {이름: 'yes'|'no'} }
-    flashOwners: votes.flashOwners
+    flashOwners: votes.flashOwners,
+    openSessions: openSessions.items,      // [{id, weekday(0=일~6=토), loc, note, createdBy, createdAt}]
+    openSessionRoles: openSessions.roles   // 오픈 세션 개설 가능 직책 (기본 ['팀장'])
   };
 }
 

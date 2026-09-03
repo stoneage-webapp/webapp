@@ -15,7 +15,6 @@
   };
   const now = new Date();
   const ym = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2);
-  const d1 = ym + '-16', d2 = ym + '-23';
 
   // 공지: 최신순. pinned=고정. 홈은 "고정 전부 + 최신 1건"만 노출. ts=등록시각(ms, 새공지 뱃지용)
   const NOTICES = [
@@ -34,14 +33,9 @@
   const DATA = {
     members: MEMBERS,
     months: ['2026-06', ym],
-    raidMonths: [
-      { month: '2026-06', deadline: '2026-06-05', closed: true, confirmed: { date: '2026-06-18', loc: '클라이밍파크', note: '' },
-        options: [{ date: '2026-06-18', loc: '클라이밍파크', dateInfo: DI('2026-06-18', ''), voters: ['김광훈'] }] },
-      { month: ym, deadline: ym + '-10', closed: false, confirmed: null,
-        options: [
-          { date: '7/16(수) 20:00', loc: '더클라임 강남', dateInfo: DI(d1, '20:00'), voters: ['김광훈', '이희주'] },
-          { date: '7/23(수) 20:00', loc: '클라이밍파크 사당', dateInfo: DI(d2, '20:00'), voters: ['박도윤'] }
-        ] }
+    // 정기공격은 더 이상 투표하지 않음 — 월마다 고정 일정 하나(기본값: 둘째 주 금요일 + 위치 로테이션, isOverride=관리자 지정 여부)
+    raidSchedule: [
+      { month: ym, date: ym.slice(5, 7) + '/17 20:00', loc: '사당', note: '', isOverride: false, dateInfo: DI(ym + '-17', '20:00') }
     ],
     disaster: [
       { date: '7/19 14:00 @ 클라이밍파크', loc: '클라이밍파크', dateInfo: DI(ym + '-19', '14:00'), voters: ['최서연'] }
@@ -58,11 +52,16 @@
       murals: [{ kind: '사진', loc: '더클라임 강남', by: '이희주', when: '오늘 09:12' }],
       hall: [{ by: '박도윤', title: '오버행 돌파', when: '오늘 08:40' }]
     },
-    dormant: {}, // { 이름: 'yyyy-MM-dd' } — 휴면 중 (K열)
-    roles: { '김광훈': '고인돌', '박도윤': '조약돌', '이희주': '간석기', '정민재': '부족심사중', '최서연': '조약돌' },
-    roleList: ['부족심사중', '조약돌', '간석기', '고인돌'],
+    dormant: { '박도윤': '2026-11-30' }, // { 이름: 'yyyy-MM-dd' } — 휴면 중 (K열). 갤러리 투명도 미리보기용
+    roles: { '김광훈': '고인돌', '박도윤': '조약돌', '이희주': '팀장', '정민재': '부족심사중', '최서연': '조약돌' },
+    roleList: ['부족심사중', '조약돌', '간석기', '고인돌', '팀장'],
     rsvp: { '2026-06': { '김광훈': 'yes', '이희주': 'no' } }, // 확정 6월 모임 참석 확정 (목)
-    flashOwners: { '7/19 14:00 @ 클라이밍파크': '최서연' }
+    flashOwners: { '7/19 14:00 @ 클라이밍파크': '최서연' },
+    // 정기 오픈 세션 (요일+장소 매주 반복). weekday: 0=일~6=토
+    openSessions: [
+      { id: 'os1', weekday: 3, loc: '더클라임 강남', note: '초보 환영', createdBy: '이희주', createdAt: '2026-07-01T00:00:00.000Z' }
+    ],
+    openSessionRoles: ['팀장']
   };
 
   const HALL = {
@@ -102,56 +101,6 @@
              items: BUDGET.slice().reverse() };
   }
 
-  // ── 레벨(난이도)별 완등 순위 목데이터 ──
-  let LEVELS = ['흰', '노', '주', '초', '파', '빨'];       // 낮은→높은 순
-  const LEVEL_COUNTS = {                                   // { 이름: { 레벨: 완등수 } }
-    '김광훈': { '흰': 15, '노': 10, '주': 6, '초': 3, '파': 1 },
-    '이희주': { '흰': 12, '노': 9, '주': 6, '초': 3, '파': 1 },
-    '박도윤': { '흰': 8, '노': 4, '주': 1 },
-    '최서연': { '흰': 5, '노': 2 }
-    // 정민재: 기록 없음 (rank=null 시나리오)
-  };
-  function levelBoard(reqSeason) {
-    const roster = MEMBERS.slice().sort();
-    const rows = roster.map(function (name) {
-      const raw = LEVEL_COUNTS[name] || {};
-      const c = {};
-      let topIdx = -1, total = 0;
-      LEVELS.forEach(function (lv, i) {
-        const n = raw[lv] || 0;
-        if (n > 0) { c[lv] = n; total += n; if (i > topIdx) topIdx = i; }
-      });
-      const topLevel = topIdx >= 0 ? LEVELS[topIdx] : '';
-      return { name: name, counts: c, topLevel: topLevel, topIdx: topIdx,
-               topCount: topLevel ? (c[topLevel] || 0) : 0, total: total };
-    });
-    rows.sort(function (a, b) {
-      if (b.topIdx !== a.topIdx) return b.topIdx - a.topIdx;
-      if (b.topCount !== a.topCount) return b.topCount - a.topCount;
-      if (b.total !== a.total) return b.total - a.total;
-      return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
-    });
-    let rank = 0, shown = 0, prevKey = null;
-    rows.forEach(function (r) {
-      if (r.topIdx < 0 && r.total === 0) { r.rank = null; return; }
-      shown++;
-      const key = r.topIdx + '|' + r.topCount + '|' + r.total;
-      if (key !== prevKey) { rank = shown; prevKey = key; }
-      r.rank = rank;
-    });
-    const q = Math.ceil((now.getMonth() + 1) / 3);
-    const y = now.getFullYear();
-    const curSeason = y + '-Q' + q;
-    const prevQ = q === 1 ? 4 : q - 1, prevY = q === 1 ? y - 1 : y;
-    const season = /^\d{4}-Q[1-4]$/.test(reqSeason || '') ? reqSeason : curSeason;
-    if (season !== curSeason) { // 지난 시즌: 목데이터엔 기록 없음 → 전원 rank null
-      rows.forEach(function (r) { r.counts = {}; r.total = 0; r.topIdx = -1; r.topLevel = ''; r.topCount = 0; r.rank = null; });
-    }
-    return { levels: LEVELS.slice(), rows: rows, season: season,
-             seasonLabel: season.slice(0, 4) + ' ' + season.slice(6) + '분기',
-             seasons: [curSeason, prevY + '-Q' + prevQ] };
-  }
-
   window.API_MOCK = {
     handle: function (fn, args) {
       const T = {
@@ -160,7 +109,8 @@
         getHallArchive: { winners: [{ ym: '2026-06', title: '보라 완등', by: '이희주', voters: ['김광훈', '박도윤'], link: '#', fileId: 'x', when: '' }] },
         getGallery: { items: [
           { when: ym + '-05', actDate: ym + '-05', loc: '더클라임 강남', people: '김광훈, 이희주', by: '김광훈', fileId: 'mk1', link: '#' },
-          { when: ym + '-02', actDate: ym + '-02', loc: '클라이밍파크', people: '김광훈', by: '김광훈', fileId: 'mk2', link: '#' }
+          { when: ym + '-02', actDate: ym + '-02', loc: '클라이밍파크', people: '김광훈', by: '김광훈', fileId: 'mk2', link: '#' },
+          { when: ym + '-01', actDate: ym + '-01', loc: '더클라임 강남', people: '박도윤', by: '박도윤', fileId: 'mk3', link: '#' } // 휴면 회원 — 투명도 미리보기
         ], hasMore: false },
         getNotices: { items: NOTICES.slice() },
         getStats: (function () {
@@ -203,7 +153,7 @@
         getCompletionLog: { items: COMPLETION_LOG.slice().reverse() },
         loginWithPin: { name: args[0], token: 'mock-token', isAdmin: args[0] === '김광훈', driveApiKey: '', certNudge: certNudgeFor(args[0]) },
         changePin: { name: args[0], token: 'mock-token', isAdmin: args[0] === '김광훈', driveApiKey: '', certNudge: certNudgeFor(args[0]) },
-        toggleVote: { date: args[1], voters: [args[2]] },
+        toggleVote: { date: args[0], voters: [args[1]] }, // 자연재해 전용 — (dateText, voter, token)
         addFlash: DATA.disaster, deleteFlash: DATA.disaster,
         // T의 모든 필드는 fn 과 무관하게 매 호출마다 즉시 평가되므로(아래 목데이터 조회용 IIFE들과 동일 구조),
         // DATA를 실제로 변형하는 아래 세 액션은 반드시 fn 가드로 감싸 다른 액션 호출 시 오작동을 막는다.
@@ -226,38 +176,30 @@
           return DATA.disaster;
         })(),
         completeRaid: (function () {
-          if (fn !== 'completeRaid') return DATA.raidMonths;
-          const idx = DATA.raidMonths.findIndex(function (x) { return x.month === args[0]; });
-          if (idx > -1) DATA.raidMonths.splice(idx, 1);
-          return DATA.raidMonths;
+          if (fn !== 'completeRaid') return DATA.raidSchedule;
+          const idx = DATA.raidSchedule.findIndex(function (x) { return x.month === args[0]; });
+          if (idx > -1) DATA.raidSchedule.splice(idx, 1);
+          return DATA.raidSchedule;
         })(),
-        editRaidOption: (function () {
-          if (fn !== 'editRaidOption') return DATA.raidMonths;
-          const g = DATA.raidMonths.find(function (x) { return x.month === args[0]; });
-          if (g) {
-            const o = g.options.find(function (x) { return x.date === args[1]; });
-            if (o) { o.date = args[2]; o.loc = args[3]; o.dateInfo = null; } // 실제 백엔드는 새 날짜를 dateInfo_로 재파싱
+        // 관리자: 그 달 정기공격 날짜/장소/설명 지정 — (month, date, loc, note, requester, token)
+        setRaidDate: (function () {
+          if (fn !== 'setRaidDate') return DATA.raidSchedule;
+          const month = args[0], date = String(args[1] || '').trim(),
+            loc = String(args[2] || '').trim(), note = String(args[3] || '').trim();
+          let g = DATA.raidSchedule.find(function (x) { return x.month === month; });
+          if (!g) { g = { month: month, date: '', loc: '', note: '', isOverride: false, dateInfo: null }; DATA.raidSchedule.push(g); }
+          if (date) {
+            g.date = date; g.loc = loc; g.note = note; g.isOverride = true;
+            // 날짜는 'M/d HH:mm' 같은 자유 서식 — 실제 백엔드(dateInfo_)처럼 월 힌트로 연도 보정해 파싱
+            const d = (typeof parseDateClient === 'function') ? parseDateClient(date, month) : null;
+            const tm = date.match(/(\d{1,2}):(\d{2})/);
+            g.dateInfo = d ? DI(d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2),
+              tm ? tm[0] : null) : null;
+          } else {
+            g.isOverride = false; // 실제 백엔드는 기본값(둘째 주 금요일+로테이션)으로 재계산하지만 mock은 마지막 값 유지
           }
-          return DATA.raidMonths;
+          return DATA.raidSchedule;
         })(),
-        deleteRaidOption: (function () {
-          if (fn !== 'deleteRaidOption') return DATA.raidMonths;
-          const g = DATA.raidMonths.find(function (x) { return x.month === args[0]; });
-          if (g) { const i = g.options.findIndex(function (x) { return x.date === args[1]; }); if (i > -1) g.options.splice(i, 1); }
-          return DATA.raidMonths;
-        })(),
-        addRaidOption: (function () {
-          if (fn !== 'addRaidOption') return DATA.raidMonths;
-          const month = args[0], dateText = args[1], loc = args[2] || '';
-          let g = DATA.raidMonths.find(function (x) { return x.month === month; });
-          if (!g) { g = { month: month, deadline: '', closed: false, confirmed: null, options: [] }; DATA.raidMonths.push(g); }
-          if (!g.options.some(function (o) { return o.date === dateText; })) {
-            const iso = (String(dateText).match(/\d{4}-\d{2}-\d{2}/) || [month + '-01'])[0];
-            g.options.push({ date: dateText, loc: loc, dateInfo: DI(iso, ''), voters: [] });
-          }
-          return DATA.raidMonths;
-        })(),
-        confirmDate: DATA.raidMonths,
         // 공지: 등록/삭제/고정 모두 { items(전체), home(고정+최신1) } 반환
         postNotice: (function () {
           if (fn !== 'postNotice') return { items: NOTICES.slice(), home: homeNotices() };
@@ -307,47 +249,10 @@
           const n = String(args[0] || '').trim();
           const i = MEMBERS.indexOf(n);
           if (i > -1) {
-            MEMBERS.splice(i, 1); delete DATA.support[n]; delete LEVEL_COUNTS[n];
+            MEMBERS.splice(i, 1); delete DATA.support[n];
             DATA.settlers = DATA.settlers.filter(function (x) { return x !== n; });
           }
           return memberSnap();
-        })(),
-        // 레벨 순위/기록
-        getLevelBoard: levelBoard(args[0]),
-        setLevels: (function () {
-          if (fn !== 'setLevels') return levelBoard();
-          if (Array.isArray(args[0])) {
-            LEVELS = args[0].map(function (s) { return String(s).trim(); }).filter(Boolean);
-          }
-          return levelBoard();
-        })(),
-        setLevelRecord: (function () {
-          if (fn !== 'setLevelRecord') return levelBoard();
-          const nm = String(args[0] || '').trim();
-          const counts = (args[1] && typeof args[1] === 'object') ? args[1] : {};
-          if (MEMBERS.indexOf(nm) > -1) {
-            const c = {};
-            LEVELS.forEach(function (lv) {
-              const v = parseInt(counts[lv], 10);
-              if (!isNaN(v) && v > 0) c[lv] = v;
-            });
-            LEVEL_COUNTS[nm] = c;
-          }
-          return levelBoard();
-        })(),
-        setMyLevelRecord: (function () {
-          if (fn !== 'setMyLevelRecord') return levelBoard();
-          const counts = (args[0] && typeof args[0] === 'object') ? args[0] : {};
-          const nm = String(args[1] || '').trim(); // 본인 이름
-          if (MEMBERS.indexOf(nm) > -1) {
-            const c = {};
-            LEVELS.forEach(function (lv) {
-              const v = parseInt(counts[lv], 10);
-              if (!isNaN(v) && v > 0) c[lv] = v;
-            });
-            LEVEL_COUNTS[nm] = c;
-          }
-          return levelBoard();
         })(),
         runSettle: { ym: args[0], done: 2, total: 4, independent: 1, dormant: 0, canceled: 1, copied: 1, uncovered: ['박도윤'], credited: 10000 },
         getBudget: budgetSnap(),
@@ -393,6 +298,33 @@
           return memberSnap();
         })(),
         setSupports: (function () { const on = Array.isArray(args[0]) ? args[0] : []; const s = {}; MEMBERS.forEach(function (m) { s[m] = on.indexOf(m) > -1; }); return { support: s }; })(),
+        // 정기 오픈 세션 — DATA를 실제로 변형하므로 fn 가드 필수 (flash 계열과 동일 패턴)
+        getOpenSessions: { items: DATA.openSessions, roles: DATA.openSessionRoles },
+        addOpenSession: (function () {
+          if (fn !== 'addOpenSession') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+          DATA.openSessions.push({
+            id: 'os' + (DATA.openSessions.length + 1), weekday: Number(args[0]),
+            loc: String(args[1] || '').trim(), note: String(args[2] || '').trim(),
+            createdBy: args[3], createdAt: new Date().toISOString()
+          });
+          return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+        })(),
+        editOpenSession: (function () {
+          if (fn !== 'editOpenSession') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+          const it = DATA.openSessions.find(function (x) { return x.id === args[0]; });
+          if (it) { it.weekday = Number(args[1]); it.loc = String(args[2] || '').trim(); it.note = String(args[3] || '').trim(); }
+          return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+        })(),
+        deleteOpenSession: (function () {
+          if (fn !== 'deleteOpenSession') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+          DATA.openSessions = DATA.openSessions.filter(function (x) { return x.id !== args[0]; });
+          return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+        })(),
+        setOpenSessionRoles: (function () {
+          if (fn !== 'setOpenSessionRoles') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+          if (Array.isArray(args[0]) && args[0].length) DATA.openSessionRoles = args[0].slice();
+          return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+        })(),
         voteHall: HALL, deleteHallEntry: HALL, finalizeHallEntry: HALL,
         deleteProof: { ok: true },
         startUpload: 'mock://upload', startHallUpload: 'mock://upload',

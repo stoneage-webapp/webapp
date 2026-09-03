@@ -39,7 +39,6 @@ function dismissKakao() {
 
 const CHUNK = 8 * 1024 * 1024; // 릴레이 폴백용 8MB (Drive resumable: 256KB 배수 필수)
 let DATA = { members: [], raid: [], disaster: [] };
-let category = 'raid';
 let currentTab = 'home'; // 현재 보고 있는 탭 (당겨 새로고침이 이 탭을 유지)
 
 // 이름 목록을 가나다순으로 (표시용 — 원본 배열은 그대로 둠, 번개 개설자=첫 투표자 로직 보존)
@@ -445,12 +444,11 @@ async function softRefresh() {
   renderHome();
 
   // 지연 로딩 탭은 플래그를 리셋해 다음 방문 때 새로 받게 하고, 지금 보고 있는 탭만 즉시 재로딩
-  galleryLoaded = hallLoaded = moreLoaded = adminLoaded = rankLoaded = false;
+  galleryLoaded = hallLoaded = moreLoaded = adminLoaded = false;
   if (currentTab === 'gallery') loadGallery();
   else if (currentTab === 'hall') loadHall();
-  else if (currentTab === 'rank') await loadLevelBoard();
   else if (currentTab === 'more') loadMore();
-  else if (currentTab === 'admin') await loadAdmin(); // 관리 탭은 LEVELBOARD 를 재사용하므로 완료까지 대기
+  else if (currentTab === 'admin') await loadAdmin();
   else if (currentTab === 'photo') renderMyProofs();
 }
 
@@ -527,7 +525,7 @@ function applyLogin(session) {
   renderVotes();
   renderHome();
   initPush();       // 푸시 알림: 로그인 회원 태깅 + 권한 버튼 갱신
-  setTab('home');   // 레벨 순위는 랭킹 탭 진입 시 지연 로딩
+  setTab('home');
 }
 
 /* ---------- 푸시 알림 (OneSignal) — #4 ----------
@@ -597,13 +595,12 @@ function changePinPrompt() {
 /* ---------- 탭 ---------- */
 function setTab(t) {
   currentTab = t;
-  ['home','rank','vote','photo','gallery','hall','more','admin'].forEach(function(k) {
+  ['home','schedule','photo','gallery','hall','more','admin'].forEach(function(k) {
     document.getElementById('tab-' + k).classList.toggle('on', k === t);
     document.getElementById('nav-' + k).classList.toggle('on', k === t);
   });
   if (t === 'gallery' && !galleryLoaded) loadGallery();
   if (t === 'hall' && !hallLoaded) loadHall();
-  if (t === 'rank' && !rankLoaded) loadLevelBoard(); // 레벨 순위 (지연 로딩)
   if (t === 'more' && !moreLoaded) loadMore();
   if (t === 'admin' && !adminLoaded) loadAdmin();
   if (t === 'photo') renderMyProofs(); // 내 인증 목록(취소용) 갱신
@@ -670,11 +667,6 @@ async function refreshCertified() {
   } catch (e) {}
 }
 
-function goVote(cat) {
-  setCategory(cat);
-  setTab('vote');
-}
-
 function openNotion() {
   if (DATA.notionUrl) window.open(DATA.notionUrl, '_blank');
   else toast('안내문 링크가 아직 설정되지 않았어요. 추장에게 문의!');
@@ -692,16 +684,15 @@ function renderDday() {
   const el = document.getElementById('ddayBanner');
   el.innerHTML = '';
   let next = null;
-  (DATA.raidMonths || []).forEach(function (g) {
-    if (!g.confirmed) return;
-    const d = parseDateClient(g.confirmed.date, g.month);
+  (DATA.raidSchedule || []).forEach(function (g) {
+    const d = parseDateClient(g.date, g.month);
     if (!d) return;
     const today = new Date();
     if (d < new Date(today.getFullYear(), today.getMonth(), today.getDate())) return; // 지난 일정 제외
-    if (!next || d < next.d) next = { d: d, conf: g.confirmed, month: g.month };
+    if (!next || d < next.d) next = { d: d, entry: g };
   });
   if (!next) return;
-  // D-1 리마인더(#7): 확정 모임이 오늘/내일이면 강조
+  // D-1 리마인더(#7): 다음 정기공격이 오늘/내일이면 강조
   const t0 = new Date();
   const todayMid = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate());
   const nextMid = new Date(next.d.getFullYear(), next.d.getMonth(), next.d.getDate());
@@ -711,9 +702,9 @@ function renderDday() {
     '<div class="confirm-banner' + (remind ? ' reminder' : '') + '" style="cursor:pointer">' +
     (remind ? '<div class="remind">' + remind + '</div>' : '') +
     '🔥 다음 정기공격 <b>' + ddayText(next.d) + '</b>' +
-    '<div class="cdate">' + esc(next.conf.date) + '</div>' +
-    (next.conf.loc ? locHtml(next.conf.loc) : '') + '</div>';
-  el.firstChild.onclick = function () { goVote('raid'); };
+    '<div class="cdate">' + esc(next.entry.date) + '</div>' +
+    (next.entry.loc ? locHtml(next.entry.loc) : '') + '</div>';
+  el.firstChild.onclick = function () { setTab('schedule'); };
 }
 
 // 개인 활동 요약 (#2): 로그인한 나의 이번 달 인증/투표 상태
@@ -723,18 +714,14 @@ function renderMySummary() {
   const me = getMe();
   const certed = !!(DATA.certified && DATA.certified[me]);
   const mm = parseInt((DATA.month || '').split('-')[1], 10);
-  // 이번 달 정기공격에 내가 투표했는지
+  // 이번 달 정기공격에 참석 확정(RSVP)했는지
   const nowYM = DATA.month;
-  let voted = false;
-  (DATA.raidMonths || []).forEach(function (g) {
-    if (g.month !== nowYM) return;
-    g.options.forEach(function (o) { if (o.voters.indexOf(me) > -1) voted = true; });
-  });
+  const going = !!(DATA.rsvp && DATA.rsvp[nowYM] && DATA.rsvp[nowYM][me] === 'yes');
   el.innerHTML =
     '<div class="my-title">🙋 ' + esc(me) + ' 님의 ' + mm + '월</div>' +
     '<div class="my-badges">' +
       '<span class="badge ' + (certed ? 'on' : '') + '">' + (certed ? '✅' : '⬜') + ' 사진 인증</span>' +
-      '<span class="badge ' + (voted ? 'on' : '') + '">' + (voted ? '✅' : '⬜') + ' 정기공격 투표</span>' +
+      '<span class="badge ' + (going ? 'on' : '') + '">' + (going ? '✅' : '⬜') + ' 참석 확정(RSVP)</span>' +
     '</div>' +
     (!certed && ME.certNudge ? '<div class="my-hint">완료된 모임에 참여하셨네요 — 벽화 인증 잊지 마세요! 📸</div>' :
      !certed ? '<div class="my-hint">이번 달 벽화 인증을 아직 안 했어요 📸</div>' : '');
@@ -826,45 +813,22 @@ function renderHome() {
   const box = document.getElementById('homeCards');
   box.innerHTML = '';
 
-  // 정기공격: 월별 요약
+  // 정기공격: 월별 고정 일정 (더 이상 투표하지 않음 — 관리자가 지정)
   const raidCard = document.createElement('div');
-  const months = DATA.raidMonths || [];
-  let raidStatus;
-  if (!months.length) {
-    raidCard.className = 'home-card';
-    raidStatus = '등록된 일정 없음';
-  } else {
-    const confirmedMonths = months.filter(function(g) { return g.confirmed; });
-    const openMonths = months.filter(function(g) { return !g.confirmed; });
-    raidCard.className = openMonths.length ? 'home-card' : 'home-card fixed';
-    const parts = [];
-    months.forEach(function(g) {
-      const mm = parseInt((g.month || '').split('-')[1], 10);
-      if (g.confirmed) {
-        parts.push('📌 ' + mm + '월: <b>' + esc(g.confirmed.date) + '</b>' +
-          (g.confirmed.loc ? ' @' + esc(g.confirmed.loc) : ''));
-      } else if (g.closed) {
-        parts.push('⛔ ' + mm + '월: 투표 마감 (확정 대기)');
-      } else {
-        let top = null;
-        g.options.forEach(function(r) { if (!top || r.voters.length > top.voters.length) top = r; });
-        parts.push('🗳️ ' + mm + '월: 투표 중' +
-          (g.deadline ? ' (~' + g.deadline + ')' : '') +
-          (top && top.voters.length ? '<br>&nbsp;&nbsp;&nbsp;1위 ' + esc(top.date) + ' ' + top.voters.length + '명' : ''));
-      }
-    });
-    raidStatus = parts.join('<br>');
-  }
+  const months = DATA.raidSchedule || [];
+  raidCard.className = 'home-card fixed';
   raidCard.innerHTML = '<div class="hc-title">⚔️ 정기공격</div>' +
-    '<div class="hc-status">' + raidStatus + '</div>';
-  raidCard.onclick = function() { goVote('raid'); };
-  // 확정된 달마다 캘린더 버튼
-  months.filter(function(g){return g.confirmed;}).forEach(function(g) {
+    '<div class="hc-status">' + (months.length ? months.map(function(g) {
+      const mm = parseInt((g.month || '').split('-')[1], 10);
+      return '📌 ' + mm + '월: <b>' + esc(g.date) + '</b>' + (g.loc ? ' @' + esc(g.loc) : '');
+    }).join('<br>') : '등록된 일정 없음') + '</div>';
+  raidCard.onclick = function() { setTab('schedule'); };
+  months.forEach(function(g) {
     const mm = parseInt((g.month || '').split('-')[1], 10);
     const cb = document.createElement('button');
     cb.className = 'mini-btn';
     cb.textContent = '📅 ' + mm + '월 캘린더';
-    cb.onclick = function(e) { e.stopPropagation(); addToCalendar(g.confirmed); };
+    cb.onclick = function(e) { e.stopPropagation(); addToCalendar(g); };
     raidCard.appendChild(cb);
   });
   box.appendChild(raidCard);
@@ -877,7 +841,7 @@ function renderHome() {
     '<div class="hc-status">' +
     (flashes.length ? '⚡ 열린 번개 ' + flashes.length + '개' : '열린 번개 없음 — 직접 열어보자') +
     '</div>';
-  disCard.onclick = function() { goVote('disaster'); };
+  disCard.onclick = function() { setTab('schedule'); };
   box.appendChild(disCard);
 
   const done = DATA.members.filter(function(m) { return DATA.certified[m]; }).length;
@@ -886,26 +850,21 @@ function renderHome() {
     '🖼️ ' + mm + '월 벽화 인증: <b>' + done + '</b> / ' + DATA.members.length + '명';
 }
 
-/* ---------- 투표 ---------- */
-function setCategory(c) {
-  category = c;
-  document.getElementById('segRaid').classList.toggle('on', c === 'raid');
-  document.getElementById('segDisaster').classList.toggle('on', c === 'disaster');
-  renderVotes();
-}
-
+/* ---------- 일정 (정기공격 · 정기 오픈 세션 · 자연재해를 한 화면에) ---------- */
 function renderVotes() {
-  const list = document.getElementById('voteList');
-  document.getElementById('deadlineLine').textContent = '';
-  list.innerHTML = '';
   renderCalendar();
-  if (category === 'raid') renderRaid(list);
-  else renderDisaster(list);
+  const raidList = document.getElementById('raidSection');
+  raidList.innerHTML = '';
+  renderRaid(raidList);
+  renderOpenSessions(document.getElementById('openSessionSection'));
+  const disList = document.getElementById('disasterSection');
+  disList.innerHTML = '';
+  renderDisaster(disList);
 }
 
-/* ---------- 투표 달력 (#6) ----------
- * 선택 월(없으면 이번 달)의 일정을 한눈에. 정기공격 후보=점, 확정=꽉찬 원, 번개=주황 테두리.
- * 날짜 탭 → 아래 목록에서 해당 항목으로 스크롤.
+/* ---------- 일정 달력 (#6) ----------
+ * 선택 월(없으면 이번 달)의 정기공격 고정일정(꽉찬 원)·번개(주황 테두리)·정기 오픈 세션(요일마다 초록 점)을 한 캘린더에서 확인.
+ * 날짜 탭 → 아래 해당 섹션으로 스크롤. 아무 일정도 없는 날을 탭하면 그 날짜로 번개 열기를 제안.
  */
 function renderCalendar() {
   const el = document.getElementById('voteCalendar');
@@ -915,20 +874,18 @@ function renderCalendar() {
   const y = +ym.slice(0, 4), mo = +ym.slice(5, 7);
 
   // 날짜별 마킹 수집
-  const marks = {}; // iso → {raid, confirmed, flash, top}
+  const marks = {}; // iso → {confirmed, flash, open}
   function mark(iso, key) { if (!iso) return; (marks[iso] = marks[iso] || {})[key] = true; }
-  (DATA.raidMonths || []).forEach(function (g) {
-    if (g.month !== ym) return;
-    g.options.forEach(function (o) { if (o.dateInfo) mark(o.dateInfo.iso, 'raid'); });
-    if (g.confirmed) {
-      const ci = g.options.find(function (x) { return x.date === g.confirmed.date; });
-      if (ci && ci.dateInfo) mark(ci.dateInfo.iso, 'confirmed');
-    }
+  (DATA.raidSchedule || []).forEach(function (g) {
+    if (g.month !== ym || !g.dateInfo) return;
+    mark(g.dateInfo.iso, 'confirmed');
   });
   (DATA.disaster || []).forEach(function (r) { if (r.dateInfo && r.dateInfo.ym === ym) mark(r.dateInfo.iso, 'flash'); });
 
   const first = new Date(y, mo - 1, 1).getDay();
   const days = new Date(y, mo, 0).getDate();
+  const openWeekdays = {};
+  (DATA.openSessions || []).forEach(function (s) { openWeekdays[s.weekday] = true; });
   const todayIso = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
   const wd = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -937,32 +894,39 @@ function renderCalendar() {
   for (let i = 0; i < first; i++) html += '<div></div>';
   for (let d = 1; d <= days; d++) {
     const iso = ym + '-' + pad2(d);
+    const weekday = new Date(y, mo - 1, d).getDay();
+    if (openWeekdays[weekday]) mark(iso, 'open');
     const m = marks[iso] || {};
     const cls = ['cal-day'];
     if (m.confirmed) cls.push('confirmed');
-    else if (m.raid) cls.push('raid');
     if (m.flash) cls.push('flash');
     if (iso === todayIso) cls.push('today');
-    const dot = (m.raid || m.confirmed || m.flash) ? '<span class="cal-dot"></span>' : '';
-    html += '<div class="' + cls.join(' ') + '" data-iso="' + iso + '">' + d + dot + '</div>';
+    const dots = ['confirmed', 'open', 'flash'].filter(function (k) { return m[k]; })
+      .map(function (k) { return '<i class="cal-dot ' + k + '"></i>'; }).join('');
+    html += '<div class="' + cls.join(' ') + '" data-iso="' + iso + '">' + d +
+      (dots ? '<span class="cal-dots">' + dots + '</span>' : '') + '</div>';
   }
   html += '</div>';
   el.innerHTML = html;
 
-  // 날짜 탭 → 해당 항목으로 스크롤 (표시된 카드 중 날짜 일치)
-  el.querySelectorAll('.cal-day').forEach(function (c) {
-    if (!c.querySelector('.cal-dot')) return;
+  // 날짜 탭 → 해당 섹션/카드로 스크롤. 아무 일정도 없으면 그 날짜로 번개 열기 제안.
+  el.querySelectorAll('.cal-day[data-iso]').forEach(function (c) {
     c.onclick = function () {
       const iso = c.dataset.iso;
-      // 번개 표시면 disaster 탭으로, 아니면 raid 유지
       const m = marks[iso] || {};
-      if (m.flash && !m.raid && !m.confirmed && category !== 'disaster') { setCategory('disaster'); }
-      else if ((m.raid || m.confirmed) && category !== 'raid') { setCategory('raid'); }
-      setTimeout(function () {
-        const card = Array.prototype.find.call(document.querySelectorAll('#voteList .vote-card .date'),
-          function (e) { return e.textContent.indexOf(iso) > -1 || (e.textContent.match(/\d{4}-\d{2}-\d{2}/) || [''])[0] === iso; });
-        if (card) card.closest('.vote-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 30);
+      if (m.flash) {
+        setTimeout(function () {
+          const card = Array.prototype.find.call(document.querySelectorAll('#disasterSection .vote-card .date'),
+            function (e) { return (e.textContent.match(/\d{4}-\d{2}-\d{2}/) || [''])[0] === iso; });
+          if (card) card.closest('.vote-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 30);
+      } else if (m.confirmed) {
+        document.getElementById('raidSection').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (m.open) {
+        document.getElementById('openSessionSection').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        openFlashPrompt(iso);
+      }
     };
   });
 }
@@ -1004,17 +968,19 @@ async function doRsvp(month, status) {
 }
 
 /* ---------- 정기공격 (월별) ---------- */
+// 정기공격은 더 이상 투표하지 않는다 — 월마다 고정 일정(기본값: 둘째 주 금요일 + 위치 로테이션) 하나만 존재.
+// 관리자만 날짜/장소를 수정(setRaidDate)할 수 있고, 참석확정(RSVP)·완료처리는 그대로 유지된다.
 function renderRaid(list) {
   const me = getMe();
   const isAdmin = ME.isAdmin;
   const sel = voteMonthValue();
-  const all = (DATA.raidMonths || []).filter(function (g) { return !sel || g.month === sel; });
+  const all = (DATA.raidSchedule || []).filter(function (g) { return !sel || g.month === sel; });
   if (!all.length) {
     list.insertAdjacentHTML('beforeend', '<div class="loading">' +
       (sel ? sel + ' 정기공격 일정이 없어요' : '등록된 정기공격 일정이 없어요') + '</div>');
     return;
   }
-  // 마감 자동 정리(#3): 특정 월 선택 시 전부 표시, '전체'면 지난 달은 접기
+  // 지난 달은 접기(#3): 특정 월 선택 시 전부 표시, '전체'면 지난 달은 접기
   const past = sel ? [] : all.filter(function (g) { return isPastMonth_(g.month); });
   const active = sel ? all : all.filter(function (g) { return !isPastMonth_(g.month); });
   const months = showPastVotes ? active.concat(past) : active;
@@ -1028,133 +994,78 @@ function renderRaid(list) {
     head.textContent = '📆 ' + mm + '월 정기공격';
     list.appendChild(head);
 
-    // 마감 안내
-    if (!g.confirmed) {
-      const dl = document.createElement('div');
-      if (g.closed) {
-        dl.className = 'deadline-line over';
-        dl.textContent = '⛔ 투표 마감됨' + (g.deadline ? ' (' + g.deadline + ')' : '');
-      } else if (g.deadline) {
-        dl.className = 'deadline-line';
-        const dd = ddayText(parseDateClient(g.deadline, g.month)); // 마감 D-day (#19)
-        dl.textContent = '⏳ 투표 마감: ' + g.deadline + ' 까지' + (dd ? ' · ' + dd : '');
-      }
-      if (dl.textContent) list.appendChild(dl);
-      // 확정 없이 마감된 채 방치된 달 정리 (#완료처리): 관리자만
-      if (g.closed && isAdmin) {
-        const voidBtn = document.createElement('button');
-        voidBtn.className = 'btn2';
-        voidBtn.style.marginBottom = '10px';
-        voidBtn.textContent = '🚫 이번 달 종료 (모임 없음)';
-        voidBtn.onclick = function () { doCompleteRaid(g.month); };
-        list.appendChild(voidBtn);
-      }
+    const b = document.createElement('div');
+    b.className = 'confirm-banner';
+    const cdisp = g.dateInfo ? g.dateInfo.display : g.date;
+    const expired = !!(g.dateInfo && isPastIso_(g.dateInfo.iso)); // 완료 처리 (#완료처리)
+    b.innerHTML = '📌 ' + mm + '월 일정<div class="cdate">' + esc(cdisp) + '</div>' +
+      (g.loc ? locHtml(g.loc) + '<br>' : '') +
+      (g.note ? '<div class="cnote">📝 ' + esc(g.note).replace(/\n/g, '<br>') + '</div>' : '') +
+      (expired ? '<div class="warn">⏰ 모임 날짜가 지났어요 — 완료 처리해 주세요</div>' : '') +
+      (g.isOverride ? '' : '<div class="dim" style="font-size:11.5px">기본 일정(둘째 주 금요일 로테이션) — 관리자가 아직 따로 지정하지 않았어요</div>');
+    appendRsvp_(b, g.month, me); // 참석 확정 (#3)
+    const cal = document.createElement('button');
+    cal.className = 'mini-btn';
+    cal.textContent = '📅 캘린더 추가';
+    cal.onclick = function() { addToCalendar(g); };
+    b.appendChild(document.createElement('br'));
+    b.appendChild(cal);
+    const sbtn = document.createElement('button');
+    sbtn.className = 'mini-btn';
+    sbtn.textContent = '💬 카톡 공유';
+    sbtn.onclick = function() {
+      const rsvpMap = (DATA.rsvp && DATA.rsvp[g.month]) || {};
+      const going = Object.keys(rsvpMap).filter(function (n) { return rsvpMap[n] === 'yes'; });
+      shareText('⚔️ ' + mm + '월 정기공격!\n📅 ' + cdisp +
+        (g.loc ? '\n📍 ' + g.loc : '') +
+        (g.note ? '\n📝 ' + g.note : '') +
+        (going.length ? '\n🙋 참석(' + going.length + '): ' + koSort(going).join(', ') : '') +
+        '\n\n👉 ' + location.origin,
+        '일정 소식 복사 완료!');
+    };
+    b.appendChild(sbtn);
+    if (isAdmin) {
+      const ed = document.createElement('button');
+      ed.className = 'mini-btn';
+      ed.textContent = '📝 날짜·장소 수정';
+      ed.onclick = function() { editRaidDatePrompt(g); };
+      b.appendChild(ed);
+      const done = document.createElement('button');
+      done.className = 'mini-btn';
+      done.textContent = '✅ 완료 처리';
+      done.onclick = function() { doCompleteRaid(g.month, false); };
+      b.appendChild(done);
+      const voidBtn = document.createElement('button');
+      voidBtn.className = 'mini-btn';
+      voidBtn.textContent = '🚫 모임 없음으로 종료';
+      voidBtn.onclick = function() { doCompleteRaid(g.month, true); };
+      b.appendChild(voidBtn);
     }
-
-    if (g.confirmed) {
-      const b = document.createElement('div');
-      b.className = 'confirm-banner';
-      const cinfo = g.options.find(function (x) { return x.date === g.confirmed.date; });
-      const cdisp = cinfo ? fmtVoteDate(cinfo) : g.confirmed.date;
-      const expired = !!(cinfo && cinfo.dateInfo && isPastIso_(cinfo.dateInfo.iso)); // 완료 처리 (#완료처리)
-      b.innerHTML = '📌 ' + mm + '월 확정<div class="cdate">' + esc(cdisp) + '</div>' +
-        (g.confirmed.loc ? locHtml(g.confirmed.loc) + '<br>' : '') +
-        (g.confirmed.note ? '<div class="cnote">📝 ' + esc(g.confirmed.note).replace(/\n/g, '<br>') + '</div>' : '') +
-        (expired ? '<div class="warn">⏰ 모임 날짜가 지났어요 — 완료 처리해 주세요</div>' : '') +
-        '투표 마감';
-      appendRsvp_(b, g.month, me); // 참석 확정 (#3)
-      const cal = document.createElement('button');
-      cal.className = 'mini-btn';
-      cal.textContent = '📅 캘린더 추가';
-      cal.onclick = function() { addToCalendar(g.confirmed); };
-      b.appendChild(document.createElement('br'));
-      b.appendChild(cal);
-      const sbtn = document.createElement('button');
-      sbtn.className = 'mini-btn';
-      sbtn.textContent = '💬 카톡 공유';
-      sbtn.onclick = function() {
-        const opt = g.options.find(function(x){return x.date===g.confirmed.date;}) || {voters:[]};
-        shareText('⚔️ ' + mm + '월 정기공격 확정!\n📅 ' + (opt.dateInfo ? opt.dateInfo.display : g.confirmed.date) +
-          (g.confirmed.loc ? '\n📍 ' + g.confirmed.loc : '') +
-          (g.confirmed.note ? '\n📝 ' + g.confirmed.note : '') +
-          (opt.voters.length ? '\n🧗 참여(' + opt.voters.length + '): ' + koSort(opt.voters).join(', ') : '') +
-          '\n\n👉 ' + location.origin,
-          '확정 소식 복사 완료!');
-      };
-      b.appendChild(sbtn);
-      if (isAdmin) {
-        // 확정 상태에서도 위치·설명 수정 (#2): 같은 날짜로 다시 확정
-        const ed = document.createElement('button');
-        ed.className = 'mini-btn';
-        ed.textContent = '📝 위치·설명 수정';
-        ed.onclick = function() { doConfirm(g.month, g.confirmed.date); };
-        b.appendChild(ed);
-        const u = document.createElement('button');
-        u.className = 'mini-btn';
-        u.textContent = '확정 취소';
-        u.onclick = function() { doConfirm(g.month, ''); };
-        b.appendChild(u);
-        const done = document.createElement('button');
-        done.className = 'mini-btn';
-        done.textContent = '✅ 완료 처리';
-        done.onclick = function() { doCompleteRaid(g.month); };
-        b.appendChild(done);
-      }
-      list.appendChild(b);
-    }
-
-    const opts = g.options.slice().sort(function (a, b) { // 날짜 오름차순 (#날짜별)
-      const ka = dateKey_(a), kb = dateKey_(b); return ka < kb ? -1 : ka > kb ? 1 : 0;
-    });
-    opts.forEach(function(r) {
-      const mine = me && r.voters.indexOf(me) > -1;
-      const isC = g.confirmed && r.date === g.confirmed.date;
-      const blocked = !!g.confirmed || g.closed;
-      const card = document.createElement('div');
-      card.className = 'vote-card' + (mine ? ' mine' : '') +
-        (isC ? ' confirmed' : '') + (blocked && !isC ? ' closed' : '');
-      // 날짜는 윗줄, 위치(후보별)는 아랫줄 — 번개 카드와 동일한 리듬
-      const dateTxt = r.dateInfo ? r.dateInfo.display : r.date;
-      card.innerHTML =
-        '<div class="top"><span class="date">' + esc(dateTxt) + (isC ? ' ✅' : '') + '</span>' +
-        '<span class="count">' + r.voters.length + '명</span></div>' +
-        (r.loc ? '<div class="vloc">' + locHtml(r.loc) + '</div>' : '') +
-        (r.voters.length ? '<div class="voters">' + koSort(r.voters).map(esc).join(' · ') + '</div>' : '') +
-        (!blocked && mine ? '<div class="hint">✓ 참여 중 — 탭하면 취소</div>' : '');
-      if (!blocked) {
-        card.onclick = function() { voteRaid(g.month, r.date); };
-      }
-      // 관리자: 확정 전이면 확정/수정/삭제 노출 (확정되면 월 잠금 → 숨김)
-      if (!g.confirmed && isAdmin) {
-        const cb = document.createElement('button');
-        cb.className = 'mini-btn';
-        cb.textContent = '📌 이 날짜로 확정';
-        cb.onclick = function(e) { e.stopPropagation(); doConfirm(g.month, r.date); };
-        card.appendChild(cb);
-        const ed = document.createElement('button');
-        ed.className = 'mini-btn';
-        ed.textContent = '✏️ 수정';
-        ed.onclick = function(e) { e.stopPropagation(); editRaidOptionPrompt(g.month, r); };
-        card.appendChild(ed);
-        const del = document.createElement('button');
-        del.className = 'mini-btn';
-        del.textContent = '🗑️ 삭제';
-        del.onclick = function(e) { e.stopPropagation(); deleteRaidOptionClick(g.month, r.date); };
-        card.appendChild(del);
-      }
-      list.appendChild(card);
-    });
-    // 후보 날짜 추가 (관리자, 확정 전) — #후보추가
-    if (isAdmin && !g.confirmed) {
-      const addb = document.createElement('button');
-      addb.className = 'btn2';
-      addb.style.marginBottom = '12px';
-      addb.textContent = '➕ 후보 날짜 추가';
-      addb.onclick = function () { addRaidOptionPrompt(g.month); };
-      list.appendChild(addb);
-    }
+    list.appendChild(b);
   });
   if (past.length && !sel) appendPastToggle_(list, past.length);
+}
+
+// 관리자: 그 달 정기공격 날짜/장소/설명을 직접 지정 (또는 비워서 기본값으로 복귀)
+function editRaidDatePrompt(g) {
+  modal({
+    title: '📝 ' + parseInt((g.month || '').split('-')[1], 10) + '월 정기공격 지정',
+    message: g.isOverride ? '' : '아직 관리자가 지정하지 않아 기본값(둘째 주 금요일 + 로테이션)이 보이고 있어요.',
+    fields: [
+      { key: 'date', label: '날짜', type: 'text', value: g.date, placeholder: '예: 7/10 20:00' },
+      { key: 'loc', label: '위치', type: 'text', value: g.loc || '', placeholder: '예: 신림' },
+      { key: 'note', label: '설명 (선택)', type: 'text', value: g.note || '', placeholder: '예: 20시 정각 로비 집합' }
+    ],
+    confirmText: '저장',
+    busyText: '저장 중…',
+    validate: function (v) { if (!v.date.trim()) return '날짜를 입력하세요.'; return null; },
+    onConfirm: async function (v) {
+      DATA.raidSchedule = await run('setRaidDate', g.month, v.date.trim(), v.loc.trim(), v.note.trim(), getMe(), ME.token);
+      renderVotes();
+      renderHome();
+      toast('📝 일정을 저장했어요.', true);
+    }
+  });
 }
 
 /* ---------- 자연재해 (번개) ---------- */
@@ -1235,6 +1146,116 @@ function renderDisaster(list) {
   if (past.length && !sel) appendPastToggle_(list, past.length);
 }
 
+/* ---------- 정기 오픈 세션 (요일+장소 매주 반복, 투표/참석확정 없음) ----------
+ * 개설: 관리자 또는 DATA.openSessionRoles(기본 팀장)에 포함된 직책. 수정/삭제: 개설자 또는 관리자.
+ */
+const WEEKDAY_FULL_ = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+
+function canOpenSession_() {
+  if (ME.isAdmin) return true;
+  const roles = DATA.openSessionRoles || ['팀장'];
+  return roles.indexOf(roleOf_(getMe())) > -1;
+}
+
+function renderOpenSessions(box) {
+  box.innerHTML = '';
+  const head = document.createElement('div');
+  head.className = 'month-head';
+  head.textContent = '🧭 정기 오픈 세션';
+  box.appendChild(head);
+
+  const items = (DATA.openSessions || []).slice().sort(function (a, b) { return a.weekday - b.weekday; });
+  if (!items.length) {
+    box.insertAdjacentHTML('beforeend', '<div class="loading">아직 열린 정기 오픈 세션이 없어요</div>');
+  }
+  items.forEach(function (s) {
+    const card = document.createElement('div');
+    card.className = 'vote-card';
+    card.innerHTML =
+      '<div class="top"><span class="date">🗓️ 매주 ' + WEEKDAY_FULL_[s.weekday] + '</span></div>' +
+      '<div class="vloc">' + locHtml(s.loc) + '</div>' +
+      (s.note ? '<div class="voters">' + esc(s.note) + '</div>' : '') +
+      '<div class="hint">개설: ' + esc(s.createdBy) + '</div>';
+    if (s.createdBy === getMe() || ME.isAdmin) {
+      const ed = document.createElement('button');
+      ed.className = 'mini-btn';
+      ed.textContent = '✏️ 수정';
+      ed.onclick = function (e) { e.stopPropagation(); editOpenSessionPrompt(s); };
+      card.appendChild(ed);
+      const del = document.createElement('button');
+      del.className = 'mini-btn';
+      del.textContent = '🗑️ 삭제';
+      del.onclick = function (e) { e.stopPropagation(); deleteOpenSessionClick(s.id); };
+      card.appendChild(del);
+    }
+    box.appendChild(card);
+  });
+
+  if (canOpenSession_()) {
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn2';
+    addBtn.style.marginTop = '10px';
+    addBtn.textContent = '🧭 오픈 세션 열기';
+    addBtn.onclick = addOpenSessionPrompt;
+    box.appendChild(addBtn);
+  }
+}
+
+function weekdaySelectOptions_() {
+  return WEEKDAY_FULL_.map(function (w, i) { return { value: String(i), label: w }; });
+}
+
+function addOpenSessionPrompt() {
+  modal({
+    title: '🧭 오픈 세션 열기',
+    fields: [
+      { key: 'weekday', label: '요일', type: 'select', value: '5', options: weekdaySelectOptions_() },
+      { key: 'loc', label: '장소', type: 'text', placeholder: '예: 더클라임 강남' },
+      { key: 'note', label: '설명 (선택)', type: 'text', placeholder: '예: 초보 환영' }
+    ],
+    confirmText: '열기',
+    busyText: '여는 중…',
+    validate: function (v) { return v.loc.trim() ? null : '장소를 입력하세요.'; },
+    onConfirm: async function (v) {
+      const res = await run('addOpenSession', Number(v.weekday), v.loc.trim(), v.note.trim(), getMe(), ME.token);
+      DATA.openSessions = res.items;
+      renderVotes();
+      toast('🧭 정기 오픈 세션을 열었어요.', true);
+    }
+  });
+}
+
+function editOpenSessionPrompt(s) {
+  modal({
+    title: '✏️ 오픈 세션 수정',
+    fields: [
+      { key: 'weekday', label: '요일', type: 'select', value: String(s.weekday), options: weekdaySelectOptions_() },
+      { key: 'loc', label: '장소', type: 'text', value: s.loc },
+      { key: 'note', label: '설명 (선택)', type: 'text', value: s.note || '' }
+    ],
+    confirmText: '수정 완료',
+    busyText: '수정하는 중…',
+    validate: function (v) { return v.loc.trim() ? null : '장소를 입력하세요.'; },
+    onConfirm: async function (v) {
+      const res = await run('editOpenSession', s.id, Number(v.weekday), v.loc.trim(), v.note.trim(), getMe(), ME.token);
+      DATA.openSessions = res.items;
+      renderVotes();
+      toast('✏️ 오픈 세션을 수정했어요.', true);
+    }
+  });
+}
+
+async function deleteOpenSessionClick(id) {
+  if (!(await modalConfirm('이 정기 오픈 세션을 삭제할까요?'))) return;
+  try {
+    const res = await run('deleteOpenSession', id, getMe(), ME.token);
+    DATA.openSessions = res.items;
+    renderVotes();
+  } catch (e) {
+    toast(e.message || e);
+  }
+}
+
 /* ---------- 마감 자동 정리 헬퍼 (#3) ---------- */
 let showPastVotes = false;
 
@@ -1260,13 +1281,14 @@ function appendPastToggle_(list, n) {
 }
 
 /* ---------- 번개(자연재해) 등록/수정/완료/삭제 ---------- */
-function openFlashPrompt() {
+// prefIso('yyyy-MM-dd', 선택): 캘린더에서 빈 날짜를 탭했을 때 그 날짜로 미리 채운다.
+function openFlashPrompt(prefIso) {
   const today = new Date();
   modal({
     title: '⚡ 번개 열기',
     fields: [
       { key: 'date', label: '날짜', type: 'date',
-        value: today.getFullYear() + '-' + pad2(today.getMonth() + 1) + '-' + pad2(today.getDate()) },
+        value: prefIso || (today.getFullYear() + '-' + pad2(today.getMonth() + 1) + '-' + pad2(today.getDate())) },
       { key: 'time', label: '시간 (선택)', type: 'time' },
       { key: 'loc', label: '위치', type: 'text', placeholder: '예: 더클라임 강남' }
     ],
@@ -1401,7 +1423,6 @@ function addToCalendar(conf) {
   window.open(url, '_blank');
 }
 
-let adminPin = '';
 let galleryLoaded = false;
 let hallLoaded = false;
 let HALL = null;
@@ -1616,7 +1637,9 @@ const GALLERY_PAGE = 12;
 
 function makeGalleryCard(it) {
   const cell = document.createElement('div');
-  cell.className = 'grid-cell';
+  // 업로더가 휴면 회원이면 인증 내역에서 투명도를 낮춰 시각적으로 구분
+  const dormant = !!(DATA.dormant && DATA.dormant[it.by]);
+  cell.className = 'grid-cell' + (dormant ? ' dormant-entry' : '');
   const img = document.createElement('img');
   img.loading = 'lazy';
   img.src = 'https://drive.google.com/thumbnail?id=' + it.fileId + '&sz=w400';
@@ -1688,122 +1711,19 @@ async function loadGallery(more) {
   }
 }
 
-function doConfirm(month, dateText) {
-  const me = getMe();
-  const isCancel = !dateText;
-  const g = (DATA.raidMonths || []).find(function (x) { return x.month === month; });
-  const prev = g && g.confirmed;
-  // 위치 기본값: 이전 확정 위치 > 이 후보에 지정된 위치 순
-  const cand = g && (g.options || []).find(function (o) { return o.date === dateText; });
-  const defaultLoc = (prev && prev.loc) || (cand && cand.loc) || '';
-  const fields = isCancel ? [] : [
-    { key: 'loc', label: '모임 위치', type: 'text', placeholder: '예: 더클라임 강남',
-      value: defaultLoc },
-    { key: 'note', label: '설명 (선택)', type: 'text', placeholder: '예: 20시 정각 로비 집합, 회비 1만원',
-      value: prev ? (prev.note || '') : '' }
-  ];
-  fields.push({ key: 'pin', label: '관리자 PIN', type: 'password', inputmode: 'numeric', value: adminPin });
-  modal({
-    title: isCancel ? '📌 확정 취소' : '📌 일정 확정',
-    message: isCancel
-      ? month + ' 확정을 취소하고 투표를 다시 엽니다.'
-      : month + ' 모임을 아래 일정으로 확정합니다.\n' + dateText,
-    fields: fields,
-    confirmText: isCancel ? '확정 취소' : '📌 확정',
-    busyText: '처리 중…',
-    validate: function (v) {
-      if (!isCancel && !v.loc.trim()) return '위치를 입력해야 확정할 수 있어요.';
-      if (!v.pin) return '관리자 PIN을 입력하세요.';
-      return null;
-    },
-    onConfirm: async function (v) {
-      try {
-        DATA.raidMonths = await run('confirmDate', month, dateText,
-          isCancel ? '' : v.loc.trim(), me, v.pin, isCancel ? '' : v.note.trim());
-      } catch (e) {
-        adminPin = ''; // 틀린 PIN 은 캐시하지 않음
-        throw e;       // 모달 안에 에러 표시
-      }
-      adminPin = v.pin; // 성공한 PIN 은 세션 동안 기억 (다음 확정 때 미리 채움)
-      renderVotes();
-      renderHome();
-      toast(isCancel ? '확정을 취소했어요. 투표가 다시 열렸습니다.' : '📌 확정 완료!', true);
-    }
-  });
-}
-
-// 정기공격 완료 처리: 관리자 전용. 확정된 월은 "완료", 확정 없이 마감된 월은 "모임 없음"으로 종료.
+// 정기공격 완료 처리: 관리자 전용. cancelled=true 면 "모임 없음"으로 종료.
 // 완료(종료) 후 목록에서 사라지고 '완료기록' 시트에 남는다.
-async function doCompleteRaid(month) {
-  const g = (DATA.raidMonths || []).find(function (x) { return x.month === month; });
-  const isVoid = !(g && g.confirmed);
-  const msg = isVoid
+async function doCompleteRaid(month, cancelled) {
+  const msg = cancelled
     ? month + ' 정기공격을 "모임 없음"으로 종료할까요?\n종료 후 목록에서 사라지고 시트에 기록돼요.'
-    : month + ' 정기공격을 완료 처리할까요?\n완료 후 목록에서 사라지고 시트에 기록돼요.';
+    : month + ' 정기공격을 완료 처리할까요?\n완료 후 목록에서 사라지고 시트에 기록돼요(참여자=참석 확정 명단).';
   if (!(await modalConfirm(msg,
-    { title: isVoid ? '🚫 이번 달 종료' : '✅ 완료 처리', confirmText: isVoid ? '종료' : '완료 처리' }))) return;
+    { title: cancelled ? '🚫 모임 없음으로 종료' : '✅ 완료 처리', confirmText: cancelled ? '종료' : '완료 처리' }))) return;
   try {
-    DATA.raidMonths = await run('completeRaid', month, getMe(), ME.token);
+    DATA.raidSchedule = await run('completeRaid', month, getMe(), ME.token, !!cancelled);
     renderVotes();
     renderHome();
-    toast(isVoid ? '🚫 이번 달을 종료했어요.' : '✅ 완료 처리했어요.', true);
-  } catch (e) {
-    toast(e.message || e);
-  }
-}
-
-// 정기공격 후보 수정 (관리자): 날짜/위치 변경 — 투표자는 유지
-function editRaidOptionPrompt(month, r) {
-  modal({
-    title: '✏️ 후보 수정',
-    fields: [
-      { key: 'date', label: '날짜', type: 'text', value: r.date, placeholder: '예: 7/20 월요일' },
-      { key: 'loc', label: '위치 (선택)', type: 'text', value: r.loc || '', placeholder: '예: 더클라임 강남' }
-    ],
-    confirmText: '수정 완료',
-    busyText: '수정하는 중…',
-    validate: function (v) { if (!v.date.trim()) return '날짜를 입력하세요.'; return null; },
-    onConfirm: async function (v) {
-      DATA.raidMonths = await run('editRaidOption', month, r.date, v.date.trim(), v.loc.trim(), getMe(), ME.token);
-      renderVotes();
-      renderHome();
-      toast('✏️ 후보를 수정했어요.', true);
-    }
-  });
-}
-
-// 정기공격 후보 추가 (관리자) — #후보추가. 날짜(+시간)로 후보 생성, 날짜의 월로 자동 분류
-function addRaidOptionPrompt(month) {
-  modal({
-    title: '➕ 후보 날짜 추가',
-    message: (month ? month + ' ' : '') + '정기공격 후보를 추가해요.',
-    fields: [
-      { key: 'date', label: '날짜', type: 'date' },
-      { key: 'time', label: '시간 (선택)', type: 'time' },
-      { key: 'loc', label: '위치 (선택)', type: 'text', placeholder: '예: 더클라임 강남' }
-    ],
-    confirmText: '추가',
-    busyText: '추가 중…',
-    validate: function (v) { return v.date ? null : '날짜를 선택하세요.'; },
-    onConfirm: async function (v) {
-      const dateText = v.date + (v.time ? ' ' + v.time : '');
-      const m = v.date.slice(0, 7);
-      DATA.raidMonths = await run('addRaidOption', m, dateText, String(v.loc || '').trim(), getMe(), ME.token);
-      buildMonthFilter(); buildDateSelect('photo'); renderVotes(); renderHome();
-      toast('✓ 후보를 추가했어요.', true);
-    }
-  });
-}
-
-// 정기공격 후보 삭제 (관리자): 해당 날짜 행 삭제 — 그 날짜의 투표도 함께 사라짐
-async function deleteRaidOptionClick(month, dateText) {
-  if (!(await modalConfirm('이 후보 날짜를 삭제할까요?\n삭제하면 이 날짜의 투표도 함께 사라져요.',
-    { title: '🗑️ 후보 삭제', confirmText: '삭제' }))) return;
-  try {
-    DATA.raidMonths = await run('deleteRaidOption', month, dateText, getMe(), ME.token);
-    renderVotes();
-    renderHome();
-    toast('🗑️ 후보를 삭제했어요.', true);
+    toast(cancelled ? '🚫 이번 달을 종료했어요.' : '✅ 완료 처리했어요.', true);
   } catch (e) {
     toast(e.message || e);
   }
@@ -1818,19 +1738,6 @@ function toggleVoterLocal_(row, me) {
   else row.voters.push(me);
 }
 
-function voteRaid(month, dateText) {
-  const me = getMe();
-  const g = (DATA.raidMonths || []).find(function (x) { return x.month === month; });
-  const row = g && g.options.find(function (x) { return x.date === dateText; });
-  if (!row) return;
-  const before = row.voters.slice();
-  toggleVoterLocal_(row, me);         // 즉시 반영
-  renderVotes(); renderHome();
-  run('toggleVote', 'raid', dateText, me, ME.token, month)
-    .then(function (r) { row.voters = r.voters; renderVotes(); renderHome(); }) // 서버 확정값으로 동기화
-    .catch(function (e) { row.voters = before; renderVotes(); renderHome(); toast(e.message || e); });
-}
-
 function voteFlash(dateText) {
   const me = getMe();
   const row = (DATA.disaster || []).find(function (x) { return x.date === dateText; });
@@ -1838,7 +1745,7 @@ function voteFlash(dateText) {
   const before = row.voters.slice();
   toggleVoterLocal_(row, me);
   renderVotes(); renderHome();
-  run('toggleVote', 'disaster', dateText, me, ME.token)
+  run('toggleVote', dateText, me, ME.token)
     .then(function (r) { row.voters = r.voters; renderVotes(); renderHome(); })
     .catch(function (e) { row.voters = before; renderVotes(); renderHome(); toast(e.message || e); });
 }
@@ -1848,9 +1755,7 @@ function buildDateSelect(kind) {
   const sel = document.getElementById(kind + 'Date');
   const custom = document.getElementById(kind + 'DateCustom');
   sel.innerHTML = '<option value="">날짜 선택</option>';
-  (DATA.raidMonths || []).forEach(function(g) {
-    g.options.forEach(function(r) { addOpt(sel, r.date, '⚔️ ' + fmtVoteDate(r)); }); // 값은 원본(투표 키), 표기만 표준화
-  });
+  (DATA.raidSchedule || []).forEach(function(g) { addOpt(sel, g.date, '⚔️ ' + fmtVoteDate(g)); }); // 표기는 표준화
   (DATA.disaster || []).forEach(function(r) { addOpt(sel, r.date, '🌋 ' + fmtVoteDate(r)); });
   addOpt(sel, '__custom', '📅 직접 선택');
   sel.onchange = function() { // onchange 속성 = 재호출(당겨 새로고침)해도 리스너 누적 없음
@@ -2211,7 +2116,7 @@ async function loadStats() {
       });
       html += '</tr>';
     });
-    html += '</tbody></table></div><div class="dim" style="font-size:11.5px;margin-top:6px">📸 사진 인증 · 🗳️ 투표 참여 (최근 6개월)</div>';
+    html += '</tbody></table></div><div class="dim" style="font-size:11.5px;margin-top:6px">📸 사진 인증 · 🗳️ 참석 확정(RSVP) (최근 6개월)</div>';
     box.innerHTML = html;
   } catch (e) {
     box.textContent = '불러오기 실패: ' + (e.message || e);
@@ -2372,7 +2277,6 @@ function applyMemberData(res) {
     buildSettlerChips();
     buildResetPinSelect();
     renderMemberAdmin();
-    if (LEVELBOARD) renderLevelMemberList(); // 명단 변경을 레벨 기록 목록에도 반영
   }
 }
 
@@ -2428,13 +2332,14 @@ function renderMemberAdmin() {
 }
 
 /* ---------- 직책 (관리자) ----------
- * 부족심사중 → 조약돌 → 간석기 → 고인돌 (낮은→높은). 부족원 시트 L열.
+ * 부족심사중 → 조약돌 → 간석기 → 고인돌 → 팀장 (낮은→높은). 부족원 시트 L열.
+ * 팀장은 기본적으로 정기 오픈 세션을 열 수 있는 직책(관리 탭에서 변경 가능).
  */
-const ROLE_ICON = { '부족심사중': '🌱', '조약돌': '🪨', '간석기': '🔨', '고인돌': '🗿' };
+const ROLE_ICON = { '부족심사중': '🌱', '조약돌': '🪨', '간석기': '🔨', '고인돌': '🗿', '팀장': '🧭' };
 
 function roleOf_(name) {
   const roles = DATA.roles || {};
-  const list = DATA.roleList || ['부족심사중', '조약돌', '간석기', '고인돌'];
+  const list = DATA.roleList || ['부족심사중', '조약돌', '간석기', '고인돌', '팀장'];
   const r = roles[name];
   return (list.indexOf(r) > -1) ? r : list[0];
 }
@@ -2445,7 +2350,7 @@ function roleBadge_(name) {
 }
 
 function rolePrompt(name) {
-  const list = DATA.roleList || ['부족심사중', '조약돌', '간석기', '고인돌'];
+  const list = DATA.roleList || ['부족심사중', '조약돌', '간석기', '고인돌', '팀장'];
   const cur = roleOf_(name);
   modal({
     title: '🏷️ 직책 변경 — ' + name,
@@ -2570,316 +2475,6 @@ async function deleteMemberClick(name) {
   }
 }
 
-/* ==================== 레벨 완등 순위/기록 (랭킹 탭) ====================
- * 순위: 최고 완등 레벨 우선(레벨 목록 순서 기준) → 동점은 그 레벨 완등 수 → 총 완등 → 이름.
- * 랭킹 탭에서 모두 열람. 완등 기록·레벨 설정 모두 각자(누구나) 가능.
- */
-let LEVELBOARD = null;  // { levels:[...], rows:[{name,counts,topLevel,topIdx,topCount,total,rank}] }
-let levelDraft = [];    // 관리자 레벨 편집용 작업 배열
-let rankLoaded = false; // 랭킹 탭 지연 로딩 플래그
-
-function levelRowMap_() {
-  const map = {};
-  if (LEVELBOARD && LEVELBOARD.rows) LEVELBOARD.rows.forEach(function (r) { map[r.name] = r; });
-  return map;
-}
-
-/* ---------- 순위 보기 (랭킹 탭, 모두) ---------- */
-async function loadLevelBoard() {
-  const box = document.getElementById('rankBox');
-  if (box) { box.className = 'loading'; box.textContent = '순위를 불러오는 중…'; }
-  try {
-    LEVELBOARD = await run('getLevelBoard'); // 항상 현재 시즌 (편집 기준)
-    rankLoaded = true;
-    renderLevelRanking(LEVELBOARD);
-  } catch (e) {
-    if (box) { box.className = 'status err'; box.textContent = '순위 로딩 실패: ' + (e.message || e); }
-  }
-}
-
-// 시즌 셀렉트 변경 (#시즌): 현재 시즌이면 LEVELBOARD, 지난 시즌이면 열람용으로만 로드(LEVELBOARD 유지)
-async function onSeasonChange(season) {
-  if (!season || (LEVELBOARD && season === LEVELBOARD.season)) { renderLevelRanking(LEVELBOARD); return; }
-  const box = document.getElementById('rankBox');
-  if (box) { box.className = 'loading'; box.textContent = '순위를 불러오는 중…'; }
-  try { renderLevelRanking(await run('getLevelBoard', season)); }
-  catch (e) { if (box) { box.className = 'status err'; box.textContent = e.message || e; } }
-}
-
-function seasonLabelKo_(s) {
-  return /^\d{4}-Q[1-4]$/.test(s) ? (s.slice(0, 4) + ' ' + s.slice(6) + '분기') : s;
-}
-
-function renderLevelRanking(board) {
-  board = board || LEVELBOARD;
-  const box = document.getElementById('rankBox');
-  if (!box || !board) return;
-  box.className = '';
-  const levels = board.levels || [];
-  // 시즌 셀렉트 (#시즌) — 지난 분기 열람
-  const sel = document.getElementById('levelSeasonSelect');
-  if (sel) {
-    const seasons = (board.seasons && board.seasons.length) ? board.seasons : [board.season];
-    sel.innerHTML = seasons.map(function (s) {
-      return '<option value="' + esc(s) + '"' + (s === board.season ? ' selected' : '') + '>' + esc(seasonLabelKo_(s)) + '</option>';
-    }).join('');
-    sel.onchange = function () { onSeasonChange(sel.value); };
-  }
-  // 내 완등 기록 버튼: 현재 시즌 볼 때 + 로그인 + 레벨 존재 (지난 시즌은 열람만)
-  const isCurrent = !LEVELBOARD || board.season === LEVELBOARD.season;
-  const myBtn = document.getElementById('myLevelBtn');
-  if (myBtn) myBtn.style.display = (getMe() && levels.length && isCurrent) ? '' : 'none';
-  // 레벨 설정 버튼: 누구나(로그인) 현재 시즌에서. 레벨 없으면 CTA로 강조
-  const setupBtn = document.getElementById('levelSetupBtn');
-  if (setupBtn) {
-    setupBtn.style.display = (getMe() && isCurrent) ? '' : 'none';
-    setupBtn.textContent = levels.length ? '⚙️ 레벨 설정' : '⚙️ 레벨 먼저 설정하기';
-  }
-  if (!levels.length) {
-    box.innerHTML = '<div class="dim" style="font-size:13px; padding:6px 2px">아직 레벨이 등록되지 않았어요.' +
-      (ME.isAdmin ? ' 관리 탭에서 레벨을 먼저 등록해 주세요.' : '') + '</div>';
-    return;
-  }
-  const ranked = board.rows.filter(function (r) { return r.rank != null; });
-  const none = board.rows.filter(function (r) { return r.rank == null; });
-  const badge = function (rank) { return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank + '위'; };
-
-  let html = '';
-  if (!ranked.length) {
-    html = '<div class="dim" style="font-size:13px; padding:6px 2px">아직 완등 기록이 없어요.</div>';
-  } else {
-    html = '<div class="lv-board">' + ranked.map(function (r) {
-      const brk = levels.filter(function (lv) { return r.counts[lv]; })
-        .map(function (lv) { return esc(lv) + '×' + r.counts[lv]; }).join(' · ');
-      return '<div class="lv-row' + (r.name === getMe() ? ' me' : '') + '">' +
-        '<span class="lv-rank">' + badge(r.rank) + '</span>' +
-        '<div class="lv-body">' +
-          '<div class="lv-head"><span class="lv-name">' + esc(r.name) + roleBadge_(r.name) + '</span>' +
-            '<span class="lv-top">최고 <b>' + esc(r.topLevel) + '</b></span></div>' +
-          '<div class="lv-sub"><span class="lv-brk">' + (brk || '-') + '</span>' +
-            '<span class="lv-total">총 ' + r.total + '</span></div>' +
-        '</div></div>';
-    }).join('') + '</div>';
-  }
-  if (none.length) {
-    html += '<div class="dim" style="font-size:12px; margin-top:8px">기록 없음: ' +
-      none.map(function (r) { return esc(r.name); }).join(', ') + '</div>';
-  }
-  box.innerHTML = html;
-}
-
-/* ---------- 레벨 설정 + 구성원별 기록 (관리 탭, 관리자) ---------- */
-async function loadLevelAdmin() {
-  if (!LEVELBOARD) {
-    try { LEVELBOARD = await run('getLevelBoard'); }
-    catch (e) { LEVELBOARD = { levels: [], rows: [] }; }
-  }
-  levelDraft = (LEVELBOARD.levels || []).slice();
-  renderLevelConfig();
-  renderLevelMemberList();
-}
-
-function renderLevelConfig() {
-  const box = document.getElementById('levelConfig');
-  if (!box) return;
-  box.innerHTML = '';
-  if (!levelDraft.length) {
-    box.innerHTML = '<div class="dim" style="font-size:12.5px">아직 레벨이 없어요. 아래에서 낮은 난이도부터 추가하세요.</div>';
-    return;
-  }
-  levelDraft.forEach(function (lv, i) {
-    const row = document.createElement('div');
-    row.className = 'lv-cfg-row';
-    const idx = document.createElement('span'); idx.className = 'lv-cfg-idx'; idx.textContent = (i + 1);
-    const nm = document.createElement('span'); nm.className = 'lv-cfg-name'; nm.textContent = lv;
-    row.appendChild(idx); row.appendChild(nm);
-    const up = document.createElement('button'); up.className = 'mini-btn'; up.textContent = '↑'; up.disabled = i === 0;
-    up.onclick = function () { moveLevelDraft(i, -1); };
-    const dn = document.createElement('button'); dn.className = 'mini-btn'; dn.textContent = '↓'; dn.disabled = i === levelDraft.length - 1;
-    dn.onclick = function () { moveLevelDraft(i, 1); };
-    const rm = document.createElement('button'); rm.className = 'mini-btn danger'; rm.textContent = '✕';
-    rm.onclick = function () { levelDraft.splice(i, 1); renderLevelConfig(); };
-    row.appendChild(up); row.appendChild(dn); row.appendChild(rm);
-    box.appendChild(row);
-  });
-}
-
-function moveLevelDraft(i, dir) {
-  const j = i + dir;
-  if (j < 0 || j >= levelDraft.length) return;
-  const t = levelDraft[i]; levelDraft[i] = levelDraft[j]; levelDraft[j] = t;
-  renderLevelConfig();
-}
-
-function addLevelDraft() {
-  const inp = document.getElementById('newLevelInput');
-  const v = String(inp.value || '').trim();
-  if (!v) return;
-  if (v.length > 12) return toast('레벨 이름은 12자 이내로.');
-  if (levelDraft.indexOf(v) > -1) return toast('이미 있는 레벨이에요.');
-  levelDraft.push(v);
-  inp.value = '';
-  renderLevelConfig();
-}
-
-async function saveLevels() {
-  const st = document.getElementById('levelCfgStatus');
-  busyShow('레벨 저장 중…');
-  try {
-    LEVELBOARD = await run('setLevels', levelDraft, getMe(), ME.token);
-    levelDraft = (LEVELBOARD.levels || []).slice();
-    busyHide();
-    st.className = 'status ok';
-    st.textContent = '✓ 레벨 ' + levelDraft.length + '단계 저장됨';
-    renderLevelConfig();
-    renderLevelMemberList();
-    renderLevelRanking();
-  } catch (e) {
-    busyHide(false);
-    st.className = 'status err';
-    st.textContent = e.message || e;
-  }
-}
-
-function renderLevelMemberList() {
-  const box = document.getElementById('levelMemberList');
-  if (!box) return;
-  box.innerHTML = '';
-  if (!LEVELBOARD || !(LEVELBOARD.levels || []).length) {
-    box.innerHTML = '<div class="dim" style="font-size:12.5px">레벨을 저장하면 구성원별 완등 입력이 열려요.</div>';
-    return;
-  }
-  const map = levelRowMap_();
-  DATA.members.forEach(function (m) {
-    const r = map[m] || { total: 0, topLevel: '' };
-    const row = document.createElement('div');
-    row.className = 'member-row';
-    const nm = document.createElement('span');
-    nm.className = 'member-name';
-    nm.innerHTML = esc(m) + ' <span class="dim" style="font-weight:400; font-size:12px">' +
-      (r.total ? '· 최고 ' + esc(r.topLevel) + ' · 총 ' + r.total : '· 기록 없음') + '</span>';
-    row.appendChild(nm);
-    const btn = document.createElement('button');
-    btn.className = 'mini-btn';
-    btn.textContent = '완등 입력';
-    btn.onclick = function () { editMemberLevelPrompt(m); };
-    row.appendChild(btn);
-    box.appendChild(row);
-  });
-}
-
-function editMemberLevelPrompt(name) {
-  const levels = (LEVELBOARD && LEVELBOARD.levels) || [];
-  if (!levels.length) return toast('먼저 레벨을 저장하세요.');
-  const cur = (levelRowMap_()[name] && levelRowMap_()[name].counts) || {};
-  modal({
-    title: '🧗 ' + name + ' 완등 기록',
-    message: '레벨별 완등 횟수를 입력하세요. (빈칸/0 = 없음)',
-    fields: levels.map(function (lv) {
-      return { key: lv, label: lv, type: 'number', inputmode: 'numeric',
-               value: cur[lv] != null ? String(cur[lv]) : '' };
-    }),
-    confirmText: '저장',
-    busyText: '저장 중…',
-    onConfirm: async function (v) {
-      const counts = {};
-      levels.forEach(function (lv) { const n = parseInt(v[lv], 10); if (!isNaN(n) && n > 0) counts[lv] = n; });
-      LEVELBOARD = await run('setLevelRecord', name, counts, getMe(), ME.token);
-      renderLevelMemberList();
-      renderLevelRanking();
-      toast('✓ ' + name + ' 완등 기록을 저장했어요.', true);
-    }
-  });
-}
-
-/* 레벨(난이도) 목록 설정 — 누구나(#2). 홈에서 열리는 오버레이. 저장 시 setLevels. */
-function openLevelSetup() {
-  const root = document.getElementById('modalRoot');
-  root.innerHTML = '';
-  let draft = ((LEVELBOARD && LEVELBOARD.levels) || []).slice();
-  const ov = document.createElement('div'); ov.className = 'modal-ov';
-  const card = document.createElement('div'); card.className = 'modal-card';
-  ov.appendChild(card); root.appendChild(ov);
-  ov.onclick = function (e) { if (e.target === ov) root.innerHTML = ''; };
-
-  function setStatus(msg, ok) { const s = card.querySelector('#lsStatus'); s.className = 'status ' + (ok ? 'ok' : 'err'); s.textContent = msg; }
-  async function save() {
-    const btn = card.querySelector('#lsSave'); btn.disabled = true; setStatus('저장 중…', true);
-    try {
-      LEVELBOARD = await run('setLevels', draft, getMe(), ME.token);
-      renderLevelRanking(LEVELBOARD);
-      if (adminLoaded && ME.isAdmin) { levelDraft = (LEVELBOARD.levels || []).slice(); renderLevelConfig(); renderLevelMemberList(); }
-      root.innerHTML = '';
-      toast('✓ 레벨 ' + (LEVELBOARD.levels || []).length + '단계 저장됨', true);
-    } catch (e) { btn.disabled = false; setStatus(e.message || e); }
-  }
-  function render() {
-    card.innerHTML = '<div class="modal-title">🧗 레벨 설정</div>' +
-      '<p class="modal-msg">우리 암장 레벨을 <b>낮은 것부터</b> 순서대로 넣어주세요. 누구나 설정할 수 있어요.</p>' +
-      '<div id="lsList"></div>' +
-      '<div class="field" style="display:flex; gap:8px; margin:6px 0 0">' +
-        '<input type="text" id="lsInput" placeholder="레벨 이름 (예: 흰 / V3)" maxlength="12" autocomplete="off" style="flex:1">' +
-        '<button class="btn2" id="lsAdd" style="width:auto; white-space:nowrap; margin:0">➕</button></div>' +
-      '<div class="status" id="lsStatus"></div>' +
-      '<div class="modal-btns"><button class="btn2" id="lsCancel">닫기</button>' +
-        '<button class="btn" id="lsSave">저장</button></div>';
-    const list = card.querySelector('#lsList');
-    if (!draft.length) list.innerHTML = '<div class="dim" style="font-size:12.5px">아직 레벨이 없어요. 아래에서 추가하세요.</div>';
-    draft.forEach(function (lv, i) {
-      const row = document.createElement('div'); row.className = 'lv-cfg-row';
-      const idx = document.createElement('span'); idx.className = 'lv-cfg-idx'; idx.textContent = i + 1;
-      const nm = document.createElement('span'); nm.className = 'lv-cfg-name'; nm.textContent = lv;
-      const up = document.createElement('button'); up.className = 'mini-btn'; up.textContent = '↑'; up.disabled = i === 0;
-      up.onclick = function () { const t = draft[i]; draft[i] = draft[i - 1]; draft[i - 1] = t; render(); };
-      const dn = document.createElement('button'); dn.className = 'mini-btn'; dn.textContent = '↓'; dn.disabled = i === draft.length - 1;
-      dn.onclick = function () { const t = draft[i]; draft[i] = draft[i + 1]; draft[i + 1] = t; render(); };
-      const rm = document.createElement('button'); rm.className = 'mini-btn danger'; rm.textContent = '✕';
-      rm.onclick = function () { draft.splice(i, 1); render(); };
-      row.appendChild(idx); row.appendChild(nm); row.appendChild(up); row.appendChild(dn); row.appendChild(rm);
-      list.appendChild(row);
-    });
-    const inp = card.querySelector('#lsInput');
-    card.querySelector('#lsAdd').onclick = function () {
-      const v = String(inp.value || '').trim();
-      if (!v) return;
-      if (v.length > 12) return setStatus('레벨 이름은 12자 이내로.');
-      if (draft.indexOf(v) > -1) return setStatus('이미 있는 레벨이에요.');
-      draft.push(v); render(); card.querySelector('#lsInput').focus();
-    };
-    inp.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); card.querySelector('#lsAdd').click(); } };
-    card.querySelector('#lsCancel').onclick = function () { root.innerHTML = ''; };
-    card.querySelector('#lsSave').onclick = save;
-  }
-  render();
-}
-
-// 본인 완등 기록 (홈 — 누구나 가능). 백엔드가 토큰으로 본인만 확인하므로 관리자 검증 없음.
-function editMyLevelPrompt() {
-  const me = getMe();
-  if (!me) return;
-  const levels = (LEVELBOARD && LEVELBOARD.levels) || [];
-  if (!levels.length) return toast('아직 레벨이 등록되지 않았어요.');
-  const cur = (levelRowMap_()[me] && levelRowMap_()[me].counts) || {};
-  modal({
-    title: '🧗 내 완등 기록',
-    message: '레벨별로 완등한 개수를 입력하세요. (빈칸/0 = 없음)',
-    fields: levels.map(function (lv) {
-      return { key: lv, label: lv, type: 'number', inputmode: 'numeric',
-               value: cur[lv] != null ? String(cur[lv]) : '' };
-    }),
-    confirmText: '저장',
-    busyText: '저장 중…',
-    onConfirm: async function (v) {
-      const counts = {};
-      levels.forEach(function (lv) { const n = parseInt(v[lv], 10); if (!isNaN(n) && n > 0) counts[lv] = n; });
-      LEVELBOARD = await run('setMyLevelRecord', counts, me, ME.token);
-      renderLevelRanking();
-      if (adminLoaded && ME.isAdmin) renderLevelMemberList(); // 관리 탭이 열려 있으면 목록도 동기화
-      toast('✓ 내 완등 기록을 저장했어요.', true);
-    }
-  });
-}
-
 /* ==================== 벽화 갤러리 필터 (#22) ==================== */
 function buildGalleryFilters() {
   const gm = document.getElementById('galleryMonth');
@@ -2911,9 +2506,9 @@ function loadAdmin() {
     buildSupportChips();
     buildSettlerChips();
     buildAdminChips();
+    buildOpenSessionRoleChips();
     buildResetPinSelect();
     renderMemberAdmin();
-    loadLevelAdmin();
   }
 }
 
@@ -3132,6 +2727,42 @@ async function saveAdmins() {
     busyHide();
     st.className = 'status ok';
     st.textContent = '✓ 저장됨: ' + res.admins.join(', ') + ' (반영은 각자 다음 로그인부터)';
+  } catch (e) {
+    busyHide(false);
+    st.className = 'status err';
+    st.textContent = e.message || e;
+  }
+}
+
+/* ---------- 정기 오픈 세션 개설 가능 직책 (관리자) ---------- */
+function buildOpenSessionRoleChips() {
+  const box = document.getElementById('openSessionRoleChips');
+  if (!box) return;
+  box.innerHTML = '';
+  const cur = DATA.openSessionRoles || ['팀장'];
+  const list = DATA.roleList || ['부족심사중', '조약돌', '간석기', '고인돌', '팀장'];
+  list.forEach(function (r) {
+    const c = document.createElement('span');
+    c.className = 'chip' + (cur.indexOf(r) > -1 ? ' on' : '');
+    c.dataset.role = r;
+    c.textContent = (ROLE_ICON[r] || '') + ' ' + r;
+    c.onclick = function () { c.classList.toggle('on'); };
+    box.appendChild(c);
+  });
+}
+
+async function saveOpenSessionRoles() {
+  const roles = Array.prototype.slice.call(document.querySelectorAll('#openSessionRoleChips .chip.on'))
+    .map(function (c) { return c.dataset.role; });
+  const st = document.getElementById('openSessionRoleStatus');
+  if (!roles.length) { st.className = 'status err'; st.textContent = '최소 1개 직책을 선택하세요.'; return; }
+  busyShow('저장 중…');
+  try {
+    const res = await run('setOpenSessionRoles', roles, getMe(), ME.token);
+    DATA.openSessionRoles = res.roles;
+    busyHide();
+    st.className = 'status ok';
+    st.textContent = '✓ 저장됨: ' + res.roles.join(', ');
   } catch (e) {
     busyHide(false);
     st.className = 'status err';

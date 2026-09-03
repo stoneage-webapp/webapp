@@ -91,14 +91,6 @@ function clearPinFail_(key) {
   CacheService.getScriptCache().remove('pinfail:' + key);
 }
 
-/* ---------- 관리자 확정 PIN ----------
- * 실제 값은 Script Properties의 'admin_pin'에 보관 (코드 하드코딩 대신).
- * 프로퍼티가 없으면 CONFIG.ADMIN_PIN 폴백 — 배포 시 반드시 프로퍼티 설정 권장.
- */
-function getAdminPin_() {
-  return PropertiesService.getScriptProperties().getProperty('admin_pin') || CONFIG.ADMIN_PIN;
-}
-
 // 이름 기반 서명 토큰 (스크립트 비밀키 + 이름 해시). PIN이 바뀌면 기존 토큰 자동 무효.
 function makeToken_(name) {
   const secret = getSecret_();
