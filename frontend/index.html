@@ -285,6 +285,14 @@
       <button class="btn2" onclick="saveOpenSessionRoles()">개설 가능 직책 저장</button>
       <div class="status" id="openSessionRoleStatus"></div>
 
+      <div class="month-head" style="margin-top:22px">⚡ 번개를 열 수 있는 직책</div>
+      <p class="dim" style="font-size:12.5px; margin-bottom:8px">
+        선택된 직책(또는 관리자)만 번개를 열 수 있어요. 기본값은 전체 허용(제한 없음). (탭해서 선택)
+      </p>
+      <div class="chips" id="flashRoleChips" style="margin-bottom:10px"></div>
+      <button class="btn2" onclick="saveFlashRoles()">개설 가능 직책 저장</button>
+      <div class="status" id="flashRoleStatus"></div>
+
       <div class="month-head" style="margin-top:22px">🔑 PIN 초기화</div>
       <div class="field">
         <select id="resetPinName"><option value="">부족원 선택</option></select>

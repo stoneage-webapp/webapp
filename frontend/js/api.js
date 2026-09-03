@@ -59,6 +59,7 @@ const API_POST = {
   editOpenSession:   ['id', 'date', 'loc', 'note', 'requester', 'token'],
   deleteOpenSession: ['id', 'requester', 'token'],
   setOpenSessionRoles: ['roles', 'requester', 'token'],
+  setFlashRoles:     ['roles', 'requester', 'token'],
   getBudget:         ['name', 'token'],
   addExpense:        ['amount', 'note', 'name', 'token'],
   deleteBudgetItem:  ['row', 'when', 'name', 'token'],

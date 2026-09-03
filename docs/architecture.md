@@ -24,7 +24,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `budget.gs` | 부족 예산 — 정산 적립(자동)·사용 이력. `예산` 시트. 정산 담당자/관리자 전용 |
 | `push.gs` | 푸시 알림(OneSignal) — 공지/번개 즉시 발송, D-1·번개 인증 시간 트리거 |
 | `votes.gs` | 정기공격 고정 일정(관리자 지정, 투표 없음) · 자연재해(번개) 투표 · 참석확정(RSVP) · 완료 처리 |
-| `opensessions.gs` | 정기 오픈 세션(특정 날짜+장소) — 개설/수정/삭제, 개설 가능 직책 설정(관리자). Script Properties에만 저장(시트 없음) |
+| `opensessions.gs` | 정기 오픈 세션(특정 날짜+장소) — 개설/수정/삭제, 개설 가능 직책 설정(관리자). `오픈세션` 시트에 저장 |
 | `photos.gs` | Drive 업로드(청크), Photos 업로드, 벽화 갤러리, 사진 삭제 |
 | `hall.gs` | 명예의전당 출품/투표/영상 삭제 |
 | `settle.gs` | 월별 인증 정산(시트 메뉴/웹), 월 파싱, 인증현황 집계(열=월 누적)·정산 취소·출석 통계(`getStats`), 부족원 오름차순 정렬(`sortNames_`) |
@@ -50,7 +50,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 
 | action | params | 반환(data) |
 |---|---|---|
-| `getInitData` | — | `{ members, support, months, raidSchedule, disaster, certified, month, shareUrl, notionUrl, openchatUrl, confirmed, admins, settlers, notices, flashOwners, openSessions, openSessionRoles, raidLocations }` |
+| `getInitData` | — | `{ members, support, months, raidSchedule, disaster, certified, month, shareUrl, notionUrl, openchatUrl, confirmed, admins, settlers, notices, flashOwners, openSessions, openSessionRoles, flashRoles, raidLocations }` |
 | `getVotes` | `month`(선택, `'2026-07'`) | `{ months, raidSchedule, disaster, confirmed, flashOwners }` — month 지정 시 해당 월만 |
 | `getGallery` | `limit`(기본12), `offset`(기본0), `month`(선택), `person`(선택) | `{ items:[{when,actDate,loc,people,by,fileId,link}], hasMore }` — 필터 후 페이징 |
 | `getHallData` | — | `{ ym, entries:[...], winner, winnerMonth }` |
@@ -82,7 +82,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `getStats` | `name, token` | `{ months, members:[{name,supported}], cert:{ym:{이름:true}}, votes:{ym:{이름:true}} }` — 관리자는 전체, 일반 회원은 본인 통계만. `votes`는 정기공격 **참석확정(RSVP 'yes')** 집계(정기공격이 고정 일정으로 바뀌며 투표 참여 대신 RSVP로 대체됨) |
 | `getNotices` | `limit`(기본20), `name, token` | `{ items:[{when,by,text,row}] }` — 관리자 전용 전체 목록 |
 | `toggleVote` | `dateText, voter, token` | `{ date, voters }` — 자연재해(번개) 전용 |
-| `addFlash` | `dateText, loc, creator, token` | 자연재해 투표 배열 |
+| `addFlash` | `dateText, loc, creator, token` | 자연재해 투표 배열 — `flash_roles`에 포함된 직책(기본 전체=제한 없음) 또는 관리자만 |
 | `deleteFlash` | `dateText, requester, token` | 자연재해 투표 배열 |
 | `editFlash` | `dateText, newDate, newLoc, requester, token` | 자연재해 투표 배열 — 날짜/위치 라벨만 변경(투표자 유지). 등록자 또는 관리자 |
 | `completeFlash` | `dateText, requester, token` | 자연재해 투표 배열 — 완료 처리(등록자 또는 관리자). `완료기록` 시트에 기록 후 목록에서 제거 |
@@ -109,6 +109,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `editOpenSession` | `id, date, loc, note, requester, token` | `getOpenSessions()` 결과 — 개설자 또는 관리자만 |
 | `deleteOpenSession` | `id, requester, token` | `getOpenSessions()` 결과 — 개설자 또는 관리자만 |
 | `setOpenSessionRoles` | `roles(배열), requester, token` | `getOpenSessions()` 결과 — 관리자 전용. 오픈 세션 개설 가능 직책 설정(Script Property `open_session_roles`) |
+| `setFlashRoles` | `roles(배열), requester, token` | `{ roles }` — 관리자 전용. 번개 개설 가능 직책 설정(Script Property `flash_roles`, 기본값=전체) |
 | `getBudget` | `name, token` | `{ balance, credit, spent, perPerson, items:[{when,kind,amount,note,by,month,row}] }` — **정산 담당자/관리자만** |
 | `addExpense` | `amount, note, name, token` | `getBudget()` 결과 — 예산 사용 등록 (정산 담당자/관리자) |
 | `deleteBudgetItem` | `row, when, name, token` | `getBudget()` 결과 — 예산 기록 삭제. `when` 대조 |
@@ -145,7 +146,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 초기 로드 | `getInitData` |
 | 로그인 | `loginWithPin`, `changePin` |
 | 정기공격(고정 일정) | `setRaidDate`(관리자), `setRsvp`(참석확정), `completeRaid`(관리자) |
-| 번개(자연재해 투표) | `toggleVote`, `addFlash`, `deleteFlash`, `editFlash`, `completeFlash` |
+| 번개(자연재해 투표) | `toggleVote`, `addFlash`, `deleteFlash`, `editFlash`, `completeFlash`. 개설 가능 직책 설정은 관리 탭의 `setFlashRoles`(관리자) |
 | 정기 오픈 세션 (날짜+장소, 캘린더에서 여러 날짜 선택해 등록) | `getOpenSessions`, `addOpenSession`/`editOpenSession`/`deleteOpenSession`(개설자·관리자). 개설 가능 직책 설정은 관리 탭의 `setOpenSessionRoles`(관리자) |
 | 사진 인증 | `startUpload` → `uploadChunk`/`checkUploadStatus` → `finalizeProof` |
 | 벽화 갤러리 | `getGallery`(월/사람 필터), `deleteProof` |
