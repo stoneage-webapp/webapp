@@ -37,6 +37,7 @@ const API_POST = {
   completeFlash:     ['dateText', 'requester', 'token'],
   completeRaid:      ['month', 'requester', 'token', 'cancelled'],
   setRaidDate:       ['month', 'date', 'loc', 'note', 'requester', 'token'],
+  setRaidLocations:  ['locations', 'requester', 'token'],
   setRsvp:           ['month', 'status', 'name', 'token'],
   startUpload:       ['fileName', 'mimeType', 'fileSize', 'ym'],
   startHallUpload:   ['fileName', 'mimeType', 'fileSize'],

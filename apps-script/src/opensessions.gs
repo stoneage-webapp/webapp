@@ -8,6 +8,7 @@
  * 권한: 개설(add)은 관리자 또는 open_session_roles 에 포함된 직책만(canOpenSession_).
  *      수정/삭제는 개설자 또는 관리자만(자연재해 번개와 동일한 소유권 패턴).
  *      개설 가능 직책 설정(setOpenSessionRoles)은 관리자 전용.
+ * 개설 시 번개(addFlash)와 동일하게 sendPush_ 로 전체 푸시를 보낸다.
  */
 
 function getOpenSessionRoles_() {
@@ -69,6 +70,8 @@ function addOpenSession(weekday, loc, note, requester, authToken) {
       createdBy: requester, createdAt: new Date().toISOString()
     });
     setOpenSessionsRaw_(list);
+    sendPush_('🧭 정기 오픈 세션 개설!', '매주 ' + WEEKDAY_KO_[weekday] + '요일 @ ' + loc +
+      (note ? '\n' + note : '') + '\n' + requester + ' 님이 열었어요', {}); // 전체 푸시 (번개와 동일)
     return getOpenSessions();
   } finally {
     lock.releaseLock();

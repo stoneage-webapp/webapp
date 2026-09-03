@@ -304,6 +304,26 @@ function setRaidDate(month, date, loc, note, requester, authToken) {
   }
 }
 
+// 관리자 전용: 정기공격 기본 위치 로테이션 순서 자체를 설정 (Script Property raid_locations)
+// CONFIG.RAID_LOCATIONS는 실행 시작 시 한 번만 읽으므로(다른 CONFIG 값과 동일), 이번 응답이 아니라
+// 다음 요청부터 새 순서가 반영된다 — setAdmins 와 동일한 패턴.
+function setRaidLocations(locations, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!isAdmin_(requester)) throw new Error('관리자만 위치 로테이션을 설정할 수 있습니다.');
+  if (!Array.isArray(locations)) throw new Error('위치 배열이 필요합니다.');
+  const clean = []; const seen = {};
+  locations.forEach(function (loc) {
+    const n = String(loc).trim();
+    if (!n) return;
+    if (n.length > 20) throw new Error('위치 이름은 20자 이내로: ' + n);
+    if (seen[n]) throw new Error('위치 이름이 중복돼요: ' + n);
+    seen[n] = true; clean.push(n);
+  });
+  if (!clean.length) throw new Error('최소 1개 위치가 필요합니다.');
+  PropertiesService.getScriptProperties().setProperty('raid_locations', JSON.stringify(clean));
+  return { locations: clean };
+}
+
 function getConfirmed_() {
   const p = PropertiesService.getScriptProperties();
   function parse(key) {

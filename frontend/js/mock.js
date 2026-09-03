@@ -61,7 +61,8 @@
     openSessions: [
       { id: 'os1', weekday: 3, loc: '더클라임 강남', note: '초보 환영', createdBy: '이희주', createdAt: '2026-07-01T00:00:00.000Z' }
     ],
-    openSessionRoles: ['팀장']
+    openSessionRoles: ['팀장'],
+    raidLocations: ['신림', '사당', '이수', '논현', '양재']
   };
 
   const HALL = {
@@ -324,6 +325,11 @@
           if (fn !== 'setOpenSessionRoles') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
           if (Array.isArray(args[0]) && args[0].length) DATA.openSessionRoles = args[0].slice();
           return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+        })(),
+        setRaidLocations: (function () {
+          if (fn !== 'setRaidLocations') return { locations: DATA.raidLocations };
+          if (Array.isArray(args[0]) && args[0].length) DATA.raidLocations = args[0].slice();
+          return { locations: DATA.raidLocations };
         })(),
         voteHall: HALL, deleteHallEntry: HALL, finalizeHallEntry: HALL,
         deleteProof: { ok: true },

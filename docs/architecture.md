@@ -50,7 +50,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 
 | action | params | 반환(data) |
 |---|---|---|
-| `getInitData` | — | `{ members, support, months, raidSchedule, disaster, certified, month, shareUrl, notionUrl, openchatUrl, confirmed, admins, settlers, notices, flashOwners, openSessions, openSessionRoles }` |
+| `getInitData` | — | `{ members, support, months, raidSchedule, disaster, certified, month, shareUrl, notionUrl, openchatUrl, confirmed, admins, settlers, notices, flashOwners, openSessions, openSessionRoles, raidLocations }` |
 | `getVotes` | `month`(선택, `'2026-07'`) | `{ months, raidSchedule, disaster, confirmed, flashOwners }` — month 지정 시 해당 월만 |
 | `getGallery` | `limit`(기본12), `offset`(기본0), `month`(선택), `person`(선택) | `{ items:[{when,actDate,loc,people,by,fileId,link}], hasMore }` — 필터 후 페이징 |
 | `getHallData` | — | `{ ym, entries:[...], winner, winnerMonth }` |
@@ -87,6 +87,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `editFlash` | `dateText, newDate, newLoc, requester, token` | 자연재해 투표 배열 — 날짜/위치 라벨만 변경(투표자 유지). 등록자 또는 관리자 |
 | `completeFlash` | `dateText, requester, token` | 자연재해 투표 배열 — 완료 처리(등록자 또는 관리자). `완료기록` 시트에 기록 후 목록에서 제거 |
 | `setRaidDate` | `month, date, loc, note, requester, token` | `raidSchedule` 배열 — **관리자 전용**. 그 달 정기공격 날짜/장소/설명 지정. `date` 빈 값이면 기본값(둘째 주 금요일+로테이션)으로 복귀 |
+| `setRaidLocations` | `locations(배열), requester, token` | `{ locations }` — 관리자 전용. 위치 로테이션 순서 설정(Script Property `raid_locations`). `setAdmins`와 동일하게 **반영은 다음 요청부터** |
 | `completeRaid` | `month, requester, token, cancelled?` | `raidSchedule` 배열 — 관리자 전용. `cancelled` 없으면 "완료"(참여자=그 달 RSVP 'yes' 명단), `true`면 "모임 없음"으로 종료. `완료기록` 시트에 기록 후 목록에서 제외 |
 | `startUpload` | `fileName, mimeType, fileSize, ym, **name, token**` | Drive resumable 업로드 URL(문자열) |
 | `startHallUpload` | `fileName, mimeType, fileSize, **name, token**` | Drive resumable 업로드 URL(문자열) |
@@ -152,6 +153,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 공지 | 홈: `getInitData.notices`(고정 전부 + 최신 1건, 새 공지 뱃지), 더보기(관리자): `getNotices`, `postNotice`/`editNotice`/`deleteNotice`/`pinNotice` |
 | 참석 확정(RSVP) · 번개 인증 리마인더 | 확정 배너 `setRsvp` · 홈 인앱 리마인더(그날 번개 시각 이후) |
 | 홈 새 소식 (최근 24h 벽화/전당) · 모임 D-1 리마인더 | `getInitData.recent` · 확정 모임 D-day |
+| 홈 이번 주 일정 요약 (정기공격·오픈세션·번개) | 신규 action 없음 — `getInitData`의 `raidSchedule`/`openSessions`/`disaster`를 프론트에서 오늘~+6일로 필터링(`renderWeekSummary`) |
 | 통계 | `getStats`(관리자 전체/일반 본인) |
 | 완료된 모임 기록 | `getCompletionLog` |
 | 관리 탭 (관리자·정산 담당자만 노출) | `runSettle`, `getSettleStatus`, `cancelSettle`, `resetSettle`, `setSettlers`(관리자), `setSupports`(관리자), `resetPin`(관리자), `addMember`/`renameMember`/`deleteMember`(관리자, 부족원 관리) |

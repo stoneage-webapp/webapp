@@ -57,6 +57,7 @@ const POST_ACTIONS = {
   completeFlash:     { auth: 'requester', bust: true, fn: function (d) { return completeFlash(d.dateText, d.requester, d.token); } },
   completeRaid:      { auth: 'requester', bust: true, fn: function (d) { return completeRaid(d.month, d.requester, d.token, d.cancelled); } },
   setRaidDate:       { auth: 'requester', bust: true, fn: function (d) { return setRaidDate(d.month, d.date, d.loc, d.note, d.requester, d.token); } }, // 정기공격 고정 일정 지정 (관리자)
+  setRaidLocations:  { auth: 'requester', bust: true, fn: function (d) { return setRaidLocations(d.locations, d.requester, d.token); } }, // 위치 로테이션 순서 설정 (관리자, 반영은 다음 요청부터)
   setRsvp:           { auth: 'name', bust: true, fn: function (d) { return setRsvp(d.month, d.status, d.name, d.token); } }, // 참석 확정(RSVP)
 
   // 업로드 (요청자 토큰 필수 — 익명 업로드 차단)
@@ -243,7 +244,8 @@ function getInitData() {
     rsvp: getRsvp_(),              // 확정 모임 참석 확정 { 월: {이름: 'yes'|'no'} }
     flashOwners: votes.flashOwners,
     openSessions: openSessions.items,      // [{id, weekday(0=일~6=토), loc, note, createdBy, createdAt}]
-    openSessionRoles: openSessions.roles   // 오픈 세션 개설 가능 직책 (기본 ['팀장'])
+    openSessionRoles: openSessions.roles,  // 오픈 세션 개설 가능 직책 (기본 ['팀장'])
+    raidLocations: CONFIG.RAID_LOCATIONS   // 정기공격 기본 위치 로테이션 순서 (관리자 편집용)
   };
 }
 
