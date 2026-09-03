@@ -153,6 +153,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 공지 | 홈: `getInitData.notices`(고정 전부 + 최신 1건, 새 공지 뱃지), 더보기(관리자): `getNotices`, `postNotice`/`editNotice`/`deleteNotice`/`pinNotice` |
 | 참석 확정(RSVP) · 번개 인증 리마인더 | 확정 배너 `setRsvp` · 홈 인앱 리마인더(그날 번개 시각 이후) |
 | 홈 새 소식 (최근 24h 벽화/전당) · 모임 D-1 리마인더 | `getInitData.recent` · 확정 모임 D-day |
+| 홈 이번 주 일정 요약 (정기공격·오픈세션·번개) | 신규 action 없음 — `getInitData`의 `raidSchedule`/`openSessions`/`disaster`를 프론트에서 오늘~+6일로 필터링(`renderWeekSummary`) |
 | 통계 | `getStats`(관리자 전체/일반 본인) |
 | 완료된 모임 기록 | `getCompletionLog` |
 | 관리 탭 (관리자·정산 담당자만 노출) | `runSettle`, `getSettleStatus`, `cancelSettle`, `resetSettle`, `setSettlers`(관리자), `setSupports`(관리자), `resetPin`(관리자), `addMember`/`renameMember`/`deleteMember`(관리자, 부족원 관리) |
