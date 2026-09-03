@@ -7,6 +7,7 @@
     --ink-dim: #a39a8c;
     --ember: #d4691e;
     --moss: #7d9b4e;
+    --sky: #4f8fae; /* 자연재해(번개) 전용 — 정기공격(ember)·오픈세션(moss)과 구분 */
     --radius: 14px;
     --pad: clamp(12px, 3.8vw, 18px);
     --safe-t: env(safe-area-inset-top, 0px);
@@ -91,6 +92,9 @@
   .vote-card.mine { border-color: var(--moss); }
   .vote-card.confirmed { border-color: var(--ember); }
   .vote-card.closed { opacity: .4; }
+  /* 목록에서도 캘린더와 같은 색으로 유형을 은은하게 구분(참여중=.mine 테두리와는 별개 신호) */
+  .vote-card.flash-card { background: linear-gradient(135deg, rgba(79,143,174,.10), var(--stone)); }
+  .vote-card.open-session { background: linear-gradient(135deg, rgba(125,155,78,.10), var(--stone)); }
   .hall-thumb {
     position: relative; aspect-ratio: 16/9; background: #000;
     overflow: hidden; cursor: pointer;
@@ -465,14 +469,16 @@ textarea:focus { outline: none; border-color: var(--ember); }
   background: var(--stone); border: 1px solid transparent;
 }
 .cal-day.today { border-color: var(--line); font-weight: 800; }
+/* 정기공격=ember(채움) · 번개=sky(테두리) · 오픈세션은 매주 반복이라 점(dot)만 moss로 — 한눈에 구분 */
 .cal-day.confirmed { background: var(--ember); color: #fff; font-weight: 800; }
-.cal-day.flash { border-color: var(--ember); }
+.cal-day.flash { border-color: var(--sky); }
 .cal-day .cal-dots {
   position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
   display: flex; gap: 2px;
 }
 .cal-day .cal-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--ember); }
 .cal-day .cal-dot.open { background: var(--moss); }
+.cal-day .cal-dot.flash { background: var(--sky); }
 .cal-day.confirmed .cal-dot.confirmed { background: #fff; }
 
 /* ==================== 모바일 뷰포트/세이프에어리어 견고화 ==================== */
