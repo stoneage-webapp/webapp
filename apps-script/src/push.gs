@@ -49,13 +49,11 @@ function pushDailyReminders_() {
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const tISO = Utilities.formatDate(tomorrow, tz, 'yyyy-MM-dd');
   const votes = getVotes('');
-  (votes.raidMonths || []).forEach(function (g) {
-    if (!g.confirmed) return;
-    const ci = (g.options || []).find(function (o) { return o.date === g.confirmed.date; });
-    const iso = ci && ci.dateInfo && ci.dateInfo.iso;
+  (votes.raidSchedule || []).forEach(function (g) {
+    const iso = g.dateInfo && g.dateInfo.iso;
     if (iso === tISO) {
-      const disp = (ci.dateInfo && ci.dateInfo.display) || g.confirmed.date;
-      sendPush_('🔔 내일 정기공격!', disp + (g.confirmed.loc ? ' @ ' + g.confirmed.loc : ''), {});
+      const disp = (g.dateInfo && g.dateInfo.display) || g.date;
+      sendPush_('🔔 내일 정기공격!', disp + (g.loc ? ' @ ' + g.loc : ''), {});
     }
   });
 }

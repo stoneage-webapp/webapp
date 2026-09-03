@@ -24,7 +24,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `levels.gs` | 레벨(난이도)별 완등 기록/순위 — 레벨 목록(Script Property)·`레벨완등` 시트, 최고 레벨 우선 순위 |
 | `budget.gs` | 부족 예산 — 정산 적립(자동)·사용 이력. `예산` 시트. 정산 담당자/관리자 전용 |
 | `push.gs` | 푸시 알림(OneSignal) — 공지/번개 즉시 발송, D-1·번개 인증 시간 트리거 |
-| `votes.gs` | 정기공격/자연재해 투표, 번개, 일정 확정, 완료 처리, 마감 판정 |
+| `votes.gs` | 정기공격 고정 일정(관리자 지정, 투표 없음) · 자연재해(번개) 투표 · 참석확정(RSVP) · 완료 처리 |
 | `photos.gs` | Drive 업로드(청크), Photos 업로드, 벽화 갤러리, 사진 삭제 |
 | `hall.gs` | 명예의전당 출품/투표/영상 삭제 |
 | `settle.gs` | 월별 인증 정산(시트 메뉴/웹), 월 파싱, 인증현황 집계(열=월 누적)·정산 취소·출석 통계(`getStats`), 부족원 오름차순 정렬(`sortNames_`) |
@@ -50,8 +50,8 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 
 | action | params | 반환(data) |
 |---|---|---|
-| `getInitData` | — | `{ members, support, months, raidMonths, disaster, certified, month, shareUrl, notionUrl, openchatUrl, confirmed, admins, settlers, notices, flashOwners }` |
-| `getVotes` | `month`(선택, `'2026-07'`) | `{ months, raidMonths, disaster, confirmed, flashOwners }` — month 지정 시 해당 월만 |
+| `getInitData` | — | `{ members, support, months, raidSchedule, disaster, certified, month, shareUrl, notionUrl, openchatUrl, confirmed, admins, settlers, notices, flashOwners }` |
+| `getVotes` | `month`(선택, `'2026-07'`) | `{ months, raidSchedule, disaster, confirmed, flashOwners }` — month 지정 시 해당 월만 |
 | `getGallery` | `limit`(기본12), `offset`(기본0), `month`(선택), `person`(선택) | `{ items:[{when,actDate,loc,people,by,fileId,link}], hasMore }` — 필터 후 페이징 |
 | `getHallData` | — | `{ ym, entries:[...], winner, winnerMonth }` |
 | `getHallArchive` | — | `{ winners:[...] }` — 월별 최다득표, 최신순, 이번 달 제외 |
@@ -67,8 +67,11 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 > - 투표 항목에는 `dateInfo` 필드가 붙는다:
 >   `{ iso:'2026-07-16', ym:'2026-07', weekday:'목', time:'20:00'|null, display:'2026-07-16 (목) 20:00' }`
 >   파싱 실패 시 `null` — 프론트는 원본 `date` 라벨로 폴백. 표기는 `dateInfo.display` 우선.
-> - 정기공격 후보(`raidMonths[].options[]`)와 번개(`disaster[]`)는 각각 `loc`(후보별/번개 위치) 필드를 가진다.
->   두 시트의 `위치` 열은 `ensureLocationColumns_`(votes.gs)가 배포 후 첫 접근 시 1회 자동 삽입한다(sheets.md 참고).
+> - 번개(`disaster[]`)는 `loc`(번개 위치) 필드를 가진다. 자연재해 시트의 `위치` 열은 `ensureLocationColumns_`(votes.gs)가
+>   배포 후 첫 접근 시 1회 자동 삽입한다(sheets.md 참고).
+> - `raidSchedule[]`(정기공격 고정 일정, 더 이상 투표 없음)의 각 항목은 `{ month, date, loc, note, isOverride, dateInfo }`.
+>   `isOverride:false`면 기본값(그 달 둘째 주 금요일 20시 + `CONFIG.RAID_LOCATIONS` 로테이션)이 그대로 노출 중이라는 뜻 — 관리자가
+>   `setRaidDate`로 지정하면 `isOverride:true`가 된다.
 
 ### 인증 조회 / 변경 (POST)
 
@@ -76,18 +79,15 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 |---|---|---|
 | `loginWithPin` | `name, pin` | `{ name, token, isAdmin, driveApiKey, certNudge, firstSet? }` — 실패 5회 → 10분 잠금 |
 | `changePin` | `name, oldPin, newPin, token` | `{ name, token, isAdmin, driveApiKey, certNudge }` |
-| `getStats` | `name, token` | `{ months, members:[{name,supported}], cert:{ym:{이름:true}}, votes:{ym:{이름:true}} }` — 관리자는 전체, 일반 회원은 본인 통계만 |
+| `getStats` | `name, token` | `{ months, members:[{name,supported}], cert:{ym:{이름:true}}, votes:{ym:{이름:true}} }` — 관리자는 전체, 일반 회원은 본인 통계만. `votes`는 정기공격 **참석확정(RSVP 'yes')** 집계(정기공격이 고정 일정으로 바뀌며 투표 참여 대신 RSVP로 대체됨) |
 | `getNotices` | `limit`(기본20), `name, token` | `{ items:[{when,by,text,row}] }` — 관리자 전용 전체 목록 |
-| `toggleVote` | `category('raid'\|'disaster'), dateText, voter, token, month` | `{ date, voters }` |
+| `toggleVote` | `dateText, voter, token` | `{ date, voters }` — 자연재해(번개) 전용 |
 | `addFlash` | `dateText, loc, creator, token` | 자연재해 투표 배열 |
 | `deleteFlash` | `dateText, requester, token` | 자연재해 투표 배열 |
 | `editFlash` | `dateText, newDate, newLoc, requester, token` | 자연재해 투표 배열 — 날짜/위치 라벨만 변경(투표자 유지). 등록자 또는 관리자 |
 | `completeFlash` | `dateText, requester, token` | 자연재해 투표 배열 — 완료 처리(등록자 또는 관리자). `완료기록` 시트에 기록 후 목록에서 제거 |
-| `confirmDate` | `month, dateText, loc, name, pin, note?` | `raidMonths` 배열 (관리자 PIN — Script Properties `admin_pin`). `note`=확정 설명(선택) |
-| `completeRaid` | `month, requester, token` | `raidMonths` 배열 — 관리자 전용. 확정된 월이면 "완료", 확정 없이 마감된 월이면 "모임 없음"으로 종료. `완료기록` 시트에 기록 후 목록에서 제외 |
-| `editRaidOption` | `month, dateText, newDate, newLoc, requester, token` | `raidMonths` 배열 — 관리자 전용. 후보 날짜(B)/위치(D) 수정, 투표자 보존. **확정된 월은 불가**(먼저 확정 취소) |
-| `deleteRaidOption` | `month, dateText, requester, token` | `raidMonths` 배열 — 관리자 전용. 후보 행 삭제(그 날짜 투표도 함께 삭제). **확정된 월은 불가** |
-| `addRaidOption` | `month, dateText, loc, requester, token` | `raidMonths` 배열 — **관리자 전용**. 후보 날짜 추가(A=월,B=날짜,D=위치). 중복·확정월 방지 |
+| `setRaidDate` | `month, date, loc, note, requester, token` | `raidSchedule` 배열 — **관리자 전용**. 그 달 정기공격 날짜/장소/설명 지정. `date` 빈 값이면 기본값(둘째 주 금요일+로테이션)으로 복귀 |
+| `completeRaid` | `month, requester, token, cancelled?` | `raidSchedule` 배열 — 관리자 전용. `cancelled` 없으면 "완료"(참여자=그 달 RSVP 'yes' 명단), `true`면 "모임 없음"으로 종료. `완료기록` 시트에 기록 후 목록에서 제외 |
 | `startUpload` | `fileName, mimeType, fileSize, ym, **name, token**` | Drive resumable 업로드 URL(문자열) |
 | `startHallUpload` | `fileName, mimeType, fileSize, **name, token**` | Drive resumable 업로드 URL(문자열) |
 | `uploadChunk` | `uploadUrl, b64, start, end, total, **name, token**` | `{ done, fileId? }` |
@@ -142,7 +142,8 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 |---|---|
 | 초기 로드 | `getInitData` |
 | 로그인 | `loginWithPin`, `changePin` |
-| 투표(정기공격/번개) | `toggleVote`, `addFlash`, `deleteFlash`, `editFlash`, `confirmDate`, `completeFlash`, `completeRaid`, `editRaidOption`, `deleteRaidOption` |
+| 정기공격(고정 일정) | `setRaidDate`(관리자), `setRsvp`(참석확정), `completeRaid`(관리자) |
+| 번개(자연재해 투표) | `toggleVote`, `addFlash`, `deleteFlash`, `editFlash`, `completeFlash` |
 | 사진 인증 | `startUpload` → `uploadChunk`/`checkUploadStatus` → `finalizeProof` |
 | 벽화 갤러리 | `getGallery`(월/사람 필터), `deleteProof` |
 | 명예의전당 | `getHallData`, `getHallArchive`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |
