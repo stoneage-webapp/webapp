@@ -445,12 +445,11 @@ async function softRefresh() {
   renderHome();
 
   // 지연 로딩 탭은 플래그를 리셋해 다음 방문 때 새로 받게 하고, 지금 보고 있는 탭만 즉시 재로딩
-  galleryLoaded = hallLoaded = moreLoaded = adminLoaded = rankLoaded = false;
+  galleryLoaded = hallLoaded = moreLoaded = adminLoaded = false;
   if (currentTab === 'gallery') loadGallery();
   else if (currentTab === 'hall') loadHall();
-  else if (currentTab === 'rank') await loadLevelBoard();
   else if (currentTab === 'more') loadMore();
-  else if (currentTab === 'admin') await loadAdmin(); // 관리 탭은 LEVELBOARD 를 재사용하므로 완료까지 대기
+  else if (currentTab === 'admin') await loadAdmin();
   else if (currentTab === 'photo') renderMyProofs();
 }
 
@@ -527,7 +526,7 @@ function applyLogin(session) {
   renderVotes();
   renderHome();
   initPush();       // 푸시 알림: 로그인 회원 태깅 + 권한 버튼 갱신
-  setTab('home');   // 레벨 순위는 랭킹 탭 진입 시 지연 로딩
+  setTab('home');
 }
 
 /* ---------- 푸시 알림 (OneSignal) — #4 ----------
@@ -597,13 +596,12 @@ function changePinPrompt() {
 /* ---------- 탭 ---------- */
 function setTab(t) {
   currentTab = t;
-  ['home','rank','vote','photo','gallery','hall','more','admin'].forEach(function(k) {
+  ['home','vote','photo','gallery','hall','more','admin'].forEach(function(k) {
     document.getElementById('tab-' + k).classList.toggle('on', k === t);
     document.getElementById('nav-' + k).classList.toggle('on', k === t);
   });
   if (t === 'gallery' && !galleryLoaded) loadGallery();
   if (t === 'hall' && !hallLoaded) loadHall();
-  if (t === 'rank' && !rankLoaded) loadLevelBoard(); // 레벨 순위 (지연 로딩)
   if (t === 'more' && !moreLoaded) loadMore();
   if (t === 'admin' && !adminLoaded) loadAdmin();
   if (t === 'photo') renderMyProofs(); // 내 인증 목록(취소용) 갱신
@@ -2166,7 +2164,6 @@ function applyMemberData(res) {
     buildSettlerChips();
     buildResetPinSelect();
     renderMemberAdmin();
-    if (LEVELBOARD) renderLevelMemberList(); // 명단 변경을 레벨 기록 목록에도 반영
   }
 }
 
@@ -2364,316 +2361,6 @@ async function deleteMemberClick(name) {
   }
 }
 
-/* ==================== 레벨 완등 순위/기록 (랭킹 탭) ====================
- * 순위: 최고 완등 레벨 우선(레벨 목록 순서 기준) → 동점은 그 레벨 완등 수 → 총 완등 → 이름.
- * 랭킹 탭에서 모두 열람. 완등 기록·레벨 설정 모두 각자(누구나) 가능.
- */
-let LEVELBOARD = null;  // { levels:[...], rows:[{name,counts,topLevel,topIdx,topCount,total,rank}] }
-let levelDraft = [];    // 관리자 레벨 편집용 작업 배열
-let rankLoaded = false; // 랭킹 탭 지연 로딩 플래그
-
-function levelRowMap_() {
-  const map = {};
-  if (LEVELBOARD && LEVELBOARD.rows) LEVELBOARD.rows.forEach(function (r) { map[r.name] = r; });
-  return map;
-}
-
-/* ---------- 순위 보기 (랭킹 탭, 모두) ---------- */
-async function loadLevelBoard() {
-  const box = document.getElementById('rankBox');
-  if (box) { box.className = 'loading'; box.textContent = '순위를 불러오는 중…'; }
-  try {
-    LEVELBOARD = await run('getLevelBoard'); // 항상 현재 시즌 (편집 기준)
-    rankLoaded = true;
-    renderLevelRanking(LEVELBOARD);
-  } catch (e) {
-    if (box) { box.className = 'status err'; box.textContent = '순위 로딩 실패: ' + (e.message || e); }
-  }
-}
-
-// 시즌 셀렉트 변경 (#시즌): 현재 시즌이면 LEVELBOARD, 지난 시즌이면 열람용으로만 로드(LEVELBOARD 유지)
-async function onSeasonChange(season) {
-  if (!season || (LEVELBOARD && season === LEVELBOARD.season)) { renderLevelRanking(LEVELBOARD); return; }
-  const box = document.getElementById('rankBox');
-  if (box) { box.className = 'loading'; box.textContent = '순위를 불러오는 중…'; }
-  try { renderLevelRanking(await run('getLevelBoard', season)); }
-  catch (e) { if (box) { box.className = 'status err'; box.textContent = e.message || e; } }
-}
-
-function seasonLabelKo_(s) {
-  return /^\d{4}-Q[1-4]$/.test(s) ? (s.slice(0, 4) + ' ' + s.slice(6) + '분기') : s;
-}
-
-function renderLevelRanking(board) {
-  board = board || LEVELBOARD;
-  const box = document.getElementById('rankBox');
-  if (!box || !board) return;
-  box.className = '';
-  const levels = board.levels || [];
-  // 시즌 셀렉트 (#시즌) — 지난 분기 열람
-  const sel = document.getElementById('levelSeasonSelect');
-  if (sel) {
-    const seasons = (board.seasons && board.seasons.length) ? board.seasons : [board.season];
-    sel.innerHTML = seasons.map(function (s) {
-      return '<option value="' + esc(s) + '"' + (s === board.season ? ' selected' : '') + '>' + esc(seasonLabelKo_(s)) + '</option>';
-    }).join('');
-    sel.onchange = function () { onSeasonChange(sel.value); };
-  }
-  // 내 완등 기록 버튼: 현재 시즌 볼 때 + 로그인 + 레벨 존재 (지난 시즌은 열람만)
-  const isCurrent = !LEVELBOARD || board.season === LEVELBOARD.season;
-  const myBtn = document.getElementById('myLevelBtn');
-  if (myBtn) myBtn.style.display = (getMe() && levels.length && isCurrent) ? '' : 'none';
-  // 레벨 설정 버튼: 누구나(로그인) 현재 시즌에서. 레벨 없으면 CTA로 강조
-  const setupBtn = document.getElementById('levelSetupBtn');
-  if (setupBtn) {
-    setupBtn.style.display = (getMe() && isCurrent) ? '' : 'none';
-    setupBtn.textContent = levels.length ? '⚙️ 레벨 설정' : '⚙️ 레벨 먼저 설정하기';
-  }
-  if (!levels.length) {
-    box.innerHTML = '<div class="dim" style="font-size:13px; padding:6px 2px">아직 레벨이 등록되지 않았어요.' +
-      (ME.isAdmin ? ' 관리 탭에서 레벨을 먼저 등록해 주세요.' : '') + '</div>';
-    return;
-  }
-  const ranked = board.rows.filter(function (r) { return r.rank != null; });
-  const none = board.rows.filter(function (r) { return r.rank == null; });
-  const badge = function (rank) { return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank + '위'; };
-
-  let html = '';
-  if (!ranked.length) {
-    html = '<div class="dim" style="font-size:13px; padding:6px 2px">아직 완등 기록이 없어요.</div>';
-  } else {
-    html = '<div class="lv-board">' + ranked.map(function (r) {
-      const brk = levels.filter(function (lv) { return r.counts[lv]; })
-        .map(function (lv) { return esc(lv) + '×' + r.counts[lv]; }).join(' · ');
-      return '<div class="lv-row' + (r.name === getMe() ? ' me' : '') + '">' +
-        '<span class="lv-rank">' + badge(r.rank) + '</span>' +
-        '<div class="lv-body">' +
-          '<div class="lv-head"><span class="lv-name">' + esc(r.name) + roleBadge_(r.name) + '</span>' +
-            '<span class="lv-top">최고 <b>' + esc(r.topLevel) + '</b></span></div>' +
-          '<div class="lv-sub"><span class="lv-brk">' + (brk || '-') + '</span>' +
-            '<span class="lv-total">총 ' + r.total + '</span></div>' +
-        '</div></div>';
-    }).join('') + '</div>';
-  }
-  if (none.length) {
-    html += '<div class="dim" style="font-size:12px; margin-top:8px">기록 없음: ' +
-      none.map(function (r) { return esc(r.name); }).join(', ') + '</div>';
-  }
-  box.innerHTML = html;
-}
-
-/* ---------- 레벨 설정 + 구성원별 기록 (관리 탭, 관리자) ---------- */
-async function loadLevelAdmin() {
-  if (!LEVELBOARD) {
-    try { LEVELBOARD = await run('getLevelBoard'); }
-    catch (e) { LEVELBOARD = { levels: [], rows: [] }; }
-  }
-  levelDraft = (LEVELBOARD.levels || []).slice();
-  renderLevelConfig();
-  renderLevelMemberList();
-}
-
-function renderLevelConfig() {
-  const box = document.getElementById('levelConfig');
-  if (!box) return;
-  box.innerHTML = '';
-  if (!levelDraft.length) {
-    box.innerHTML = '<div class="dim" style="font-size:12.5px">아직 레벨이 없어요. 아래에서 낮은 난이도부터 추가하세요.</div>';
-    return;
-  }
-  levelDraft.forEach(function (lv, i) {
-    const row = document.createElement('div');
-    row.className = 'lv-cfg-row';
-    const idx = document.createElement('span'); idx.className = 'lv-cfg-idx'; idx.textContent = (i + 1);
-    const nm = document.createElement('span'); nm.className = 'lv-cfg-name'; nm.textContent = lv;
-    row.appendChild(idx); row.appendChild(nm);
-    const up = document.createElement('button'); up.className = 'mini-btn'; up.textContent = '↑'; up.disabled = i === 0;
-    up.onclick = function () { moveLevelDraft(i, -1); };
-    const dn = document.createElement('button'); dn.className = 'mini-btn'; dn.textContent = '↓'; dn.disabled = i === levelDraft.length - 1;
-    dn.onclick = function () { moveLevelDraft(i, 1); };
-    const rm = document.createElement('button'); rm.className = 'mini-btn danger'; rm.textContent = '✕';
-    rm.onclick = function () { levelDraft.splice(i, 1); renderLevelConfig(); };
-    row.appendChild(up); row.appendChild(dn); row.appendChild(rm);
-    box.appendChild(row);
-  });
-}
-
-function moveLevelDraft(i, dir) {
-  const j = i + dir;
-  if (j < 0 || j >= levelDraft.length) return;
-  const t = levelDraft[i]; levelDraft[i] = levelDraft[j]; levelDraft[j] = t;
-  renderLevelConfig();
-}
-
-function addLevelDraft() {
-  const inp = document.getElementById('newLevelInput');
-  const v = String(inp.value || '').trim();
-  if (!v) return;
-  if (v.length > 12) return toast('레벨 이름은 12자 이내로.');
-  if (levelDraft.indexOf(v) > -1) return toast('이미 있는 레벨이에요.');
-  levelDraft.push(v);
-  inp.value = '';
-  renderLevelConfig();
-}
-
-async function saveLevels() {
-  const st = document.getElementById('levelCfgStatus');
-  busyShow('레벨 저장 중…');
-  try {
-    LEVELBOARD = await run('setLevels', levelDraft, getMe(), ME.token);
-    levelDraft = (LEVELBOARD.levels || []).slice();
-    busyHide();
-    st.className = 'status ok';
-    st.textContent = '✓ 레벨 ' + levelDraft.length + '단계 저장됨';
-    renderLevelConfig();
-    renderLevelMemberList();
-    renderLevelRanking();
-  } catch (e) {
-    busyHide(false);
-    st.className = 'status err';
-    st.textContent = e.message || e;
-  }
-}
-
-function renderLevelMemberList() {
-  const box = document.getElementById('levelMemberList');
-  if (!box) return;
-  box.innerHTML = '';
-  if (!LEVELBOARD || !(LEVELBOARD.levels || []).length) {
-    box.innerHTML = '<div class="dim" style="font-size:12.5px">레벨을 저장하면 구성원별 완등 입력이 열려요.</div>';
-    return;
-  }
-  const map = levelRowMap_();
-  DATA.members.forEach(function (m) {
-    const r = map[m] || { total: 0, topLevel: '' };
-    const row = document.createElement('div');
-    row.className = 'member-row';
-    const nm = document.createElement('span');
-    nm.className = 'member-name';
-    nm.innerHTML = esc(m) + ' <span class="dim" style="font-weight:400; font-size:12px">' +
-      (r.total ? '· 최고 ' + esc(r.topLevel) + ' · 총 ' + r.total : '· 기록 없음') + '</span>';
-    row.appendChild(nm);
-    const btn = document.createElement('button');
-    btn.className = 'mini-btn';
-    btn.textContent = '완등 입력';
-    btn.onclick = function () { editMemberLevelPrompt(m); };
-    row.appendChild(btn);
-    box.appendChild(row);
-  });
-}
-
-function editMemberLevelPrompt(name) {
-  const levels = (LEVELBOARD && LEVELBOARD.levels) || [];
-  if (!levels.length) return toast('먼저 레벨을 저장하세요.');
-  const cur = (levelRowMap_()[name] && levelRowMap_()[name].counts) || {};
-  modal({
-    title: '🧗 ' + name + ' 완등 기록',
-    message: '레벨별 완등 횟수를 입력하세요. (빈칸/0 = 없음)',
-    fields: levels.map(function (lv) {
-      return { key: lv, label: lv, type: 'number', inputmode: 'numeric',
-               value: cur[lv] != null ? String(cur[lv]) : '' };
-    }),
-    confirmText: '저장',
-    busyText: '저장 중…',
-    onConfirm: async function (v) {
-      const counts = {};
-      levels.forEach(function (lv) { const n = parseInt(v[lv], 10); if (!isNaN(n) && n > 0) counts[lv] = n; });
-      LEVELBOARD = await run('setLevelRecord', name, counts, getMe(), ME.token);
-      renderLevelMemberList();
-      renderLevelRanking();
-      toast('✓ ' + name + ' 완등 기록을 저장했어요.', true);
-    }
-  });
-}
-
-/* 레벨(난이도) 목록 설정 — 누구나(#2). 홈에서 열리는 오버레이. 저장 시 setLevels. */
-function openLevelSetup() {
-  const root = document.getElementById('modalRoot');
-  root.innerHTML = '';
-  let draft = ((LEVELBOARD && LEVELBOARD.levels) || []).slice();
-  const ov = document.createElement('div'); ov.className = 'modal-ov';
-  const card = document.createElement('div'); card.className = 'modal-card';
-  ov.appendChild(card); root.appendChild(ov);
-  ov.onclick = function (e) { if (e.target === ov) root.innerHTML = ''; };
-
-  function setStatus(msg, ok) { const s = card.querySelector('#lsStatus'); s.className = 'status ' + (ok ? 'ok' : 'err'); s.textContent = msg; }
-  async function save() {
-    const btn = card.querySelector('#lsSave'); btn.disabled = true; setStatus('저장 중…', true);
-    try {
-      LEVELBOARD = await run('setLevels', draft, getMe(), ME.token);
-      renderLevelRanking(LEVELBOARD);
-      if (adminLoaded && ME.isAdmin) { levelDraft = (LEVELBOARD.levels || []).slice(); renderLevelConfig(); renderLevelMemberList(); }
-      root.innerHTML = '';
-      toast('✓ 레벨 ' + (LEVELBOARD.levels || []).length + '단계 저장됨', true);
-    } catch (e) { btn.disabled = false; setStatus(e.message || e); }
-  }
-  function render() {
-    card.innerHTML = '<div class="modal-title">🧗 레벨 설정</div>' +
-      '<p class="modal-msg">우리 암장 레벨을 <b>낮은 것부터</b> 순서대로 넣어주세요. 누구나 설정할 수 있어요.</p>' +
-      '<div id="lsList"></div>' +
-      '<div class="field" style="display:flex; gap:8px; margin:6px 0 0">' +
-        '<input type="text" id="lsInput" placeholder="레벨 이름 (예: 흰 / V3)" maxlength="12" autocomplete="off" style="flex:1">' +
-        '<button class="btn2" id="lsAdd" style="width:auto; white-space:nowrap; margin:0">➕</button></div>' +
-      '<div class="status" id="lsStatus"></div>' +
-      '<div class="modal-btns"><button class="btn2" id="lsCancel">닫기</button>' +
-        '<button class="btn" id="lsSave">저장</button></div>';
-    const list = card.querySelector('#lsList');
-    if (!draft.length) list.innerHTML = '<div class="dim" style="font-size:12.5px">아직 레벨이 없어요. 아래에서 추가하세요.</div>';
-    draft.forEach(function (lv, i) {
-      const row = document.createElement('div'); row.className = 'lv-cfg-row';
-      const idx = document.createElement('span'); idx.className = 'lv-cfg-idx'; idx.textContent = i + 1;
-      const nm = document.createElement('span'); nm.className = 'lv-cfg-name'; nm.textContent = lv;
-      const up = document.createElement('button'); up.className = 'mini-btn'; up.textContent = '↑'; up.disabled = i === 0;
-      up.onclick = function () { const t = draft[i]; draft[i] = draft[i - 1]; draft[i - 1] = t; render(); };
-      const dn = document.createElement('button'); dn.className = 'mini-btn'; dn.textContent = '↓'; dn.disabled = i === draft.length - 1;
-      dn.onclick = function () { const t = draft[i]; draft[i] = draft[i + 1]; draft[i + 1] = t; render(); };
-      const rm = document.createElement('button'); rm.className = 'mini-btn danger'; rm.textContent = '✕';
-      rm.onclick = function () { draft.splice(i, 1); render(); };
-      row.appendChild(idx); row.appendChild(nm); row.appendChild(up); row.appendChild(dn); row.appendChild(rm);
-      list.appendChild(row);
-    });
-    const inp = card.querySelector('#lsInput');
-    card.querySelector('#lsAdd').onclick = function () {
-      const v = String(inp.value || '').trim();
-      if (!v) return;
-      if (v.length > 12) return setStatus('레벨 이름은 12자 이내로.');
-      if (draft.indexOf(v) > -1) return setStatus('이미 있는 레벨이에요.');
-      draft.push(v); render(); card.querySelector('#lsInput').focus();
-    };
-    inp.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); card.querySelector('#lsAdd').click(); } };
-    card.querySelector('#lsCancel').onclick = function () { root.innerHTML = ''; };
-    card.querySelector('#lsSave').onclick = save;
-  }
-  render();
-}
-
-// 본인 완등 기록 (홈 — 누구나 가능). 백엔드가 토큰으로 본인만 확인하므로 관리자 검증 없음.
-function editMyLevelPrompt() {
-  const me = getMe();
-  if (!me) return;
-  const levels = (LEVELBOARD && LEVELBOARD.levels) || [];
-  if (!levels.length) return toast('아직 레벨이 등록되지 않았어요.');
-  const cur = (levelRowMap_()[me] && levelRowMap_()[me].counts) || {};
-  modal({
-    title: '🧗 내 완등 기록',
-    message: '레벨별로 완등한 개수를 입력하세요. (빈칸/0 = 없음)',
-    fields: levels.map(function (lv) {
-      return { key: lv, label: lv, type: 'number', inputmode: 'numeric',
-               value: cur[lv] != null ? String(cur[lv]) : '' };
-    }),
-    confirmText: '저장',
-    busyText: '저장 중…',
-    onConfirm: async function (v) {
-      const counts = {};
-      levels.forEach(function (lv) { const n = parseInt(v[lv], 10); if (!isNaN(n) && n > 0) counts[lv] = n; });
-      LEVELBOARD = await run('setMyLevelRecord', counts, me, ME.token);
-      renderLevelRanking();
-      if (adminLoaded && ME.isAdmin) renderLevelMemberList(); // 관리 탭이 열려 있으면 목록도 동기화
-      toast('✓ 내 완등 기록을 저장했어요.', true);
-    }
-  });
-}
-
 /* ==================== 벽화 갤러리 필터 (#22) ==================== */
 function buildGalleryFilters() {
   const gm = document.getElementById('galleryMonth');
@@ -2707,7 +2394,6 @@ function loadAdmin() {
     buildAdminChips();
     buildResetPinSelect();
     renderMemberAdmin();
-    loadLevelAdmin();
   }
 }
 
