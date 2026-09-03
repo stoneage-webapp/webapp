@@ -30,7 +30,8 @@ const GET_ACTIONS = {
   getHallArchive:  { cache: true, fn: function (p) { return getHallArchive(); } },          // #23 역대 우승자
   getSettleStatus: { cache: true, fn: function (p) { return getSettleStatus(p.ym || ''); } }, // #21 정산 현황 (월 지정)
   getVenueStats:   { cache: true, fn: function (p) { return getVenueStats(); } },            // 암장별 방문 통계
-  getCompletionLog:{ cache: true, fn: function (p) { return getCompletionLog(Number(p.limit) || 10); } } // 완료된 모임 최근 기록
+  getCompletionLog:{ cache: true, fn: function (p) { return getCompletionLog(Number(p.limit) || 10); } }, // 완료된 모임 최근 기록
+  getOpenSessions: { cache: true, fn: function (p) { return getOpenSessions(); } }            // 정기 오픈 세션 목록 + 개설 가능 직책
 };
 
 /* ---------- 인증 조회 / 변경 (POST) ---------- */
@@ -79,6 +80,13 @@ const POST_ACTIONS = {
   setAdmins:         { auth: 'requester', bust: true, fn: function (d) { return setAdmins(d.names, d.requester, d.token); } },                // 관리자(부관리자) 목록 설정 (관리자)
   setDormant:        { auth: 'requester', bust: true, fn: function (d) { return setDormant(d.targetName, d.until, d.requester, d.token); } }, // 휴면 설정/해제 (관리자, 최대 3개월)
   setRole:           { auth: 'requester', bust: true, fn: function (d) { return setRole(d.targetName, d.role, d.requester, d.token); } },     // 직책 변경 (관리자)
+
+  // 정기 오픈 세션 (요일+장소 반복, 팀장 등 지정 직책 또는 관리자만 개설)
+  addOpenSession:    { auth: 'requester', bust: true, fn: function (d) { return addOpenSession(d.weekday, d.loc, d.note, d.requester, d.token); } },
+  editOpenSession:   { auth: 'requester', bust: true, fn: function (d) { return editOpenSession(d.id, d.weekday, d.loc, d.note, d.requester, d.token); } },
+  deleteOpenSession: { auth: 'requester', bust: true, fn: function (d) { return deleteOpenSession(d.id, d.requester, d.token); } },
+  setOpenSessionRoles: { auth: 'requester', bust: true, fn: function (d) { return setOpenSessionRoles(d.roles, d.requester, d.token); } }, // 관리자 전용
+
   postNotice:        { auth: 'name', bust: true, fn: function (d) { return postNotice(d.text, d.name, d.token); } },   // #24
   deleteNotice:      { auth: 'name', bust: true, fn: function (d) { return deleteNotice(d.row, d.when, d.name, d.token); } }, // #24
   editNotice:        { auth: 'name', bust: true, fn: function (d) { return editNotice(d.row, d.when, d.text, d.name, d.token); } }, // 공지 수정 (관리자)
@@ -212,6 +220,7 @@ function getInitData() {
   });
   const cert = getCertified_(s);
   const votes = getVotes('');
+  const openSessions = getOpenSessions();
   return {
     members: members,
     support: support,              // { 이름: true/false } — 지원(정산) 대상 여부 (J열)
@@ -232,7 +241,9 @@ function getInitData() {
     notices: getHomeNotices_(),    // 홈 노출: 고정 공지 전부 + 최신 1건
     recent: getRecentActivity_(),  // 최근 24시간 벽화/전당 (홈 "새 소식")
     rsvp: getRsvp_(),              // 확정 모임 참석 확정 { 월: {이름: 'yes'|'no'} }
-    flashOwners: votes.flashOwners
+    flashOwners: votes.flashOwners,
+    openSessions: openSessions.items,      // [{id, weekday(0=일~6=토), loc, note, createdBy, createdAt}]
+    openSessionRoles: openSessions.roles   // 오픈 세션 개설 가능 직책 (기본 ['팀장'])
   };
 }
 

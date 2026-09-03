@@ -2221,13 +2221,14 @@ function renderMemberAdmin() {
 }
 
 /* ---------- 직책 (관리자) ----------
- * 부족심사중 → 조약돌 → 간석기 → 고인돌 (낮은→높은). 부족원 시트 L열.
+ * 부족심사중 → 조약돌 → 간석기 → 고인돌 → 팀장 (낮은→높은). 부족원 시트 L열.
+ * 팀장은 기본적으로 정기 오픈 세션을 열 수 있는 직책(관리 탭에서 변경 가능).
  */
-const ROLE_ICON = { '부족심사중': '🌱', '조약돌': '🪨', '간석기': '🔨', '고인돌': '🗿' };
+const ROLE_ICON = { '부족심사중': '🌱', '조약돌': '🪨', '간석기': '🔨', '고인돌': '🗿', '팀장': '🧭' };
 
 function roleOf_(name) {
   const roles = DATA.roles || {};
-  const list = DATA.roleList || ['부족심사중', '조약돌', '간석기', '고인돌'];
+  const list = DATA.roleList || ['부족심사중', '조약돌', '간석기', '고인돌', '팀장'];
   const r = roles[name];
   return (list.indexOf(r) > -1) ? r : list[0];
 }
@@ -2238,7 +2239,7 @@ function roleBadge_(name) {
 }
 
 function rolePrompt(name) {
-  const list = DATA.roleList || ['부족심사중', '조약돌', '간석기', '고인돌'];
+  const list = DATA.roleList || ['부족심사중', '조약돌', '간석기', '고인돌', '팀장'];
   const cur = roleOf_(name);
   modal({
     title: '🏷️ 직책 변경 — ' + name,
@@ -2394,6 +2395,7 @@ function loadAdmin() {
     buildSupportChips();
     buildSettlerChips();
     buildAdminChips();
+    buildOpenSessionRoleChips();
     buildResetPinSelect();
     renderMemberAdmin();
   }
@@ -2614,6 +2616,42 @@ async function saveAdmins() {
     busyHide();
     st.className = 'status ok';
     st.textContent = '✓ 저장됨: ' + res.admins.join(', ') + ' (반영은 각자 다음 로그인부터)';
+  } catch (e) {
+    busyHide(false);
+    st.className = 'status err';
+    st.textContent = e.message || e;
+  }
+}
+
+/* ---------- 정기 오픈 세션 개설 가능 직책 (관리자) ---------- */
+function buildOpenSessionRoleChips() {
+  const box = document.getElementById('openSessionRoleChips');
+  if (!box) return;
+  box.innerHTML = '';
+  const cur = DATA.openSessionRoles || ['팀장'];
+  const list = DATA.roleList || ['부족심사중', '조약돌', '간석기', '고인돌', '팀장'];
+  list.forEach(function (r) {
+    const c = document.createElement('span');
+    c.className = 'chip' + (cur.indexOf(r) > -1 ? ' on' : '');
+    c.dataset.role = r;
+    c.textContent = (ROLE_ICON[r] || '') + ' ' + r;
+    c.onclick = function () { c.classList.toggle('on'); };
+    box.appendChild(c);
+  });
+}
+
+async function saveOpenSessionRoles() {
+  const roles = Array.prototype.slice.call(document.querySelectorAll('#openSessionRoleChips .chip.on'))
+    .map(function (c) { return c.dataset.role; });
+  const st = document.getElementById('openSessionRoleStatus');
+  if (!roles.length) { st.className = 'status err'; st.textContent = '최소 1개 직책을 선택하세요.'; return; }
+  busyShow('저장 중…');
+  try {
+    const res = await run('setOpenSessionRoles', roles, getMe(), ME.token);
+    DATA.openSessionRoles = res.roles;
+    busyHide();
+    st.className = 'status ok';
+    st.textContent = '✓ 저장됨: ' + res.roles.join(', ');
   } catch (e) {
     busyHide(false);
     st.className = 'status err';

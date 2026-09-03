@@ -53,10 +53,15 @@
       hall: [{ by: '박도윤', title: '오버행 돌파', when: '오늘 08:40' }]
     },
     dormant: { '박도윤': '2026-11-30' }, // { 이름: 'yyyy-MM-dd' } — 휴면 중 (K열). 갤러리 투명도 미리보기용
-    roles: { '김광훈': '고인돌', '박도윤': '조약돌', '이희주': '간석기', '정민재': '부족심사중', '최서연': '조약돌' },
-    roleList: ['부족심사중', '조약돌', '간석기', '고인돌'],
+    roles: { '김광훈': '고인돌', '박도윤': '조약돌', '이희주': '팀장', '정민재': '부족심사중', '최서연': '조약돌' },
+    roleList: ['부족심사중', '조약돌', '간석기', '고인돌', '팀장'],
     rsvp: { '2026-06': { '김광훈': 'yes', '이희주': 'no' } }, // 확정 6월 모임 참석 확정 (목)
-    flashOwners: { '7/19 14:00 @ 클라이밍파크': '최서연' }
+    flashOwners: { '7/19 14:00 @ 클라이밍파크': '최서연' },
+    // 정기 오픈 세션 (요일+장소 매주 반복). weekday: 0=일~6=토
+    openSessions: [
+      { id: 'os1', weekday: 3, loc: '더클라임 강남', note: '초보 환영', createdBy: '이희주', createdAt: '2026-07-01T00:00:00.000Z' }
+    ],
+    openSessionRoles: ['팀장']
   };
 
   const HALL = {
@@ -293,6 +298,33 @@
           return memberSnap();
         })(),
         setSupports: (function () { const on = Array.isArray(args[0]) ? args[0] : []; const s = {}; MEMBERS.forEach(function (m) { s[m] = on.indexOf(m) > -1; }); return { support: s }; })(),
+        // 정기 오픈 세션 — DATA를 실제로 변형하므로 fn 가드 필수 (flash 계열과 동일 패턴)
+        getOpenSessions: { items: DATA.openSessions, roles: DATA.openSessionRoles },
+        addOpenSession: (function () {
+          if (fn !== 'addOpenSession') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+          DATA.openSessions.push({
+            id: 'os' + (DATA.openSessions.length + 1), weekday: Number(args[0]),
+            loc: String(args[1] || '').trim(), note: String(args[2] || '').trim(),
+            createdBy: args[3], createdAt: new Date().toISOString()
+          });
+          return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+        })(),
+        editOpenSession: (function () {
+          if (fn !== 'editOpenSession') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+          const it = DATA.openSessions.find(function (x) { return x.id === args[0]; });
+          if (it) { it.weekday = Number(args[1]); it.loc = String(args[2] || '').trim(); it.note = String(args[3] || '').trim(); }
+          return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+        })(),
+        deleteOpenSession: (function () {
+          if (fn !== 'deleteOpenSession') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+          DATA.openSessions = DATA.openSessions.filter(function (x) { return x.id !== args[0]; });
+          return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+        })(),
+        setOpenSessionRoles: (function () {
+          if (fn !== 'setOpenSessionRoles') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+          if (Array.isArray(args[0]) && args[0].length) DATA.openSessionRoles = args[0].slice();
+          return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+        })(),
         voteHall: HALL, deleteHallEntry: HALL, finalizeHallEntry: HALL,
         deleteProof: { ok: true },
         startUpload: 'mock://upload', startHallUpload: 'mock://upload',

@@ -22,7 +22,8 @@ const API_GET = {
   getHallArchive:  [],
   getSettleStatus: ['ym'],
   getVenueStats:   [],
-  getCompletionLog: ['limit']
+  getCompletionLog: ['limit'],
+  getOpenSessions: []
 };
 const API_POST = {
   loginWithPin:      ['name', 'pin'],
@@ -53,6 +54,10 @@ const API_POST = {
   setAdmins:         ['names', 'requester', 'token'],
   setDormant:        ['targetName', 'until', 'requester', 'token'],
   setRole:           ['targetName', 'role', 'requester', 'token'],
+  addOpenSession:    ['weekday', 'loc', 'note', 'requester', 'token'],
+  editOpenSession:   ['id', 'weekday', 'loc', 'note', 'requester', 'token'],
+  deleteOpenSession: ['id', 'requester', 'token'],
+  setOpenSessionRoles: ['roles', 'requester', 'token'],
   getBudget:         ['name', 'token'],
   addExpense:        ['amount', 'note', 'name', 'token'],
   deleteBudgetItem:  ['row', 'when', 'name', 'token'],

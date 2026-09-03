@@ -24,6 +24,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `budget.gs` | 부족 예산 — 정산 적립(자동)·사용 이력. `예산` 시트. 정산 담당자/관리자 전용 |
 | `push.gs` | 푸시 알림(OneSignal) — 공지/번개 즉시 발송, D-1·번개 인증 시간 트리거 |
 | `votes.gs` | 정기공격 고정 일정(관리자 지정, 투표 없음) · 자연재해(번개) 투표 · 참석확정(RSVP) · 완료 처리 |
+| `opensessions.gs` | 정기 오픈 세션(요일+장소 매주 반복) — 개설/수정/삭제, 개설 가능 직책 설정(관리자). Script Properties에만 저장(시트 없음) |
 | `photos.gs` | Drive 업로드(청크), Photos 업로드, 벽화 갤러리, 사진 삭제 |
 | `hall.gs` | 명예의전당 출품/투표/영상 삭제 |
 | `settle.gs` | 월별 인증 정산(시트 메뉴/웹), 월 파싱, 인증현황 집계(열=월 누적)·정산 취소·출석 통계(`getStats`), 부족원 오름차순 정렬(`sortNames_`) |
@@ -49,7 +50,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 
 | action | params | 반환(data) |
 |---|---|---|
-| `getInitData` | — | `{ members, support, months, raidSchedule, disaster, certified, month, shareUrl, notionUrl, openchatUrl, confirmed, admins, settlers, notices, flashOwners }` |
+| `getInitData` | — | `{ members, support, months, raidSchedule, disaster, certified, month, shareUrl, notionUrl, openchatUrl, confirmed, admins, settlers, notices, flashOwners, openSessions, openSessionRoles }` |
 | `getVotes` | `month`(선택, `'2026-07'`) | `{ months, raidSchedule, disaster, confirmed, flashOwners }` — month 지정 시 해당 월만 |
 | `getGallery` | `limit`(기본12), `offset`(기본0), `month`(선택), `person`(선택) | `{ items:[{when,actDate,loc,people,by,fileId,link}], hasMore }` — 필터 후 페이징 |
 | `getHallData` | — | `{ ym, entries:[...], winner, winnerMonth }` |
@@ -57,6 +58,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `getSettleStatus` | `ym`(선택, 기본 이번 달) | `{ ym, months:[존재하는 월들], rows:[{name,status}] }` — 인증현황 시트, 지정한 월 한 열만 |
 | `getVenueStats` | — | `{ total:[{loc,count}], thisMonth:[{loc,count}], month }` — 암장별 방문 집계 |
 | `getCompletionLog` | `limit`(기본10) | `{ items:[{when,kind,month,date,loc,people,by}] }` — `완료기록` 시트 최신순. 정기공격 무산 종료는 `date`가 `'(모임 없음)'` |
+| `getOpenSessions` | — | `{ items:[{id,weekday,loc,note,createdBy,createdAt}], roles:[개설 가능 직책] }` — `weekday` 0=일~6=토, 매주 반복 |
 
 > - `driveApiKey`는 익명 `getInitData`에서 **제거됨** → `loginWithPin`/`changePin` 응답으로 이동.
 > - `certNudge`도 같은 이유로 로그인 응답 전용: "이번 달 완료 처리된 모임에 참여했는데 아직 인증 안 함" 여부를 **본인 것만** 알려준다 (`needsCertNudge_`, votes.gs). 다른 사람의 인증 여부를 노출하지 않기 위해 `getInitData` 등 익명 GET에는 포함하지 않는다.
@@ -101,7 +103,11 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `deleteMember` | `targetName, requester, token` | `{ members, support, settlers }` — 관리자 전용. 행 전체 삭제. 관리자 이름은 불가 |
 | `setAdmins` | `names(배열), requester, token` | `{ admins }` — 관리자 전용. Script Property `ADMINS` 설정(부관리자). 로스터 이름만, 최소 1명. 반영은 다음 실행부터 |
 | `setDormant` | `targetName, until('yyyy-MM-dd' 또는 ''), requester, token` | 멤버 스냅샷 — 관리자 전용. **휴면**(부족원 K열). 최대 3개월, 종료일 경과 시 자동 복귀. 빈 값=즉시 해제 |
-| `setRole` | `targetName, role, requester, token` | 멤버 스냅샷 — 관리자 전용. **직책**(부족원 L열): 부족심사중/조약돌/간석기/고인돌 |
+| `setRole` | `targetName, role, requester, token` | 멤버 스냅샷 — 관리자 전용. **직책**(부족원 L열): 부족심사중/조약돌/간석기/고인돌/팀장 |
+| `addOpenSession` | `weekday(0~6), loc, note, requester, token` | `getOpenSessions()` 결과 — 관리자 또는 `open_session_roles`에 포함된 직책(기본 팀장)만 개설 |
+| `editOpenSession` | `id, weekday, loc, note, requester, token` | `getOpenSessions()` 결과 — 개설자 또는 관리자만 |
+| `deleteOpenSession` | `id, requester, token` | `getOpenSessions()` 결과 — 개설자 또는 관리자만 |
+| `setOpenSessionRoles` | `roles(배열), requester, token` | `getOpenSessions()` 결과 — 관리자 전용. 오픈 세션 개설 가능 직책 설정(Script Property `open_session_roles`) |
 | `getBudget` | `name, token` | `{ balance, credit, spent, perPerson, items:[{when,kind,amount,note,by,month,row}] }` — **정산 담당자/관리자만** |
 | `addExpense` | `amount, note, name, token` | `getBudget()` 결과 — 예산 사용 등록 (정산 담당자/관리자) |
 | `deleteBudgetItem` | `row, when, name, token` | `getBudget()` 결과 — 예산 기록 삭제. `when` 대조 |
@@ -139,6 +145,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 로그인 | `loginWithPin`, `changePin` |
 | 정기공격(고정 일정) | `setRaidDate`(관리자), `setRsvp`(참석확정), `completeRaid`(관리자) |
 | 번개(자연재해 투표) | `toggleVote`, `addFlash`, `deleteFlash`, `editFlash`, `completeFlash` |
+| 정기 오픈 세션 (요일+장소 반복) | `getOpenSessions`, `addOpenSession`/`editOpenSession`/`deleteOpenSession`(개설자·관리자). 개설 가능 직책 설정은 관리 탭의 `setOpenSessionRoles`(관리자) |
 | 사진 인증 | `startUpload` → `uploadChunk`/`checkUploadStatus` → `finalizeProof` |
 | 벽화 갤러리 | `getGallery`(월/사람 필터), `deleteProof` |
 | 명예의전당 | `getHallData`, `getHallArchive`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |
