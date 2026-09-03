@@ -50,7 +50,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 
 | action | params | 반환(data) |
 |---|---|---|
-| `getInitData` | — | `{ members, support, months, raidSchedule, disaster, certified, month, shareUrl, notionUrl, openchatUrl, confirmed, admins, settlers, notices, flashOwners, openSessions, openSessionRoles }` |
+| `getInitData` | — | `{ members, support, months, raidSchedule, disaster, certified, month, shareUrl, notionUrl, openchatUrl, confirmed, admins, settlers, notices, flashOwners, openSessions, openSessionRoles, raidLocations }` |
 | `getVotes` | `month`(선택, `'2026-07'`) | `{ months, raidSchedule, disaster, confirmed, flashOwners }` — month 지정 시 해당 월만 |
 | `getGallery` | `limit`(기본12), `offset`(기본0), `month`(선택), `person`(선택) | `{ items:[{when,actDate,loc,people,by,fileId,link}], hasMore }` — 필터 후 페이징 |
 | `getHallData` | — | `{ ym, entries:[...], winner, winnerMonth }` |
@@ -87,6 +87,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `editFlash` | `dateText, newDate, newLoc, requester, token` | 자연재해 투표 배열 — 날짜/위치 라벨만 변경(투표자 유지). 등록자 또는 관리자 |
 | `completeFlash` | `dateText, requester, token` | 자연재해 투표 배열 — 완료 처리(등록자 또는 관리자). `완료기록` 시트에 기록 후 목록에서 제거 |
 | `setRaidDate` | `month, date, loc, note, requester, token` | `raidSchedule` 배열 — **관리자 전용**. 그 달 정기공격 날짜/장소/설명 지정. `date` 빈 값이면 기본값(둘째 주 금요일+로테이션)으로 복귀 |
+| `setRaidLocations` | `locations(배열), requester, token` | `{ locations }` — 관리자 전용. 위치 로테이션 순서 설정(Script Property `raid_locations`). `setAdmins`와 동일하게 **반영은 다음 요청부터** |
 | `completeRaid` | `month, requester, token, cancelled?` | `raidSchedule` 배열 — 관리자 전용. `cancelled` 없으면 "완료"(참여자=그 달 RSVP 'yes' 명단), `true`면 "모임 없음"으로 종료. `완료기록` 시트에 기록 후 목록에서 제외 |
 | `startUpload` | `fileName, mimeType, fileSize, ym, **name, token**` | Drive resumable 업로드 URL(문자열) |
 | `startHallUpload` | `fileName, mimeType, fileSize, **name, token**` | Drive resumable 업로드 URL(문자열) |

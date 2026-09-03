@@ -2509,6 +2509,81 @@ function loadAdmin() {
     buildOpenSessionRoleChips();
     buildResetPinSelect();
     renderMemberAdmin();
+    raidLocDraft = (DATA.raidLocations || []).slice();
+    renderRaidLocConfig();
+  }
+}
+
+/* ---------- 정기공격 위치 로테이션 순서 편집 (관리자) ----------
+ * 저장 시 즉시 반영은 안 되고(다음 요청부터, setAdmins와 동일 패턴) getInitData를 다시 받아 갱신한다.
+ */
+let raidLocDraft = [];
+
+function renderRaidLocConfig() {
+  const box = document.getElementById('raidLocConfig');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!raidLocDraft.length) {
+    box.innerHTML = '<div class="dim" style="font-size:12.5px">위치가 없어요. 아래에서 추가하세요.</div>';
+    return;
+  }
+  raidLocDraft.forEach(function (loc, i) {
+    const row = document.createElement('div');
+    row.className = 'loc-cfg-row';
+    row.innerHTML = '<span class="loc-cfg-idx">' + (i + 1) + '</span><span class="loc-cfg-name">' + esc(loc) + '</span>';
+    const up = document.createElement('button');
+    up.className = 'mini-btn'; up.textContent = '▲'; up.disabled = i === 0;
+    up.onclick = function () { moveRaidLocDraft(i, -1); };
+    const dn = document.createElement('button');
+    dn.className = 'mini-btn'; dn.textContent = '▼'; dn.disabled = i === raidLocDraft.length - 1;
+    dn.onclick = function () { moveRaidLocDraft(i, 1); };
+    const rm = document.createElement('button');
+    rm.className = 'mini-btn danger'; rm.textContent = '삭제';
+    rm.onclick = function () { raidLocDraft.splice(i, 1); renderRaidLocConfig(); };
+    row.appendChild(up); row.appendChild(dn); row.appendChild(rm);
+    box.appendChild(row);
+  });
+}
+
+function moveRaidLocDraft(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= raidLocDraft.length) return;
+  const tmp = raidLocDraft[i]; raidLocDraft[i] = raidLocDraft[j]; raidLocDraft[j] = tmp;
+  renderRaidLocConfig();
+}
+
+function addRaidLocDraft() {
+  const inp = document.getElementById('newRaidLocInput');
+  const v = inp.value.trim();
+  if (!v) return;
+  if (v.length > 20) return toast('위치 이름은 20자 이내로.');
+  if (raidLocDraft.indexOf(v) > -1) return toast('이미 있는 위치예요.');
+  raidLocDraft.push(v);
+  inp.value = '';
+  renderRaidLocConfig();
+}
+
+async function saveRaidLocations() {
+  const st = document.getElementById('raidLocStatus');
+  if (!raidLocDraft.length) { st.className = 'status err'; st.textContent = '최소 1개 위치가 필요해요.'; return; }
+  busyShow('저장 중…');
+  try {
+    const res = await run('setRaidLocations', raidLocDraft, getMe(), ME.token);
+    DATA.raidLocations = res.locations;
+    raidLocDraft = res.locations.slice();
+    // 이번 요청엔 미반영(다음 요청부터) — 최신 일정을 바로 보여주려면 초기 데이터를 다시 받는다.
+    const fresh = await run('getInitData');
+    DATA.raidSchedule = fresh.raidSchedule;
+    busyHide();
+    st.className = 'status ok';
+    st.textContent = '✓ 저장됨: ' + res.locations.join(' → ');
+    renderRaidLocConfig();
+    renderVotes();
+    renderHome();
+  } catch (e) {
+    busyHide(false);
+    st.className = 'status err';
+    st.textContent = e.message || e;
   }
 }
 
