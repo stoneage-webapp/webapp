@@ -285,6 +285,18 @@ textarea:focus { outline: none; border-color: var(--ember); }
 .recent-box .rec-item:first-of-type { border-top: none; }
 .recent-box .rec-item .rec-when { margin-left: auto; font-size: 11px; color: var(--ink-dim); white-space: nowrap; }
 
+/* 홈 "이번 주 일정" 요약 (정기공격/오픈세션/번개) */
+.week-summary {
+  background: var(--stone); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 11px 13px; margin-bottom: 12px; cursor: pointer;
+}
+.week-summary .ws-head { font-size: 13px; font-weight: 800; color: var(--ember); margin-bottom: 7px; }
+.week-summary .ws-item {
+  font-size: 13px; color: var(--ink); padding: 5px 0;
+  border-top: 1px solid rgba(255,255,255,.05);
+}
+.week-summary .ws-item:first-of-type { border-top: none; }
+
 /* 모임 D-1 리마인더 강조 */
 .confirm-banner.reminder { box-shadow: 0 0 0 2px var(--ember) inset; background: #3a2a18; }
 .confirm-banner .remind { font-size: 15px; font-weight: 800; color: var(--ember); margin-bottom: 6px; }

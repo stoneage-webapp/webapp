@@ -768,6 +768,54 @@ function renderFlashReminder() {
   el.firstChild.onclick = function () { setTab('photo'); };
 }
 
+// 'M/d(요일)' — 이번 주 일정 요약 카드 전용 짧은 날짜 표기
+function fmtWeekDate_(d) {
+  const wd = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+  return (d.getMonth() + 1) + '/' + d.getDate() + '(' + wd + ')';
+}
+
+/* 이번 주(오늘~+6일) 정기공격·정기 오픈 세션·번개를 한 카드에 모아 보여준다. 탭하면 일정 탭으로 이동. */
+function renderWeekSummary() {
+  const el = document.getElementById('homeWeekSummary');
+  if (!el) return;
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const items = []; // {d: Date, html}
+
+  (DATA.raidSchedule || []).forEach(function (g) {
+    const d = parseDateClient(g.date, g.month);
+    if (!d) return;
+    const diff = Math.round((d - start) / 86400000);
+    if (diff >= 0 && diff <= 6) {
+      items.push({ d: d, html: '⚔️ ' + fmtWeekDate_(d) + ' 정기공격' + (g.loc ? ' @ ' + esc(g.loc) : '') });
+    }
+  });
+  (DATA.disaster || []).forEach(function (r) {
+    if (!r.dateInfo) return;
+    const d = new Date(r.dateInfo.iso + 'T00:00:00');
+    const diff = Math.round((d - start) / 86400000);
+    if (diff >= 0 && diff <= 6) {
+      items.push({ d: d, html: '⚡ ' + fmtWeekDate_(d) + ' 번개' + (r.loc ? ' @ ' + esc(r.loc) : '') });
+    }
+  });
+  const openByWeekday = {};
+  (DATA.openSessions || []).forEach(function (s) {
+    (openByWeekday[s.weekday] = openByWeekday[s.weekday] || []).push(s);
+  });
+  for (let i = 0; i <= 6; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    (openByWeekday[d.getDay()] || []).forEach(function (s) {
+      items.push({ d: d, html: '🧭 ' + fmtWeekDate_(d) + ' 오픈세션 @ ' + esc(s.loc) });
+    });
+  }
+
+  items.sort(function (a, b) { return a.d - b.d; });
+  if (!items.length) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="week-summary"><div class="ws-head">🗓️ 이번 주 일정</div>' +
+    items.map(function (it) { return '<div class="ws-item">' + it.html + '</div>'; }).join('') + '</div>';
+  el.querySelector('.week-summary').onclick = function () { setTab('schedule'); };
+}
+
 /* 최근 24시간 벽화/전당 (#6 새 소식) — 하루 지나면 백엔드에서 빠지므로 자동으로 사라짐 */
 function renderHomeRecent() {
   const el = document.getElementById('homeRecent');
@@ -807,6 +855,7 @@ function renderHome() {
   renderDday();
   renderMySummary();
   renderFlashReminder();
+  renderWeekSummary();
   renderHomeRecent();
   renderHomeNotices();
   updateNoticeBadge();
