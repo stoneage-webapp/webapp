@@ -15,6 +15,7 @@
 ## 발송 시점
 - **새 공지** 등록 (`postNotice`) → 전체
 - **번개 열림** (`addFlash`) → 전체
+- **정기 오픈 세션 개설** (`addOpenSession`) → 전체
 - **모임 D-1** (`pushDailyReminders_`, 매일 10시경) → 전체
 - **번개 시각 직후 인증 리마인더** (`pushFlashCertCheck_`, 매시간) → 그 번개 참여자(external_id)
 
