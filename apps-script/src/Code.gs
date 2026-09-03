@@ -49,17 +49,14 @@ const POST_ACTIONS = {
     return getNotices(Number(d.limit) || 20);
   } },
 
-  // 투표
-  toggleVote:        { auth: 'voter',     bust: true, fn: function (d) { return toggleVote(d.category, d.dateText, d.voter, d.token, d.month); } },
+  // 투표 (자연재해만 — 정기공격은 고정 일정, setRaidDate 참고)
+  toggleVote:        { auth: 'voter',     bust: true, fn: function (d) { return toggleVote(d.dateText, d.voter, d.token); } },
   addFlash:          { auth: 'creator',   bust: true, fn: function (d) { return addFlash(d.dateText, d.loc, d.creator, d.token); } },
   deleteFlash:       { auth: 'requester', bust: true, fn: function (d) { return deleteFlash(d.dateText, d.requester, d.token); } },
   editFlash:         { auth: 'requester', bust: true, fn: function (d) { return editFlash(d.dateText, d.newDate, d.newLoc, d.requester, d.token); } },
   completeFlash:     { auth: 'requester', bust: true, fn: function (d) { return completeFlash(d.dateText, d.requester, d.token); } },
-  completeRaid:      { auth: 'requester', bust: true, fn: function (d) { return completeRaid(d.month, d.requester, d.token); } },
-  confirmDate:       { bust: true, fn: function (d) { return confirmDate(d.month, d.dateText, d.loc, d.name, d.pin, d.note); } }, // 관리자 PIN은 함수 내부 검증
-  editRaidOption:    { auth: 'requester', bust: true, fn: function (d) { return editRaidOption(d.month, d.dateText, d.newDate, d.newLoc, d.requester, d.token); } },
-  deleteRaidOption:  { auth: 'requester', bust: true, fn: function (d) { return deleteRaidOption(d.month, d.dateText, d.requester, d.token); } },
-  addRaidOption:     { auth: 'requester', bust: true, fn: function (d) { return addRaidOption(d.month, d.dateText, d.loc, d.requester, d.token); } }, // 후보 추가 (관리자)
+  completeRaid:      { auth: 'requester', bust: true, fn: function (d) { return completeRaid(d.month, d.requester, d.token, d.cancelled); } },
+  setRaidDate:       { auth: 'requester', bust: true, fn: function (d) { return setRaidDate(d.month, d.date, d.loc, d.note, d.requester, d.token); } }, // 정기공격 고정 일정 지정 (관리자)
   setRsvp:           { auth: 'name', bust: true, fn: function (d) { return setRsvp(d.month, d.status, d.name, d.token); } }, // 참석 확정(RSVP)
 
   // 업로드 (요청자 토큰 필수 — 익명 업로드 차단)
@@ -225,9 +222,9 @@ function getInitData() {
     dormant: dormant,              // { 이름: 'yyyy-MM-dd' } — 휴면 중인 사람만 (K열, 만료 시 자동 제외)
     roles: roles,                  // { 이름: 직책 } — L열 (빈칸이면 부족심사중)
     roleList: ROLES,               // 직책 단계 (낮은→높은)
-    months: votes.months,          // 존재하는 투표 월 목록 (필터 드롭다운용)
-    raidMonths: votes.raidMonths,  // [{month, deadline, closed, confirmed, options:[{date,dateInfo,voters}]}]
-    disaster: votes.disaster,      // [{date, loc, dateInfo, voters}]
+    months: votes.months,            // 존재하는 일정 월 목록 (필터 드롭다운용)
+    raidSchedule: votes.raidSchedule, // [{month, date, loc, note, isOverride, dateInfo}] — 정기공격 고정 일정(투표 없음)
+    disaster: votes.disaster,        // [{date, loc, dateInfo, voters}]
     certified: cert.map,           // { 이름: true } — 이번 달 사진 인증 완료자
     month: cert.ym,                // 'yyyy-MM'
     shareUrl: CONFIG.PHOTOS_SHARE_URL,

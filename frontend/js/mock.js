@@ -15,7 +15,6 @@
   };
   const now = new Date();
   const ym = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2);
-  const d1 = ym + '-16', d2 = ym + '-23';
 
   // 공지: 최신순. pinned=고정. 홈은 "고정 전부 + 최신 1건"만 노출. ts=등록시각(ms, 새공지 뱃지용)
   const NOTICES = [
@@ -34,14 +33,9 @@
   const DATA = {
     members: MEMBERS,
     months: ['2026-06', ym],
-    raidMonths: [
-      { month: '2026-06', deadline: '2026-06-05', closed: true, confirmed: { date: '2026-06-18', loc: '클라이밍파크', note: '' },
-        options: [{ date: '2026-06-18', loc: '클라이밍파크', dateInfo: DI('2026-06-18', ''), voters: ['김광훈'] }] },
-      { month: ym, deadline: ym + '-10', closed: false, confirmed: null,
-        options: [
-          { date: '7/16(수) 20:00', loc: '더클라임 강남', dateInfo: DI(d1, '20:00'), voters: ['김광훈', '이희주'] },
-          { date: '7/23(수) 20:00', loc: '클라이밍파크 사당', dateInfo: DI(d2, '20:00'), voters: ['박도윤'] }
-        ] }
+    // 정기공격은 더 이상 투표하지 않음 — 월마다 고정 일정 하나(기본값: 둘째 주 금요일 + 위치 로테이션, isOverride=관리자 지정 여부)
+    raidSchedule: [
+      { month: ym, date: ym.slice(5, 7) + '/17 20:00', loc: '사당', note: '', isOverride: false, dateInfo: DI(ym + '-17', '20:00') }
     ],
     disaster: [
       { date: '7/19 14:00 @ 클라이밍파크', loc: '클라이밍파크', dateInfo: DI(ym + '-19', '14:00'), voters: ['최서연'] }
@@ -203,7 +197,7 @@
         getCompletionLog: { items: COMPLETION_LOG.slice().reverse() },
         loginWithPin: { name: args[0], token: 'mock-token', isAdmin: args[0] === '김광훈', driveApiKey: '', certNudge: certNudgeFor(args[0]) },
         changePin: { name: args[0], token: 'mock-token', isAdmin: args[0] === '김광훈', driveApiKey: '', certNudge: certNudgeFor(args[0]) },
-        toggleVote: { date: args[1], voters: [args[2]] },
+        toggleVote: { date: args[0], voters: [args[1]] }, // 자연재해 전용 — (dateText, voter, token)
         addFlash: DATA.disaster, deleteFlash: DATA.disaster,
         // T의 모든 필드는 fn 과 무관하게 매 호출마다 즉시 평가되므로(아래 목데이터 조회용 IIFE들과 동일 구조),
         // DATA를 실제로 변형하는 아래 세 액션은 반드시 fn 가드로 감싸 다른 액션 호출 시 오작동을 막는다.
@@ -226,38 +220,30 @@
           return DATA.disaster;
         })(),
         completeRaid: (function () {
-          if (fn !== 'completeRaid') return DATA.raidMonths;
-          const idx = DATA.raidMonths.findIndex(function (x) { return x.month === args[0]; });
-          if (idx > -1) DATA.raidMonths.splice(idx, 1);
-          return DATA.raidMonths;
+          if (fn !== 'completeRaid') return DATA.raidSchedule;
+          const idx = DATA.raidSchedule.findIndex(function (x) { return x.month === args[0]; });
+          if (idx > -1) DATA.raidSchedule.splice(idx, 1);
+          return DATA.raidSchedule;
         })(),
-        editRaidOption: (function () {
-          if (fn !== 'editRaidOption') return DATA.raidMonths;
-          const g = DATA.raidMonths.find(function (x) { return x.month === args[0]; });
-          if (g) {
-            const o = g.options.find(function (x) { return x.date === args[1]; });
-            if (o) { o.date = args[2]; o.loc = args[3]; o.dateInfo = null; } // 실제 백엔드는 새 날짜를 dateInfo_로 재파싱
+        // 관리자: 그 달 정기공격 날짜/장소/설명 지정 — (month, date, loc, note, requester, token)
+        setRaidDate: (function () {
+          if (fn !== 'setRaidDate') return DATA.raidSchedule;
+          const month = args[0], date = String(args[1] || '').trim(),
+            loc = String(args[2] || '').trim(), note = String(args[3] || '').trim();
+          let g = DATA.raidSchedule.find(function (x) { return x.month === month; });
+          if (!g) { g = { month: month, date: '', loc: '', note: '', isOverride: false, dateInfo: null }; DATA.raidSchedule.push(g); }
+          if (date) {
+            g.date = date; g.loc = loc; g.note = note; g.isOverride = true;
+            // 날짜는 'M/d HH:mm' 같은 자유 서식 — 실제 백엔드(dateInfo_)처럼 월 힌트로 연도 보정해 파싱
+            const d = (typeof parseDateClient === 'function') ? parseDateClient(date, month) : null;
+            const tm = date.match(/(\d{1,2}):(\d{2})/);
+            g.dateInfo = d ? DI(d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2),
+              tm ? tm[0] : null) : null;
+          } else {
+            g.isOverride = false; // 실제 백엔드는 기본값(둘째 주 금요일+로테이션)으로 재계산하지만 mock은 마지막 값 유지
           }
-          return DATA.raidMonths;
+          return DATA.raidSchedule;
         })(),
-        deleteRaidOption: (function () {
-          if (fn !== 'deleteRaidOption') return DATA.raidMonths;
-          const g = DATA.raidMonths.find(function (x) { return x.month === args[0]; });
-          if (g) { const i = g.options.findIndex(function (x) { return x.date === args[1]; }); if (i > -1) g.options.splice(i, 1); }
-          return DATA.raidMonths;
-        })(),
-        addRaidOption: (function () {
-          if (fn !== 'addRaidOption') return DATA.raidMonths;
-          const month = args[0], dateText = args[1], loc = args[2] || '';
-          let g = DATA.raidMonths.find(function (x) { return x.month === month; });
-          if (!g) { g = { month: month, deadline: '', closed: false, confirmed: null, options: [] }; DATA.raidMonths.push(g); }
-          if (!g.options.some(function (o) { return o.date === dateText; })) {
-            const iso = (String(dateText).match(/\d{4}-\d{2}-\d{2}/) || [month + '-01'])[0];
-            g.options.push({ date: dateText, loc: loc, dateInfo: DI(iso, ''), voters: [] });
-          }
-          return DATA.raidMonths;
-        })(),
-        confirmDate: DATA.raidMonths,
         // 공지: 등록/삭제/고정 모두 { items(전체), home(고정+최신1) } 반환
         postNotice: (function () {
           if (fn !== 'postNotice') return { items: NOTICES.slice(), home: homeNotices() };
