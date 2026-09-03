@@ -958,26 +958,73 @@ function renderCalendar() {
   html += '</div>';
   el.innerHTML = html;
 
-  // 날짜 탭 → 해당 섹션/카드로 스크롤. 아무 일정도 없으면 그 날짜로 번개 열기 제안.
+  // 날짜 탭 → 그 날의 일정을 모달로 보여준다 (정기공격/오픈세션/번개 모두, 없으면 번개 열기 제안).
   el.querySelectorAll('.cal-day[data-iso]').forEach(function (c) {
-    c.onclick = function () {
-      const iso = c.dataset.iso;
-      const m = marks[iso] || {};
-      if (m.flash) {
-        setTimeout(function () {
-          const card = Array.prototype.find.call(document.querySelectorAll('#disasterSection .vote-card .date'),
-            function (e) { return (e.textContent.match(/\d{4}-\d{2}-\d{2}/) || [''])[0] === iso; });
-          if (card) card.closest('.vote-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 30);
-      } else if (m.confirmed) {
-        document.getElementById('raidSection').scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } else if (m.open) {
-        document.getElementById('openSessionSection').scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } else {
-        openFlashPrompt(iso);
-      }
-    };
+    c.onclick = function () { openDayModal(c.dataset.iso); };
   });
+}
+
+/* 날짜 하나를 탭했을 때 그 날의 정기공격/오픈세션/번개를 모아 모달로 보여준다.
+ * 카드 안의 버튼(수정/삭제/완료/RSVP/투표 등)은 그대로 동작 — 성공 시 자체 모달을 새로 띄우는
+ * 액션(수정/삭제/완료 등)은 modal()이 #modalRoot를 통째로 비우면서 자연스럽게 이 창을 대체하고,
+ * RSVP·투표 토글처럼 별도 모달 없이 바로 끝나는 액션은 클릭 직후 이 창을 닫는다(내용은 뒤의
+ * 일정 탭 목록에 이미 반영돼 있음).
+ */
+function openDayModal(iso) {
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = '';
+  const d = new Date(iso + 'T00:00:00');
+  const weekday = d.getDay();
+  const wd = ['일', '월', '화', '수', '목', '금', '토'][weekday];
+  const me = getMe();
+  const isAdmin = ME.isAdmin;
+
+  const ov = document.createElement('div');
+  ov.className = 'modal-ov';
+  const card = document.createElement('div');
+  card.className = 'modal-card';
+  card.innerHTML = '<div class="modal-title">📅 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + wd + ')</div>';
+
+  function close() { if (root.contains(card)) root.innerHTML = ''; }
+
+  let any = false;
+  const raidHit = (DATA.raidSchedule || []).find(function (g) { return g.dateInfo && g.dateInfo.iso === iso; });
+  if (raidHit) { any = true; card.appendChild(buildRaidCard_(raidHit, me, isAdmin)); }
+  (DATA.openSessions || []).filter(function (s) { return s.weekday === weekday; }).forEach(function (s) {
+    any = true; card.appendChild(buildOpenSessionCard_(s));
+  });
+  (DATA.disaster || []).filter(function (r) { return r.dateInfo && r.dateInfo.iso === iso; }).forEach(function (r) {
+    any = true; card.appendChild(buildFlashCard_(r, me, isAdmin));
+  });
+
+  if (!any) {
+    const p = document.createElement('p');
+    p.className = 'modal-msg';
+    p.textContent = '이 날은 등록된 일정이 없어요.';
+    card.appendChild(p);
+    const addB = document.createElement('button');
+    addB.className = 'btn';
+    addB.textContent = '⚡ 이 날짜로 번개 열기';
+    addB.onclick = function () { close(); openFlashPrompt(iso); };
+    card.appendChild(addB);
+  }
+
+  const btnRow = document.createElement('div');
+  btnRow.className = 'modal-btns';
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn2';
+  closeBtn.textContent = '닫기';
+  closeBtn.onclick = close;
+  btnRow.appendChild(closeBtn);
+  card.appendChild(btnRow);
+
+  // 캡처 단계라 카드 내부 버튼의 stopPropagation()과 무관하게 항상 먼저 걸린다.
+  // setTimeout으로 한 틱 미뤄, 버튼 자신의 클릭 핸들러(투표/RSVP/수정 모달 열기 등)가 먼저 실행되게 한다.
+  card.addEventListener('click', function () { setTimeout(close, 0); }, true);
+
+  ov.appendChild(card);
+  root.appendChild(ov);
+  ov.onclick = function (e) { if (e.target === ov) close(); };
 }
 
 /* ---------- 참석 확정 (RSVP, #3) ---------- */
@@ -1042,57 +1089,62 @@ function renderRaid(list) {
     head.className = 'month-head';
     head.textContent = '📆 ' + mm + '월 정기공격';
     list.appendChild(head);
-
-    const b = document.createElement('div');
-    b.className = 'confirm-banner';
-    const cdisp = g.dateInfo ? g.dateInfo.display : g.date;
-    const expired = !!(g.dateInfo && isPastIso_(g.dateInfo.iso)); // 완료 처리 (#완료처리)
-    b.innerHTML = '📌 ' + mm + '월 일정<div class="cdate">' + esc(cdisp) + '</div>' +
-      (g.loc ? locHtml(g.loc) + '<br>' : '') +
-      (g.note ? '<div class="cnote">📝 ' + esc(g.note).replace(/\n/g, '<br>') + '</div>' : '') +
-      (expired ? '<div class="warn">⏰ 모임 날짜가 지났어요 — 완료 처리해 주세요</div>' : '') +
-      (g.isOverride ? '' : '<div class="dim" style="font-size:11.5px">기본 일정(둘째 주 금요일 로테이션) — 관리자가 아직 따로 지정하지 않았어요</div>');
-    appendRsvp_(b, g.month, me); // 참석 확정 (#3)
-    const cal = document.createElement('button');
-    cal.className = 'mini-btn';
-    cal.textContent = '📅 캘린더 추가';
-    cal.onclick = function() { addToCalendar(g); };
-    b.appendChild(document.createElement('br'));
-    b.appendChild(cal);
-    const sbtn = document.createElement('button');
-    sbtn.className = 'mini-btn';
-    sbtn.textContent = '💬 카톡 공유';
-    sbtn.onclick = function() {
-      const rsvpMap = (DATA.rsvp && DATA.rsvp[g.month]) || {};
-      const going = Object.keys(rsvpMap).filter(function (n) { return rsvpMap[n] === 'yes'; });
-      shareText('⚔️ ' + mm + '월 정기공격!\n📅 ' + cdisp +
-        (g.loc ? '\n📍 ' + g.loc : '') +
-        (g.note ? '\n📝 ' + g.note : '') +
-        (going.length ? '\n🙋 참석(' + going.length + '): ' + koSort(going).join(', ') : '') +
-        '\n\n👉 ' + location.origin,
-        '일정 소식 복사 완료!');
-    };
-    b.appendChild(sbtn);
-    if (isAdmin) {
-      const ed = document.createElement('button');
-      ed.className = 'mini-btn';
-      ed.textContent = '📝 날짜·장소 수정';
-      ed.onclick = function() { editRaidDatePrompt(g); };
-      b.appendChild(ed);
-      const done = document.createElement('button');
-      done.className = 'mini-btn';
-      done.textContent = '✅ 완료 처리';
-      done.onclick = function() { doCompleteRaid(g.month, false); };
-      b.appendChild(done);
-      const voidBtn = document.createElement('button');
-      voidBtn.className = 'mini-btn';
-      voidBtn.textContent = '🚫 모임 없음으로 종료';
-      voidBtn.onclick = function() { doCompleteRaid(g.month, true); };
-      b.appendChild(voidBtn);
-    }
-    list.appendChild(b);
+    list.appendChild(buildRaidCard_(g, me, isAdmin));
   });
   if (past.length && !sel) appendPastToggle_(list, past.length);
+}
+
+// 정기공격 고정 일정 카드 하나(참석확정·캘린더추가·공유·관리자 수정/완료 버튼 포함). 일정 탭 목록과 날짜별 모달 둘 다에서 재사용.
+function buildRaidCard_(g, me, isAdmin) {
+  const mm = parseInt((g.month || '').split('-')[1], 10);
+  const b = document.createElement('div');
+  b.className = 'confirm-banner';
+  const cdisp = g.dateInfo ? g.dateInfo.display : g.date;
+  const expired = !!(g.dateInfo && isPastIso_(g.dateInfo.iso)); // 완료 처리 (#완료처리)
+  b.innerHTML = '📌 ' + mm + '월 일정<div class="cdate">' + esc(cdisp) + '</div>' +
+    (g.loc ? locHtml(g.loc) + '<br>' : '') +
+    (g.note ? '<div class="cnote">📝 ' + esc(g.note).replace(/\n/g, '<br>') + '</div>' : '') +
+    (expired ? '<div class="warn">⏰ 모임 날짜가 지났어요 — 완료 처리해 주세요</div>' : '') +
+    (g.isOverride ? '' : '<div class="dim" style="font-size:11.5px">기본 일정(둘째 주 금요일 로테이션) — 관리자가 아직 따로 지정하지 않았어요</div>');
+  appendRsvp_(b, g.month, me); // 참석 확정 (#3)
+  const cal = document.createElement('button');
+  cal.className = 'mini-btn';
+  cal.textContent = '📅 캘린더 추가';
+  cal.onclick = function() { addToCalendar(g); };
+  b.appendChild(document.createElement('br'));
+  b.appendChild(cal);
+  const sbtn = document.createElement('button');
+  sbtn.className = 'mini-btn';
+  sbtn.textContent = '💬 카톡 공유';
+  sbtn.onclick = function() {
+    const rsvpMap = (DATA.rsvp && DATA.rsvp[g.month]) || {};
+    const going = Object.keys(rsvpMap).filter(function (n) { return rsvpMap[n] === 'yes'; });
+    shareText('⚔️ ' + mm + '월 정기공격!\n📅 ' + cdisp +
+      (g.loc ? '\n📍 ' + g.loc : '') +
+      (g.note ? '\n📝 ' + g.note : '') +
+      (going.length ? '\n🙋 참석(' + going.length + '): ' + koSort(going).join(', ') : '') +
+      '\n\n👉 ' + location.origin,
+      '일정 소식 복사 완료!');
+  };
+  b.appendChild(sbtn);
+  if (isAdmin) {
+    const ed = document.createElement('button');
+    ed.className = 'mini-btn';
+    ed.textContent = '📝 날짜·장소 수정';
+    ed.onclick = function() { editRaidDatePrompt(g); };
+    b.appendChild(ed);
+    const done = document.createElement('button');
+    done.className = 'mini-btn';
+    done.textContent = '✅ 완료 처리';
+    done.onclick = function() { doCompleteRaid(g.month, false); };
+    b.appendChild(done);
+    const voidBtn = document.createElement('button');
+    voidBtn.className = 'mini-btn';
+    voidBtn.textContent = '🚫 모임 없음으로 종료';
+    voidBtn.onclick = function() { doCompleteRaid(g.month, true); };
+    b.appendChild(voidBtn);
+  }
+  return b;
 }
 
 // 관리자: 그 달 정기공격 날짜/장소/설명을 직접 지정 (또는 비워서 기본값으로 복귀)
@@ -1118,6 +1170,53 @@ function editRaidDatePrompt(g) {
 }
 
 /* ---------- 자연재해 (번개) ---------- */
+function buildFlashCard_(r, me, isAdmin) {
+  const mine = me && r.voters.indexOf(me) > -1;
+  const card = document.createElement('div');
+  card.className = 'vote-card flash-card' + (mine ? ' mine' : '');
+  // 날짜는 윗줄, 위치는 아랫줄 — 정기공격 카드와 폭/리듬 통일
+  const dateTxt = r.dateInfo ? r.dateInfo.display : r.date;
+  const expired = isPastFlash_(r); // 완료 처리 안 된 채 기한이 지난 경우 표시 (#완료처리)
+  card.innerHTML =
+    '<div class="top"><span class="date">' + esc(dateTxt) +
+    (expired ? ' <span class="tag-over">⏰ 기한 지남</span>' : '') + '</span>' +
+    '<span class="count">' + r.voters.length + '명</span></div>' +
+    (r.loc ? '<div class="vloc">📍 ' + esc(r.loc) + '</div>' : '') +
+    (r.voters.length ? '<div class="voters">' + koSort(r.voters).map(esc).join(' · ') + '</div>' : '') +
+    (mine ? '<div class="hint">✓ 참여 중 — 탭하면 취소</div>' : '');
+  card.onclick = function() { voteFlash(r.date); };
+  const shareBtn = document.createElement('button');
+  shareBtn.className = 'mini-btn';
+  shareBtn.textContent = '💬 공유';
+  shareBtn.onclick = function(e) {
+    e.stopPropagation();
+    shareText('⚡ 번개 소집!\n' + r.date +
+      (r.voters.length ? '\n🧗 참여(' + r.voters.length + '): ' + koSort(r.voters).join(', ') : '') +
+      '\n\n같이 갈 사람 모여라 🔥\n👉 ' + location.origin, '번개 소식 복사 완료!');
+  };
+  card.appendChild(shareBtn);
+  // flash_owners에 기록이 없으면(마이그레이션 이전 번개 등) B열 폴백과 동일하게 첫 투표자를 개설자로 본다.
+  const owner = (DATA.flashOwners && DATA.flashOwners[r.date]) || (r.voters && r.voters[0]) || '';
+  if (owner === me || isAdmin) {
+    const ed = document.createElement('button');
+    ed.className = 'mini-btn';
+    ed.textContent = '✏️ 수정';
+    ed.onclick = function(e) { e.stopPropagation(); editFlashPrompt(r); };
+    card.appendChild(ed);
+    const done = document.createElement('button');
+    done.className = 'mini-btn';
+    done.textContent = '✅ 완료 처리';
+    done.onclick = function(e) { e.stopPropagation(); doCompleteFlash(r.date); };
+    card.appendChild(done);
+    const db = document.createElement('button');
+    db.className = 'mini-btn';
+    db.textContent = '🗑️ 번개 취소';
+    db.onclick = function(e) { e.stopPropagation(); deleteFlashClick(r.date); };
+    card.appendChild(db);
+  }
+  return card;
+}
+
 function renderDisaster(list) {
   const me = getMe();
   const isAdmin = ME.isAdmin;
@@ -1125,6 +1224,11 @@ function renderDisaster(list) {
   const filtered = (DATA.disaster || []).filter(function (r) {
     return !sel || (r.dateInfo && r.dateInfo.ym === sel); // 월 파싱 안 되는 라벨은 '전체'에서만 노출
   });
+
+  const head = document.createElement('div');
+  head.className = 'month-head';
+  head.textContent = '🌋 자연재해 (번개)';
+  list.appendChild(head);
 
   const addBtn = document.createElement('button');
   addBtn.className = 'btn2';
@@ -1146,52 +1250,7 @@ function renderDisaster(list) {
     return;
   }
 
-  rows.forEach(function(r) {
-    const mine = me && r.voters.indexOf(me) > -1;
-    const card = document.createElement('div');
-    card.className = 'vote-card' + (mine ? ' mine' : '');
-    // 날짜는 윗줄, 위치는 아랫줄 — 정기공격 카드와 폭/리듬 통일
-    const dateTxt = r.dateInfo ? r.dateInfo.display : r.date;
-    const expired = isPastFlash_(r); // 완료 처리 안 된 채 기한이 지난 경우 표시 (#완료처리)
-    card.innerHTML =
-      '<div class="top"><span class="date">' + esc(dateTxt) +
-      (expired ? ' <span class="tag-over">⏰ 기한 지남</span>' : '') + '</span>' +
-      '<span class="count">' + r.voters.length + '명</span></div>' +
-      (r.loc ? '<div class="vloc">📍 ' + esc(r.loc) + '</div>' : '') +
-      (r.voters.length ? '<div class="voters">' + koSort(r.voters).map(esc).join(' · ') + '</div>' : '') +
-      (mine ? '<div class="hint">✓ 참여 중 — 탭하면 취소</div>' : '');
-    card.onclick = function() { voteFlash(r.date); };
-    const shareBtn = document.createElement('button');
-    shareBtn.className = 'mini-btn';
-    shareBtn.textContent = '💬 공유';
-    shareBtn.onclick = function(e) {
-      e.stopPropagation();
-      shareText('⚡ 번개 소집!\n' + r.date +
-        (r.voters.length ? '\n🧗 참여(' + r.voters.length + '): ' + koSort(r.voters).join(', ') : '') +
-        '\n\n같이 갈 사람 모여라 🔥\n👉 ' + location.origin, '번개 소식 복사 완료!');
-    };
-    card.appendChild(shareBtn);
-    // flash_owners에 기록이 없으면(마이그레이션 이전 번개 등) B열 폴백과 동일하게 첫 투표자를 개설자로 본다.
-    const owner = (DATA.flashOwners && DATA.flashOwners[r.date]) || (r.voters && r.voters[0]) || '';
-    if (owner === me || isAdmin) {
-      const ed = document.createElement('button');
-      ed.className = 'mini-btn';
-      ed.textContent = '✏️ 수정';
-      ed.onclick = function(e) { e.stopPropagation(); editFlashPrompt(r); };
-      card.appendChild(ed);
-      const done = document.createElement('button');
-      done.className = 'mini-btn';
-      done.textContent = '✅ 완료 처리';
-      done.onclick = function(e) { e.stopPropagation(); doCompleteFlash(r.date); };
-      card.appendChild(done);
-      const db = document.createElement('button');
-      db.className = 'mini-btn';
-      db.textContent = '🗑️ 번개 취소';
-      db.onclick = function(e) { e.stopPropagation(); deleteFlashClick(r.date); };
-      card.appendChild(db);
-    }
-    list.appendChild(card);
-  });
+  rows.forEach(function(r) { list.appendChild(buildFlashCard_(r, me, isAdmin)); });
   if (past.length && !sel) appendPastToggle_(list, past.length);
 }
 
@@ -1206,6 +1265,30 @@ function canOpenSession_() {
   return roles.indexOf(roleOf_(getMe())) > -1;
 }
 
+// 오픈 세션 카드 하나(수정/삭제 버튼 포함). 일정 탭 목록과 날짜별 모달 둘 다에서 재사용.
+function buildOpenSessionCard_(s) {
+  const card = document.createElement('div');
+  card.className = 'vote-card open-session';
+  card.innerHTML =
+    '<div class="top"><span class="date">🗓️ 매주 ' + WEEKDAY_FULL_[s.weekday] + '</span></div>' +
+    '<div class="vloc">' + locHtml(s.loc) + '</div>' +
+    (s.note ? '<div class="voters">' + esc(s.note) + '</div>' : '') +
+    '<div class="hint">개설: ' + esc(s.createdBy) + '</div>';
+  if (s.createdBy === getMe() || ME.isAdmin) {
+    const ed = document.createElement('button');
+    ed.className = 'mini-btn';
+    ed.textContent = '✏️ 수정';
+    ed.onclick = function (e) { e.stopPropagation(); editOpenSessionPrompt(s); };
+    card.appendChild(ed);
+    const del = document.createElement('button');
+    del.className = 'mini-btn';
+    del.textContent = '🗑️ 삭제';
+    del.onclick = function (e) { e.stopPropagation(); deleteOpenSessionClick(s.id); };
+    card.appendChild(del);
+  }
+  return card;
+}
+
 function renderOpenSessions(box) {
   box.innerHTML = '';
   const head = document.createElement('div');
@@ -1217,28 +1300,7 @@ function renderOpenSessions(box) {
   if (!items.length) {
     box.insertAdjacentHTML('beforeend', '<div class="loading">아직 열린 정기 오픈 세션이 없어요</div>');
   }
-  items.forEach(function (s) {
-    const card = document.createElement('div');
-    card.className = 'vote-card';
-    card.innerHTML =
-      '<div class="top"><span class="date">🗓️ 매주 ' + WEEKDAY_FULL_[s.weekday] + '</span></div>' +
-      '<div class="vloc">' + locHtml(s.loc) + '</div>' +
-      (s.note ? '<div class="voters">' + esc(s.note) + '</div>' : '') +
-      '<div class="hint">개설: ' + esc(s.createdBy) + '</div>';
-    if (s.createdBy === getMe() || ME.isAdmin) {
-      const ed = document.createElement('button');
-      ed.className = 'mini-btn';
-      ed.textContent = '✏️ 수정';
-      ed.onclick = function (e) { e.stopPropagation(); editOpenSessionPrompt(s); };
-      card.appendChild(ed);
-      const del = document.createElement('button');
-      del.className = 'mini-btn';
-      del.textContent = '🗑️ 삭제';
-      del.onclick = function (e) { e.stopPropagation(); deleteOpenSessionClick(s.id); };
-      card.appendChild(del);
-    }
-    box.appendChild(card);
-  });
+  items.forEach(function (s) { box.appendChild(buildOpenSessionCard_(s)); });
 
   if (canOpenSession_()) {
     const addBtn = document.createElement('button');
