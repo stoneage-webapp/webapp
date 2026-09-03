@@ -78,15 +78,6 @@
   .tab { display: none; }
   .tab.on { display: block; }
 
-  /* 투표 */
-  .seg { display: flex; gap: 8px; margin-bottom: 12px; }
-  .seg button {
-    flex: 1; padding: 10px; border-radius: 10px; cursor: pointer;
-    background: var(--stone); border: 1px solid var(--line);
-    color: var(--ink-dim); font-size: 14px; font-weight: 700;
-  }
-  .seg button.on { background: var(--ember); border-color: var(--ember); color: #fff; }
-
   .month-head {
     font-size: 14px; font-weight: 800; color: var(--ember);
     margin: 16px 2px 8px; letter-spacing: 1px;
@@ -456,19 +447,21 @@ textarea:focus { outline: none; border-color: var(--ember); }
 .cal-wd { text-align: center; font-size: 11px; color: var(--ink-dim); padding: 2px 0; }
 .cal-wd.sun { color: #d46a6a; }
 .cal-day {
-  position: relative; aspect-ratio: 1/1; display: flex;
+  position: relative; aspect-ratio: 1/1; display: flex; cursor: pointer;
   align-items: center; justify-content: center;
   font-size: 13px; color: var(--ink); border-radius: 9px;
   background: var(--stone); border: 1px solid transparent;
 }
 .cal-day.today { border-color: var(--line); font-weight: 800; }
-.cal-day.confirmed { background: var(--ember); color: #fff; font-weight: 800; cursor: pointer; }
-.cal-day.flash { border-color: var(--ember); cursor: pointer; }
-.cal-day .cal-dot {
+.cal-day.confirmed { background: var(--ember); color: #fff; font-weight: 800; }
+.cal-day.flash { border-color: var(--ember); }
+.cal-day .cal-dots {
   position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
-  width: 4px; height: 4px; border-radius: 50%; background: var(--ember);
+  display: flex; gap: 2px;
 }
-.cal-day.confirmed .cal-dot { background: #fff; }
+.cal-day .cal-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--ember); }
+.cal-day .cal-dot.open { background: var(--moss); }
+.cal-day.confirmed .cal-dot.confirmed { background: #fff; }
 
 /* ==================== 모바일 뷰포트/세이프에어리어 견고화 ==================== */
 /* 동적 뷰포트 높이 변수 (주소창 유무에 딱 맞음). dvh 미지원 시 vh 폴백 */
