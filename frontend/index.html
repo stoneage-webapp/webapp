@@ -103,15 +103,15 @@
     <button class="btn2" onclick="openNotion()">📜 부족 안내문</button>
   </section>
 
-  <!-- 투표 -->
+  <!-- 일정 -->
   <section id="tab-schedule" class="tab">
     <div class="field" style="margin-bottom:10px">
       <select id="voteMonth"></select>
     </div>
     <div id="voteCalendar"></div>
+    <div id="calLegend"></div>
     <div id="raidSection"></div>
-    <div id="openSessionSection"></div>
-    <div id="disasterSection"></div>
+    <div id="scheduleActions"></div>
   </section>
 
   <!-- 벽화 갤러리 -->
@@ -279,7 +279,7 @@
 
       <div class="month-head" style="margin-top:22px">🧭 정기 오픈 세션 개설 가능 직책</div>
       <p class="dim" style="font-size:12.5px; margin-bottom:8px">
-        선택된 직책(또는 관리자)만 일정 탭에서 정기 오픈 세션(요일+장소 반복)을 열 수 있어요. 기본값은 팀장. (탭해서 선택)
+        선택된 직책(또는 관리자)만 일정 탭에서 정기 오픈 세션(날짜+장소)을 열 수 있어요. 기본값은 팀장. (탭해서 선택)
       </p>
       <div class="chips" id="openSessionRoleChips" style="margin-bottom:10px"></div>
       <button class="btn2" onclick="saveOpenSessionRoles()">개설 가능 직책 저장</button>

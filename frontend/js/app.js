@@ -45,8 +45,6 @@ let currentTab = 'home'; // 현재 보고 있는 탭 (당겨 새로고침이 이
 function koSort(arr) {
   return (arr || []).slice().sort(function (a, b) { return String(a).localeCompare(String(b), 'ko'); });
 }
-// 투표 후보/번개를 날짜 오름차순 정렬용 키
-function dateKey_(x) { return (x && x.dateInfo && x.dateInfo.iso) || (x && x.date) || ''; }
 // 쉼표로 이어진 이름 문자열을 가나다순으로 다시 이어붙임 (참여자/참여인원 표시용)
 function koSortStr(s) {
   return koSort(String(s || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean)).join(', ');
@@ -798,16 +796,14 @@ function renderWeekSummary() {
       items.push({ d: d, html: '⚡ ' + fmtWeekDate_(d) + ' 번개' + (r.loc ? ' @ ' + esc(r.loc) : '') });
     }
   });
-  const openByWeekday = {};
   (DATA.openSessions || []).forEach(function (s) {
-    (openByWeekday[s.weekday] = openByWeekday[s.weekday] || []).push(s);
-  });
-  for (let i = 0; i <= 6; i++) {
-    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
-    (openByWeekday[d.getDay()] || []).forEach(function (s) {
+    if (!s.date) return;
+    const d = new Date(s.date + 'T00:00:00');
+    const diff = Math.round((d - start) / 86400000);
+    if (diff >= 0 && diff <= 6) {
       items.push({ d: d, html: '🧭 ' + fmtWeekDate_(d) + ' 오픈세션 @ ' + esc(s.loc) });
-    });
-  }
+    }
+  });
 
   items.sort(function (a, b) { return a.d - b.d; });
   if (!items.length) { el.innerHTML = ''; return; }
@@ -900,20 +896,49 @@ function renderHome() {
 }
 
 /* ---------- 일정 (정기공격 · 정기 오픈 세션 · 자연재해를 한 화면에) ---------- */
+// 정기공격만 상시 카드로 유지 — 오픈세션/번개는 캘린더 날짜를 눌러 모달(openDayModal)로 본다.
 function renderVotes() {
   renderCalendar();
+  renderCalLegend();
   const raidList = document.getElementById('raidSection');
   raidList.innerHTML = '';
   renderRaid(raidList);
-  renderOpenSessions(document.getElementById('openSessionSection'));
-  const disList = document.getElementById('disasterSection');
-  disList.innerHTML = '';
-  renderDisaster(disList);
+  renderScheduleActions();
+}
+
+// 캘린더 아래 색상 범례 + 번개 열기·오픈세션 등록 진입 버튼
+function renderCalLegend() {
+  const el = document.getElementById('calLegend');
+  if (!el) return;
+  el.innerHTML =
+    '<div class="cal-legend">' +
+      '<span><i class="cal-legend-swatch raid"></i>정기공격</span>' +
+      '<span><i class="cal-legend-swatch flash"></i>번개</span>' +
+      '<span><i class="cal-legend-swatch open"></i>오픈세션</span>' +
+    '</div>';
+}
+
+function renderScheduleActions() {
+  const box = document.getElementById('scheduleActions');
+  if (!box) return;
+  box.innerHTML = '';
+  const flashBtn = document.createElement('button');
+  flashBtn.className = 'btn2';
+  flashBtn.textContent = '⚡ 번개 열기';
+  flashBtn.onclick = function () { openFlashPrompt(); };
+  box.appendChild(flashBtn);
+  if (canOpenSession_()) {
+    const openBtn = document.createElement('button');
+    openBtn.className = 'btn2';
+    openBtn.textContent = '🧭 오픈 세션 등록';
+    openBtn.onclick = openOpenSessionDatePicker;
+    box.appendChild(openBtn);
+  }
 }
 
 /* ---------- 일정 달력 (#6) ----------
- * 선택 월(없으면 이번 달)의 정기공격 고정일정(꽉찬 원)·번개(주황 테두리)·정기 오픈 세션(요일마다 초록 점)을 한 캘린더에서 확인.
- * 날짜 탭 → 아래 해당 섹션으로 스크롤. 아무 일정도 없는 날을 탭하면 그 날짜로 번개 열기를 제안.
+ * 선택 월(없으면 이번 달)의 정기공격 고정일정(꽉찬 원)·번개(sky 테두리)·정기 오픈 세션(moss 점)을 한 캘린더에서 확인.
+ * 여러 일정이 겹치는 날은 점(cal-dots)이 종류별로 함께 표시된다. 날짜 탭 → 그 날 일정을 모달로.
  */
 function renderCalendar() {
   const el = document.getElementById('voteCalendar');
@@ -930,11 +955,10 @@ function renderCalendar() {
     mark(g.dateInfo.iso, 'confirmed');
   });
   (DATA.disaster || []).forEach(function (r) { if (r.dateInfo && r.dateInfo.ym === ym) mark(r.dateInfo.iso, 'flash'); });
+  (DATA.openSessions || []).forEach(function (s) { if (s.date && s.date.slice(0, 7) === ym) mark(s.date, 'open'); });
 
   const first = new Date(y, mo - 1, 1).getDay();
   const days = new Date(y, mo, 0).getDate();
-  const openWeekdays = {};
-  (DATA.openSessions || []).forEach(function (s) { openWeekdays[s.weekday] = true; });
   const todayIso = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
   const wd = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -943,8 +967,6 @@ function renderCalendar() {
   for (let i = 0; i < first; i++) html += '<div></div>';
   for (let d = 1; d <= days; d++) {
     const iso = ym + '-' + pad2(d);
-    const weekday = new Date(y, mo - 1, d).getDay();
-    if (openWeekdays[weekday]) mark(iso, 'open');
     const m = marks[iso] || {};
     const cls = ['cal-day'];
     if (m.confirmed) cls.push('confirmed');
@@ -990,7 +1012,7 @@ function openDayModal(iso) {
   let any = false;
   const raidHit = (DATA.raidSchedule || []).find(function (g) { return g.dateInfo && g.dateInfo.iso === iso; });
   if (raidHit) { any = true; card.appendChild(buildRaidCard_(raidHit, me, isAdmin)); }
-  (DATA.openSessions || []).filter(function (s) { return s.weekday === weekday; }).forEach(function (s) {
+  (DATA.openSessions || []).filter(function (s) { return s.date === iso; }).forEach(function (s) {
     any = true; card.appendChild(buildOpenSessionCard_(s));
   });
   (DATA.disaster || []).filter(function (r) { return r.dateInfo && r.dateInfo.iso === iso; }).forEach(function (r) {
@@ -1217,48 +1239,11 @@ function buildFlashCard_(r, me, isAdmin) {
   return card;
 }
 
-function renderDisaster(list) {
-  const me = getMe();
-  const isAdmin = ME.isAdmin;
-  const sel = voteMonthValue();
-  const filtered = (DATA.disaster || []).filter(function (r) {
-    return !sel || (r.dateInfo && r.dateInfo.ym === sel); // 월 파싱 안 되는 라벨은 '전체'에서만 노출
-  });
-
-  const head = document.createElement('div');
-  head.className = 'month-head';
-  head.textContent = '🌋 자연재해 (번개)';
-  list.appendChild(head);
-
-  const addBtn = document.createElement('button');
-  addBtn.className = 'btn2';
-  addBtn.style.marginBottom = '10px';
-  addBtn.textContent = '⚡ 번개 열기';
-  addBtn.onclick = openFlashPrompt;
-  list.appendChild(addBtn);
-
-  // 마감 자동 정리(#3): 지난 번개(오늘 이전)는 접기 + 날짜 오름차순 정렬(#날짜별)
-  const byDate = function (a, b) { const ka = dateKey_(a), kb = dateKey_(b); return ka < kb ? -1 : ka > kb ? 1 : 0; };
-  const past = (sel ? [] : filtered.filter(function (r) { return isPastFlash_(r); })).sort(byDate);
-  const active = (sel ? filtered : filtered.filter(function (r) { return !isPastFlash_(r); })).sort(byDate);
-  const rows = showPastVotes ? active.concat(past) : active;
-
-  if (!rows.length) {
-    list.insertAdjacentHTML('beforeend', '<div class="loading">' +
-      (sel ? sel + '에 열린 번개가 없어요' : (past.length ? '진행 중인 번개가 없어요' : '아직 열린 번개가 없어요')) + '</div>');
-    if (past.length && !sel) appendPastToggle_(list, past.length);
-    return;
-  }
-
-  rows.forEach(function(r) { list.appendChild(buildFlashCard_(r, me, isAdmin)); });
-  if (past.length && !sel) appendPastToggle_(list, past.length);
-}
-
-/* ---------- 정기 오픈 세션 (요일+장소 매주 반복, 투표/참석확정 없음) ----------
+/* ---------- 정기 오픈 세션 (특정 날짜+장소, 투표/참석확정 없음) ----------
  * 개설: 관리자 또는 DATA.openSessionRoles(기본 팀장)에 포함된 직책. 수정/삭제: 개설자 또는 관리자.
+ * 캘린더에서 여러 날짜를 골라 한 번에 등록(openOpenSessionDatePicker). 상시 목록은 없고
+ * 캘린더 날짜별 모달(openDayModal)에서만 노출된다.
  */
-const WEEKDAY_FULL_ = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
-
 function canOpenSession_() {
   if (ME.isAdmin) return true;
   const roles = DATA.openSessionRoles || ['팀장'];
@@ -1269,8 +1254,9 @@ function canOpenSession_() {
 function buildOpenSessionCard_(s) {
   const card = document.createElement('div');
   card.className = 'vote-card open-session';
+  const dateTxt = s.dateInfo ? s.dateInfo.display : s.date;
   card.innerHTML =
-    '<div class="top"><span class="date">🗓️ 매주 ' + WEEKDAY_FULL_[s.weekday] + '</span></div>' +
+    '<div class="top"><span class="date">🧭 ' + esc(dateTxt) + '</span></div>' +
     '<div class="vloc">' + locHtml(s.loc) + '</div>' +
     (s.note ? '<div class="voters">' + esc(s.note) + '</div>' : '') +
     '<div class="hint">개설: ' + esc(s.createdBy) + '</div>';
@@ -1289,66 +1275,19 @@ function buildOpenSessionCard_(s) {
   return card;
 }
 
-function renderOpenSessions(box) {
-  box.innerHTML = '';
-  const head = document.createElement('div');
-  head.className = 'month-head';
-  head.textContent = '🧭 정기 오픈 세션';
-  box.appendChild(head);
-
-  const items = (DATA.openSessions || []).slice().sort(function (a, b) { return a.weekday - b.weekday; });
-  if (!items.length) {
-    box.insertAdjacentHTML('beforeend', '<div class="loading">아직 열린 정기 오픈 세션이 없어요</div>');
-  }
-  items.forEach(function (s) { box.appendChild(buildOpenSessionCard_(s)); });
-
-  if (canOpenSession_()) {
-    const addBtn = document.createElement('button');
-    addBtn.className = 'btn2';
-    addBtn.style.marginTop = '10px';
-    addBtn.textContent = '🧭 오픈 세션 열기';
-    addBtn.onclick = addOpenSessionPrompt;
-    box.appendChild(addBtn);
-  }
-}
-
-function weekdaySelectOptions_() {
-  return WEEKDAY_FULL_.map(function (w, i) { return { value: String(i), label: w }; });
-}
-
-function addOpenSessionPrompt() {
-  modal({
-    title: '🧭 오픈 세션 열기',
-    fields: [
-      { key: 'weekday', label: '요일', type: 'select', value: '5', options: weekdaySelectOptions_() },
-      { key: 'loc', label: '장소', type: 'text', placeholder: '예: 더클라임 강남' },
-      { key: 'note', label: '설명 (선택)', type: 'text', placeholder: '예: 초보 환영' }
-    ],
-    confirmText: '열기',
-    busyText: '여는 중…',
-    validate: function (v) { return v.loc.trim() ? null : '장소를 입력하세요.'; },
-    onConfirm: async function (v) {
-      const res = await run('addOpenSession', Number(v.weekday), v.loc.trim(), v.note.trim(), getMe(), ME.token);
-      DATA.openSessions = res.items;
-      renderVotes();
-      toast('🧭 정기 오픈 세션을 열었어요.', true);
-    }
-  });
-}
-
 function editOpenSessionPrompt(s) {
   modal({
     title: '✏️ 오픈 세션 수정',
     fields: [
-      { key: 'weekday', label: '요일', type: 'select', value: String(s.weekday), options: weekdaySelectOptions_() },
+      { key: 'date', label: '날짜', type: 'date', value: s.date },
       { key: 'loc', label: '장소', type: 'text', value: s.loc },
       { key: 'note', label: '설명 (선택)', type: 'text', value: s.note || '' }
     ],
     confirmText: '수정 완료',
     busyText: '수정하는 중…',
-    validate: function (v) { return v.loc.trim() ? null : '장소를 입력하세요.'; },
+    validate: function (v) { if (!v.date) return '날짜를 선택하세요.'; return v.loc.trim() ? null : '장소를 입력하세요.'; },
     onConfirm: async function (v) {
-      const res = await run('editOpenSession', s.id, Number(v.weekday), v.loc.trim(), v.note.trim(), getMe(), ME.token);
+      const res = await run('editOpenSession', s.id, v.date, v.loc.trim(), v.note.trim(), getMe(), ME.token);
       DATA.openSessions = res.items;
       renderVotes();
       toast('✏️ 오픈 세션을 수정했어요.', true);
@@ -1365,6 +1304,128 @@ async function deleteOpenSessionClick(id) {
   } catch (e) {
     toast(e.message || e);
   }
+}
+
+/* 캘린더에서 여러 날짜를 골라 한 번에 같은 장소/설명으로 오픈 세션을 등록한다. */
+function openOpenSessionDatePicker() {
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = '';
+  const selected = {}; // iso → true
+  const now = new Date();
+  let viewYM = (/^\d{4}-\d{2}$/.test(voteMonthValue()) ? voteMonthValue() : now.getFullYear() + '-' + pad2(now.getMonth() + 1));
+
+  const ov = document.createElement('div');
+  ov.className = 'modal-ov';
+  const card = document.createElement('div');
+  card.className = 'modal-card';
+  card.innerHTML = '<div class="modal-title">🧭 오픈 세션 날짜 선택</div>' +
+    '<p class="modal-msg">달력에서 날짜를 여러 개 탭하면 같은 장소로 한 번에 등록돼요.</p>';
+
+  const nav = document.createElement('div');
+  nav.className = 'cal-nav';
+  const prevBtn = document.createElement('button');
+  prevBtn.type = 'button'; prevBtn.className = 'mini-btn'; prevBtn.textContent = '‹';
+  const navLabel = document.createElement('span');
+  navLabel.className = 'cal-nav-label';
+  const nextBtn = document.createElement('button');
+  nextBtn.type = 'button'; nextBtn.className = 'mini-btn'; nextBtn.textContent = '›';
+  nav.appendChild(prevBtn); nav.appendChild(navLabel); nav.appendChild(nextBtn);
+  card.appendChild(nav);
+
+  const gridWrap = document.createElement('div');
+  card.appendChild(gridWrap);
+
+  const pickedLine = document.createElement('div');
+  pickedLine.className = 'dim';
+  pickedLine.style.cssText = 'font-size:12.5px; margin:8px 0';
+  card.appendChild(pickedLine);
+
+  function shiftYM(ym, delta) {
+    const d = new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + delta, 1);
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1);
+  }
+  function renderGrid() {
+    const y = +viewYM.slice(0, 4), mo = +viewYM.slice(5, 7);
+    navLabel.textContent = y + '년 ' + mo + '월';
+    const first = new Date(y, mo - 1, 1).getDay();
+    const days = new Date(y, mo, 0).getDate();
+    const wd = ['일', '월', '화', '수', '목', '금', '토'];
+    let html = '<div class="cal-grid">';
+    wd.forEach(function (d, i) { html += '<div class="cal-wd' + (i === 0 ? ' sun' : '') + '">' + d + '</div>'; });
+    for (let i = 0; i < first; i++) html += '<div></div>';
+    for (let d = 1; d <= days; d++) {
+      const iso = viewYM + '-' + pad2(d);
+      html += '<div class="cal-day' + (selected[iso] ? ' picked' : '') + '" data-iso="' + iso + '">' + d + '</div>';
+    }
+    html += '</div>';
+    gridWrap.innerHTML = html;
+    gridWrap.querySelectorAll('.cal-day[data-iso]').forEach(function (c) {
+      c.onclick = function () {
+        const iso = c.dataset.iso;
+        if (selected[iso]) delete selected[iso]; else selected[iso] = true;
+        renderGrid();
+      };
+    });
+    const list = Object.keys(selected).sort();
+    pickedLine.textContent = list.length ? '선택한 날짜(' + list.length + '): ' + list.join(', ') : '선택된 날짜 없음';
+  }
+  prevBtn.onclick = function () { viewYM = shiftYM(viewYM, -1); renderGrid(); };
+  nextBtn.onclick = function () { viewYM = shiftYM(viewYM, 1); renderGrid(); };
+  renderGrid();
+
+  const locField = document.createElement('div');
+  locField.className = 'field';
+  locField.innerHTML = '<span>장소</span>';
+  const locInput = document.createElement('input');
+  locInput.type = 'text'; locInput.placeholder = '예: 더클라임 강남'; locInput.autocomplete = 'off';
+  locField.appendChild(locInput);
+  card.appendChild(locField);
+
+  const noteField = document.createElement('div');
+  noteField.className = 'field';
+  noteField.innerHTML = '<span>설명 (선택)</span>';
+  const noteInput = document.createElement('input');
+  noteInput.type = 'text'; noteInput.placeholder = '예: 초보 환영'; noteInput.autocomplete = 'off';
+  noteField.appendChild(noteInput);
+  card.appendChild(noteField);
+
+  const status = document.createElement('div');
+  status.className = 'status err';
+  card.appendChild(status);
+
+  const btnRow = document.createElement('div');
+  btnRow.className = 'modal-btns';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn2'; cancelBtn.textContent = '취소';
+  cancelBtn.onclick = function () { root.innerHTML = ''; };
+  const okBtn = document.createElement('button');
+  okBtn.className = 'btn'; okBtn.textContent = '등록';
+  okBtn.onclick = async function () {
+    const dates = Object.keys(selected).sort();
+    const loc = locInput.value.trim();
+    if (!dates.length) { status.textContent = '날짜를 하나 이상 선택하세요.'; return; }
+    if (!loc) { status.textContent = '장소를 입력하세요.'; return; }
+    okBtn.disabled = true;
+    status.className = 'status';
+    status.textContent = '등록 중…';
+    try {
+      const res = await run('addOpenSession', dates, loc, noteInput.value.trim(), getMe(), ME.token);
+      DATA.openSessions = res.items;
+      root.innerHTML = '';
+      renderVotes();
+      toast('🧭 오픈 세션 ' + dates.length + '개를 등록했어요.', true);
+    } catch (e) {
+      okBtn.disabled = false;
+      status.className = 'status err';
+      status.textContent = e.message || e;
+    }
+  };
+  btnRow.appendChild(cancelBtn); btnRow.appendChild(okBtn);
+  card.appendChild(btnRow);
+
+  ov.appendChild(card);
+  root.appendChild(ov);
+  ov.onclick = function (e) { if (e.target === ov) root.innerHTML = ''; };
 }
 
 /* ---------- 마감 자동 정리 헬퍼 (#3) ---------- */

@@ -82,9 +82,9 @@ const POST_ACTIONS = {
   setDormant:        { auth: 'requester', bust: true, fn: function (d) { return setDormant(d.targetName, d.until, d.requester, d.token); } }, // 휴면 설정/해제 (관리자, 최대 3개월)
   setRole:           { auth: 'requester', bust: true, fn: function (d) { return setRole(d.targetName, d.role, d.requester, d.token); } },     // 직책 변경 (관리자)
 
-  // 정기 오픈 세션 (요일+장소 반복, 팀장 등 지정 직책 또는 관리자만 개설)
-  addOpenSession:    { auth: 'requester', bust: true, fn: function (d) { return addOpenSession(d.weekday, d.loc, d.note, d.requester, d.token); } },
-  editOpenSession:   { auth: 'requester', bust: true, fn: function (d) { return editOpenSession(d.id, d.weekday, d.loc, d.note, d.requester, d.token); } },
+  // 정기 오픈 세션 (날짜+장소, 팀장 등 지정 직책 또는 관리자만 개설)
+  addOpenSession:    { auth: 'requester', bust: true, fn: function (d) { return addOpenSession(d.dates, d.loc, d.note, d.requester, d.token); } },
+  editOpenSession:   { auth: 'requester', bust: true, fn: function (d) { return editOpenSession(d.id, d.date, d.loc, d.note, d.requester, d.token); } },
   deleteOpenSession: { auth: 'requester', bust: true, fn: function (d) { return deleteOpenSession(d.id, d.requester, d.token); } },
   setOpenSessionRoles: { auth: 'requester', bust: true, fn: function (d) { return setOpenSessionRoles(d.roles, d.requester, d.token); } }, // 관리자 전용
 
@@ -243,7 +243,7 @@ function getInitData() {
     recent: getRecentActivity_(),  // 최근 24시간 벽화/전당 (홈 "새 소식")
     rsvp: getRsvp_(),              // 확정 모임 참석 확정 { 월: {이름: 'yes'|'no'} }
     flashOwners: votes.flashOwners,
-    openSessions: openSessions.items,      // [{id, weekday(0=일~6=토), loc, note, createdBy, createdAt}]
+    openSessions: openSessions.items,      // [{id, date, loc, note, createdBy, createdAt, dateInfo}]
     openSessionRoles: openSessions.roles,  // 오픈 세션 개설 가능 직책 (기본 ['팀장'])
     raidLocations: CONFIG.RAID_LOCATIONS   // 정기공격 기본 위치 로테이션 순서 (관리자 편집용)
   };
