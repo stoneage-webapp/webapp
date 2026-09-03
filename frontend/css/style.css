@@ -93,9 +93,17 @@
   .vote-card.mine { border-color: var(--moss); }
   .vote-card.confirmed { border-color: var(--ember); }
   .vote-card.closed { opacity: .4; }
-  /* 목록에서도 캘린더와 같은 색으로 유형을 은은하게 구분(참여중=.mine 테두리와는 별개 신호) */
-  .vote-card.flash-card { background: linear-gradient(135deg, rgba(217,172,37,.10), var(--stone)); }
-  .vote-card.open-session { background: linear-gradient(135deg, rgba(79,143,174,.10), var(--stone)); }
+  /* 목록/모달에서도 캘린더와 같은 색으로 유형을 구분(참여중=.mine 테두리와는 별개 신호) */
+  .vote-card.flash-card { background: linear-gradient(135deg, rgba(217,172,37,.10), var(--stone)); border-left: 4px solid var(--gold); }
+  .vote-card.open-session { background: linear-gradient(135deg, rgba(79,143,174,.10), var(--stone)); border-left: 4px solid var(--sky); }
+  /* 일정 카드/모달 상단 유형 뱃지 — 정기공격/오픈세션/번개를 색+글자로 명확히 구분 */
+  .type-tag {
+    display: inline-block; font-size: 11.5px; font-weight: 800;
+    padding: 3px 10px; border-radius: 999px; margin-bottom: 8px;
+  }
+  .type-tag.raid { background: rgba(212,105,30,.18); color: var(--ember); }
+  .type-tag.open { background: rgba(79,143,174,.18); color: var(--sky); }
+  .type-tag.flash { background: rgba(217,172,37,.18); color: var(--gold); }
   .hall-thumb {
     position: relative; aspect-ratio: 16/9; background: #000;
     overflow: hidden; cursor: pointer;
@@ -470,9 +478,11 @@ textarea:focus { outline: none; border-color: var(--ember); }
   background: var(--stone); border: 1px solid transparent;
 }
 .cal-day.today { border-color: var(--line); font-weight: 800; }
-/* 정기공격=ember(채움) · 오픈세션=sky(점) · 번개=gold(테두리) — 한눈에 구분 */
+/* 정기공격=ember(채움) · 오픈세션=sky(안쪽 테두리) · 번개=gold(바깥 테두리) — 동시에 겹쳐도 둘 다 보이도록
+   서로 다른 CSS 속성(border/box-shadow) 사용 */
 .cal-day.confirmed { background: var(--ember); color: #fff; font-weight: 800; }
 .cal-day.flash { border-color: var(--gold); }
+.cal-day.open { box-shadow: 0 0 0 2px var(--sky) inset; }
 .cal-day .cal-dots {
   position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
   display: flex; gap: 3px;

@@ -939,7 +939,8 @@ function renderScheduleActions() {
 }
 
 /* ---------- 일정 달력 (#6) ----------
- * 선택 월(없으면 이번 달)의 정기공격 고정일정(꽉찬 원)·정기 오픈 세션(sky 점)·번개(gold 테두리)를 한 캘린더에서 확인.
+ * 선택 월(없으면 이번 달)의 정기공격 고정일정(꽉찬 원)·정기 오픈 세션(sky 안쪽 테두리)·번개(gold 바깥 테두리)를
+ * 한 캘린더에서 확인 — 겹치는 날은 둘 다(테두리+안쪽 테두리) 함께 보인다.
  * 여러 일정이 겹치는 날은 점(cal-dots)이 종류별로 함께 표시된다. 날짜 탭 → 그 날 일정을 모달로.
  */
 function renderCalendar() {
@@ -972,6 +973,7 @@ function renderCalendar() {
     const m = marks[iso] || {};
     const cls = ['cal-day'];
     if (m.confirmed) cls.push('confirmed');
+    if (m.open) cls.push('open');
     if (m.flash) cls.push('flash');
     if (iso === todayIso) cls.push('today');
     const dots = ['confirmed', 'open', 'flash'].filter(function (k) { return m[k]; })
@@ -1127,7 +1129,8 @@ function buildRaidCard_(g, me, isAdmin) {
   b.className = 'confirm-banner';
   const cdisp = g.dateInfo ? g.dateInfo.display : g.date;
   const expired = !!(g.dateInfo && isPastIso_(g.dateInfo.iso)); // 완료 처리 (#완료처리)
-  b.innerHTML = '📌 ' + mm + '월 일정<div class="cdate">' + esc(cdisp) + '</div>' +
+  b.innerHTML = '<div class="type-tag raid">⚔️ 정기공격</div><br>' +
+    '📌 ' + mm + '월 일정<div class="cdate">' + esc(cdisp) + '</div>' +
     (g.loc ? locHtml(g.loc) + '<br>' : '') +
     (g.note ? '<div class="cnote">📝 ' + esc(g.note).replace(/\n/g, '<br>') + '</div>' : '') +
     (expired ? '<div class="warn">⏰ 모임 날짜가 지났어요 — 완료 처리해 주세요</div>' : '') +
@@ -1204,6 +1207,7 @@ function buildFlashCard_(r, me, isAdmin) {
   const dateTxt = r.dateInfo ? r.dateInfo.display : r.date;
   const expired = isPastFlash_(r); // 완료 처리 안 된 채 기한이 지난 경우 표시 (#완료처리)
   card.innerHTML =
+    '<div class="type-tag flash">⚡ 번개</div>' +
     '<div class="top"><span class="date">' + esc(dateTxt) +
     (expired ? ' <span class="tag-over">⏰ 기한 지남</span>' : '') + '</span>' +
     '<span class="count">' + r.voters.length + '명</span></div>' +
@@ -1267,7 +1271,8 @@ function buildOpenSessionCard_(s) {
   card.className = 'vote-card open-session';
   const dateTxt = s.dateInfo ? s.dateInfo.display : s.date;
   card.innerHTML =
-    '<div class="top"><span class="date">🧭 ' + esc(dateTxt) + '</span></div>' +
+    '<div class="type-tag open">🧭 오픈세션</div>' +
+    '<div class="top"><span class="date">' + esc(dateTxt) + '</span></div>' +
     '<div class="vloc">' + locHtml(s.loc) + '</div>' +
     (s.note ? '<div class="voters">' + esc(s.note) + '</div>' : '') +
     '<div class="hint">개설: ' + esc(s.createdBy) + '</div>';
