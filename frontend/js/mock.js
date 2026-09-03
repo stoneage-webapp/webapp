@@ -57,9 +57,10 @@
     roleList: ['부족심사중', '조약돌', '간석기', '고인돌', '팀장'],
     rsvp: { '2026-06': { '김광훈': 'yes', '이희주': 'no' } }, // 확정 6월 모임 참석 확정 (목)
     flashOwners: { '7/19 14:00 @ 클라이밍파크': '최서연' },
-    // 정기 오픈 세션 (요일+장소 매주 반복). weekday: 0=일~6=토
+    // 정기 오픈 세션 (특정 날짜+장소, 캘린더에서 여러 날짜 선택해 등록)
     openSessions: [
-      { id: 'os1', weekday: 3, loc: '더클라임 강남', note: '초보 환영', createdBy: '이희주', createdAt: '2026-07-01T00:00:00.000Z' }
+      { id: 'os1', date: ym + '-09', loc: '더클라임 강남', note: '초보 환영', createdBy: '이희주',
+        createdAt: '2026-07-01T00:00:00.000Z', dateInfo: DI(ym + '-09', '') }
     ],
     openSessionRoles: ['팀장'],
     raidLocations: ['신림', '사당', '이수', '논현', '양재']
@@ -303,17 +304,24 @@
         getOpenSessions: { items: DATA.openSessions, roles: DATA.openSessionRoles },
         addOpenSession: (function () {
           if (fn !== 'addOpenSession') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
-          DATA.openSessions.push({
-            id: 'os' + (DATA.openSessions.length + 1), weekday: Number(args[0]),
-            loc: String(args[1] || '').trim(), note: String(args[2] || '').trim(),
-            createdBy: args[3], createdAt: new Date().toISOString()
+          const dates = Array.isArray(args[0]) ? args[0] : [];
+          const loc = String(args[1] || '').trim(), note = String(args[2] || '').trim();
+          const now = new Date().toISOString();
+          dates.forEach(function (date, i) {
+            DATA.openSessions.push({
+              id: 'os' + (DATA.openSessions.length + 1 + i), date: date, loc: loc, note: note,
+              createdBy: args[3], createdAt: now, dateInfo: DI(date, '')
+            });
           });
           return { items: DATA.openSessions, roles: DATA.openSessionRoles };
         })(),
         editOpenSession: (function () {
           if (fn !== 'editOpenSession') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
           const it = DATA.openSessions.find(function (x) { return x.id === args[0]; });
-          if (it) { it.weekday = Number(args[1]); it.loc = String(args[2] || '').trim(); it.note = String(args[3] || '').trim(); }
+          if (it) {
+            it.date = String(args[1] || '').trim(); it.loc = String(args[2] || '').trim(); it.note = String(args[3] || '').trim();
+            it.dateInfo = DI(it.date, '');
+          }
           return { items: DATA.openSessions, roles: DATA.openSessionRoles };
         })(),
         deleteOpenSession: (function () {

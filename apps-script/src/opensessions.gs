@@ -1,8 +1,8 @@
 /**
  * 석기시대 부족 웹앱 — opensessions.gs
- * 정기 오픈 세션 — 요일 + 장소로 매주 반복되는 자유 참가 세션. 투표/참석확정 없이 정보 게시용.
+ * 정기 오픈 세션 — 특정 날짜(들) + 장소로 여는 자유 참가 세션. 투표/참석확정 없이 정보 게시용.
  *
- * 저장: Script Property 'open_sessions' = [{ id, weekday(0=일~6=토), loc, note, createdBy, createdAt }]
+ * 저장: Script Property 'open_sessions' = [{ id, date('yyyy-MM-dd'), loc, note, createdBy, createdAt }]
  *      Script Property 'open_session_roles' = 개설 가능 직책 배열(기본 ['팀장'])
  *
  * 권한: 개설(add)은 관리자 또는 open_session_roles 에 포함된 직책만(canOpenSession_).
@@ -43,21 +43,27 @@ function setOpenSessionsRaw_(arr) {
   PropertiesService.getScriptProperties().setProperty('open_sessions', JSON.stringify(arr));
 }
 
-// 공개 조회 — 목록 + 개설 가능 직책(권한 판단용)
+// 공개 조회 — 목록(날짜 표준 표기 dateInfo 포함) + 개설 가능 직책(권한 판단용)
 function getOpenSessions() {
-  return { items: getOpenSessionsRaw_(), roles: getOpenSessionRoles_() };
+  const items = getOpenSessionsRaw_().map(function (s) {
+    return { id: s.id, date: s.date, loc: s.loc, note: s.note, createdBy: s.createdBy,
+      createdAt: s.createdAt, dateInfo: dateInfo_(s.date, String(s.date || '').slice(0, 7)) };
+  });
+  return { items: items, roles: getOpenSessionRoles_() };
 }
 
-function assertValidWeekday_(weekday) {
-  const w = Number(weekday);
-  if (isNaN(w) || w < 0 || w > 6) throw new Error('요일 형식 오류(0=일~6=토).');
-  return w;
+function assertValidDate_(date) {
+  date = String(date || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('날짜 형식 오류 (yyyy-MM-dd): ' + date);
+  return date;
 }
 
-function addOpenSession(weekday, loc, note, requester, authToken) {
+// dates: ['2026-09-12','2026-09-19', ...] — 같은 장소/설명으로 한 번에 여러 날짜를 등록
+function addOpenSession(dates, loc, note, requester, authToken) {
   requester = verify_(requester, authToken);
   if (!canOpenSession_(requester)) throw new Error('정기 오픈 세션을 열 수 있는 직책이 아닙니다.');
-  weekday = assertValidWeekday_(weekday);
+  if (!Array.isArray(dates) || !dates.length) throw new Error('날짜를 하나 이상 선택하세요.');
+  const clean = dates.map(assertValidDate_);
   loc = String(loc || '').trim();
   if (!loc) throw new Error('장소를 입력하세요.');
   note = String(note || '').trim();
@@ -65,12 +71,13 @@ function addOpenSession(weekday, loc, note, requester, authToken) {
   lock.waitLock(10000);
   try {
     const list = getOpenSessionsRaw_();
-    list.push({
-      id: Utilities.getUuid(), weekday: weekday, loc: loc, note: note,
-      createdBy: requester, createdAt: new Date().toISOString()
+    const now = new Date().toISOString();
+    clean.forEach(function (date) {
+      list.push({ id: Utilities.getUuid(), date: date, loc: loc, note: note, createdBy: requester, createdAt: now });
     });
     setOpenSessionsRaw_(list);
-    sendPush_('🧭 정기 오픈 세션 개설!', '매주 ' + WEEKDAY_KO_[weekday] + '요일 @ ' + loc +
+    const label = clean.map(function (d) { return (+d.slice(5, 7)) + '/' + (+d.slice(8, 10)); }).join(', ');
+    sendPush_('🧭 정기 오픈 세션 개설!', label + ' @ ' + loc +
       (note ? '\n' + note : '') + '\n' + requester + ' 님이 열었어요', {}); // 전체 푸시 (번개와 동일)
     return getOpenSessions();
   } finally {
@@ -79,10 +86,10 @@ function addOpenSession(weekday, loc, note, requester, authToken) {
 }
 
 // 수정/삭제는 개설자 또는 관리자만 (canOpenSession_ 재검증 없음 — 개설 후 직책이 바뀌어도 본인 것은 계속 관리 가능)
-function editOpenSession(id, weekday, loc, note, requester, authToken) {
+function editOpenSession(id, date, loc, note, requester, authToken) {
   requester = verify_(requester, authToken);
   id = String(id || '').trim();
-  weekday = assertValidWeekday_(weekday);
+  date = assertValidDate_(date);
   loc = String(loc || '').trim();
   if (!loc) throw new Error('장소를 입력하세요.');
   note = String(note || '').trim();
@@ -95,7 +102,7 @@ function editOpenSession(id, weekday, loc, note, requester, authToken) {
     if (item.createdBy !== requester && !isAdmin_(requester)) {
       throw new Error('본인이 연 오픈 세션만 수정할 수 있습니다.');
     }
-    item.weekday = weekday; item.loc = loc; item.note = note;
+    item.date = date; item.loc = loc; item.note = note;
     setOpenSessionsRaw_(list);
     return getOpenSessions();
   } finally {
