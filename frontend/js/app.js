@@ -929,11 +929,13 @@ function renderScheduleActions() {
     openBtn.onclick = openOpenSessionDatePicker;
     box.appendChild(openBtn);
   }
-  const flashBtn = document.createElement('button');
-  flashBtn.className = 'btn2';
-  flashBtn.textContent = '⚡ 번개 열기';
-  flashBtn.onclick = function () { openFlashPrompt(); };
-  box.appendChild(flashBtn);
+  if (canOpenFlash_()) {
+    const flashBtn = document.createElement('button');
+    flashBtn.className = 'btn2';
+    flashBtn.textContent = '⚡ 번개 열기';
+    flashBtn.onclick = function () { openFlashPrompt(); };
+    box.appendChild(flashBtn);
+  }
 }
 
 /* ---------- 일정 달력 (#6) ----------
@@ -1024,11 +1026,13 @@ function openDayModal(iso) {
     p.className = 'modal-msg';
     p.textContent = '이 날은 등록된 일정이 없어요.';
     card.appendChild(p);
-    const addB = document.createElement('button');
-    addB.className = 'btn';
-    addB.textContent = '⚡ 이 날짜로 번개 열기';
-    addB.onclick = function () { close(); openFlashPrompt(iso); };
-    card.appendChild(addB);
+    if (canOpenFlash_()) {
+      const addB = document.createElement('button');
+      addB.className = 'btn';
+      addB.textContent = '⚡ 이 날짜로 번개 열기';
+      addB.onclick = function () { close(); openFlashPrompt(iso); };
+      card.appendChild(addB);
+    }
   }
 
   const btnRow = document.createElement('div');
@@ -1247,6 +1251,13 @@ function buildFlashCard_(r, me, isAdmin) {
 function canOpenSession_() {
   if (ME.isAdmin) return true;
   const roles = DATA.openSessionRoles || ['팀장'];
+  return roles.indexOf(roleOf_(getMe())) > -1;
+}
+
+// 번개 개설 가능 여부 — 기본값은 전체 허용(제한 없음), 관리자가 설정하면 해당 직책만
+function canOpenFlash_() {
+  if (ME.isAdmin) return true;
+  const roles = DATA.flashRoles || (DATA.roleList || []);
   return roles.indexOf(roleOf_(getMe())) > -1;
 }
 
@@ -2679,6 +2690,7 @@ function loadAdmin() {
     buildSettlerChips();
     buildAdminChips();
     buildOpenSessionRoleChips();
+    buildFlashRoleChips();
     buildResetPinSelect();
     renderMemberAdmin();
     raidLocDraft = (DATA.raidLocations || []).slice();
@@ -3010,6 +3022,43 @@ async function saveOpenSessionRoles() {
     busyHide();
     st.className = 'status ok';
     st.textContent = '✓ 저장됨: ' + res.roles.join(', ');
+  } catch (e) {
+    busyHide(false);
+    st.className = 'status err';
+    st.textContent = e.message || e;
+  }
+}
+
+/* ---------- 번개 개설 가능 직책 (관리자) ---------- */
+function buildFlashRoleChips() {
+  const box = document.getElementById('flashRoleChips');
+  if (!box) return;
+  box.innerHTML = '';
+  const cur = DATA.flashRoles || DATA.roleList || [];
+  const list = DATA.roleList || ['부족심사중', '조약돌', '간석기', '고인돌', '팀장'];
+  list.forEach(function (r) {
+    const c = document.createElement('span');
+    c.className = 'chip' + (cur.indexOf(r) > -1 ? ' on' : '');
+    c.dataset.role = r;
+    c.textContent = (ROLE_ICON[r] || '') + ' ' + r;
+    c.onclick = function () { c.classList.toggle('on'); };
+    box.appendChild(c);
+  });
+}
+
+async function saveFlashRoles() {
+  const roles = Array.prototype.slice.call(document.querySelectorAll('#flashRoleChips .chip.on'))
+    .map(function (c) { return c.dataset.role; });
+  const st = document.getElementById('flashRoleStatus');
+  if (!roles.length) { st.className = 'status err'; st.textContent = '최소 1개 직책을 선택하세요.'; return; }
+  busyShow('저장 중…');
+  try {
+    const res = await run('setFlashRoles', roles, getMe(), ME.token);
+    DATA.flashRoles = res.roles;
+    busyHide();
+    st.className = 'status ok';
+    st.textContent = '✓ 저장됨: ' + res.roles.join(', ');
+    renderScheduleActions(); // 번개 열기 버튼 노출 여부 즉시 반영
   } catch (e) {
     busyHide(false);
     st.className = 'status err';

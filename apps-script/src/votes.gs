@@ -68,9 +68,44 @@ function flashOwnerOf_(dateText) {
   return '';
 }
 
+/* ---------- 번개 개설 가능 직책 (관리자 설정) ----------
+ * 기본값은 ROLES 전체(=제한 없음, 기존 동작 유지) — 관리자가 원할 때만 좁힌다.
+ * open_session_roles(opensessions.gs)와 동일한 패턴.
+ */
+function getFlashRoles_() {
+  const v = PropertiesService.getScriptProperties().getProperty('flash_roles');
+  if (v) {
+    try {
+      const arr = JSON.parse(v);
+      if (Array.isArray(arr) && arr.length) return arr;
+    } catch (e) {}
+  }
+  return ROLES.slice();
+}
+function setFlashRoles_(arr) {
+  PropertiesService.getScriptProperties().setProperty('flash_roles', JSON.stringify(arr));
+}
+function canOpenFlash_(name) {
+  if (isAdmin_(name)) return true;
+  const m = splitBySupport_(ss_()).all.find(function (x) { return x.name === name; });
+  const role = m ? m.role : ROLES[0];
+  return getFlashRoles_().indexOf(role) > -1;
+}
+// 관리자 전용: 번개 개설 가능 직책 목록 설정
+function setFlashRoles(roles, requester, authToken) {
+  requester = verify_(requester, authToken);
+  if (!isAdmin_(requester)) throw new Error('관리자만 번개 개설 가능 직책을 설정할 수 있습니다.');
+  if (!Array.isArray(roles)) throw new Error('직책 배열이 필요합니다.');
+  const clean = roles.filter(function (r) { return ROLES.indexOf(r) > -1; });
+  if (!clean.length) throw new Error('최소 1개 직책을 선택하세요.');
+  setFlashRoles_(clean);
+  return { roles: clean };
+}
+
 // 번개 열기: 자연재해 시트에 새 행 추가 (A=날짜, B=위치, C=등록자)
 function addFlash(dateText, loc, creator, authToken) {
   creator = verify_(creator, authToken);
+  if (!canOpenFlash_(creator)) throw new Error('번개를 열 수 있는 직책이 아닙니다.');
   ensureLocationColumns_();
   dateText = String(dateText || '').trim();
   loc = String(loc || '').trim();

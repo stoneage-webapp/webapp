@@ -2,7 +2,8 @@
  * 석기시대 부족 웹앱 — opensessions.gs
  * 정기 오픈 세션 — 특정 날짜(들) + 장소로 여는 자유 참가 세션. 투표/참석확정 없이 정보 게시용.
  *
- * 저장: Script Property 'open_sessions' = [{ id, date('yyyy-MM-dd'), loc, note, createdBy, createdAt }]
+ * 저장: '오픈세션' 시트 — A=ID, B=날짜('yyyy-MM-dd'), C=장소, D=설명, E=개설자, F=등록일시.
+ *      첫 개설 시 앱이 자동 생성. ID는 Utilities.getUuid() — 행 순서가 바뀌어도(삭제 등) 안전하게 찾기 위함.
  *      Script Property 'open_session_roles' = 개설 가능 직책 배열(기본 ['팀장'])
  *
  * 권한: 개설(add)은 관리자 또는 open_session_roles 에 포함된 직책만(canOpenSession_).
@@ -32,15 +33,36 @@ function canOpenSession_(name) {
   return getOpenSessionRoles_().indexOf(role) > -1;
 }
 
-function getOpenSessionsRaw_() {
-  const v = PropertiesService.getScriptProperties().getProperty('open_sessions');
-  try {
-    const arr = v ? JSON.parse(v) : [];
-    return Array.isArray(arr) ? arr : [];
-  } catch (e) { return []; }
+// '오픈세션' 시트 확보 + 헤더 보장 (첫 개설 시 자동 생성)
+function openSessionSheet_() {
+  const s = ss_();
+  let sh = s.getSheetByName(CONFIG.SHEETS.opensessions);
+  if (!sh) {
+    sh = s.insertSheet(CONFIG.SHEETS.opensessions);
+    sh.appendRow(['ID', '날짜', '장소', '설명', '개설자', '등록일시']);
+  }
+  return sh;
 }
-function setOpenSessionsRaw_(arr) {
-  PropertiesService.getScriptProperties().setProperty('open_sessions', JSON.stringify(arr));
+
+function getOpenSessionsRaw_() {
+  const sh = openSessionSheet_();
+  const last = sh.getLastRow();
+  if (last < 2) return [];
+  const vals = sh.getRange(2, 1, last - 1, 6).getDisplayValues();
+  return vals.filter(function (r) { return r[0]; }).map(function (r) {
+    return { id: r[0], date: r[1], loc: r[2], note: r[3], createdBy: r[4], createdAt: r[5] };
+  });
+}
+
+// (시트, ID) → 행번호(1-based). 없으면 0.
+function findOpenSessionRow_(sh, id) {
+  const last = sh.getLastRow();
+  if (last < 2) return 0;
+  const ids = sh.getRange(2, 1, last - 1, 1).getDisplayValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === id) return i + 2;
+  }
+  return 0;
 }
 
 // 공개 조회 — 목록(날짜 표준 표기 dateInfo 포함) + 개설 가능 직책(권한 판단용)
@@ -70,12 +92,13 @@ function addOpenSession(dates, loc, note, requester, authToken) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const list = getOpenSessionsRaw_();
-    const now = new Date().toISOString();
+    const sh = openSessionSheet_();
+    const now = new Date();
     clean.forEach(function (date) {
-      list.push({ id: Utilities.getUuid(), date: date, loc: loc, note: note, createdBy: requester, createdAt: now });
+      // 날짜는 앞에 ' 를 붙여 텍스트로 저장 — 안 그러면 시트가 자동으로 날짜 타입으로 바꿔서
+      // getDisplayValues()가 로캘 형식으로 돌려주기 때문에 'yyyy-MM-dd' 파싱이 깨진다(PIN·휴면종료일과 동일 이유).
+      sh.appendRow([Utilities.getUuid(), "'" + date, loc, note, requester, now]);
     });
-    setOpenSessionsRaw_(list);
     const label = clean.map(function (d) { return (+d.slice(5, 7)) + '/' + (+d.slice(8, 10)); }).join(', ');
     sendPush_('🧭 정기 오픈 세션 개설!', label + ' @ ' + loc +
       (note ? '\n' + note : '') + '\n' + requester + ' 님이 열었어요', {}); // 전체 푸시 (번개와 동일)
@@ -96,14 +119,14 @@ function editOpenSession(id, date, loc, note, requester, authToken) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const list = getOpenSessionsRaw_();
-    const item = list.find(function (x) { return x.id === id; });
-    if (!item) throw new Error('해당 오픈 세션을 찾을 수 없습니다.');
-    if (item.createdBy !== requester && !isAdmin_(requester)) {
+    const sh = openSessionSheet_();
+    const row = findOpenSessionRow_(sh, id);
+    if (!row) throw new Error('해당 오픈 세션을 찾을 수 없습니다.');
+    const createdBy = sh.getRange(row, 5).getDisplayValue();
+    if (createdBy !== requester && !isAdmin_(requester)) {
       throw new Error('본인이 연 오픈 세션만 수정할 수 있습니다.');
     }
-    item.date = date; item.loc = loc; item.note = note;
-    setOpenSessionsRaw_(list);
+    sh.getRange(row, 2, 1, 3).setValues([["'" + date, loc, note]]);
     return getOpenSessions();
   } finally {
     lock.releaseLock();
@@ -116,13 +139,14 @@ function deleteOpenSession(id, requester, authToken) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const list = getOpenSessionsRaw_();
-    const item = list.find(function (x) { return x.id === id; });
-    if (!item) throw new Error('해당 오픈 세션을 찾을 수 없습니다.');
-    if (item.createdBy !== requester && !isAdmin_(requester)) {
+    const sh = openSessionSheet_();
+    const row = findOpenSessionRow_(sh, id);
+    if (!row) throw new Error('해당 오픈 세션을 찾을 수 없습니다.');
+    const createdBy = sh.getRange(row, 5).getDisplayValue();
+    if (createdBy !== requester && !isAdmin_(requester)) {
       throw new Error('본인이 연 오픈 세션만 삭제할 수 있습니다.');
     }
-    setOpenSessionsRaw_(list.filter(function (x) { return x.id !== id; }));
+    sh.deleteRow(row);
     return getOpenSessions();
   } finally {
     lock.releaseLock();

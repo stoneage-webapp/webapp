@@ -63,6 +63,7 @@
         createdAt: '2026-07-01T00:00:00.000Z', dateInfo: DI(ym + '-09', '') }
     ],
     openSessionRoles: ['팀장'],
+    flashRoles: ['부족심사중', '조약돌', '간석기', '고인돌', '팀장'], // 기본값: 전체 허용
     raidLocations: ['신림', '사당', '이수', '논현', '양재']
   };
 
@@ -333,6 +334,11 @@
           if (fn !== 'setOpenSessionRoles') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
           if (Array.isArray(args[0]) && args[0].length) DATA.openSessionRoles = args[0].slice();
           return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+        })(),
+        setFlashRoles: (function () {
+          if (fn !== 'setFlashRoles') return { roles: DATA.flashRoles };
+          if (Array.isArray(args[0]) && args[0].length) DATA.flashRoles = args[0].slice();
+          return { roles: DATA.flashRoles };
         })(),
         setRaidLocations: (function () {
           if (fn !== 'setRaidLocations') return { locations: DATA.raidLocations };
