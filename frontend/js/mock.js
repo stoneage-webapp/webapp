@@ -96,56 +96,6 @@
              items: BUDGET.slice().reverse() };
   }
 
-  // ── 레벨(난이도)별 완등 순위 목데이터 ──
-  let LEVELS = ['흰', '노', '주', '초', '파', '빨'];       // 낮은→높은 순
-  const LEVEL_COUNTS = {                                   // { 이름: { 레벨: 완등수 } }
-    '김광훈': { '흰': 15, '노': 10, '주': 6, '초': 3, '파': 1 },
-    '이희주': { '흰': 12, '노': 9, '주': 6, '초': 3, '파': 1 },
-    '박도윤': { '흰': 8, '노': 4, '주': 1 },
-    '최서연': { '흰': 5, '노': 2 }
-    // 정민재: 기록 없음 (rank=null 시나리오)
-  };
-  function levelBoard(reqSeason) {
-    const roster = MEMBERS.slice().sort();
-    const rows = roster.map(function (name) {
-      const raw = LEVEL_COUNTS[name] || {};
-      const c = {};
-      let topIdx = -1, total = 0;
-      LEVELS.forEach(function (lv, i) {
-        const n = raw[lv] || 0;
-        if (n > 0) { c[lv] = n; total += n; if (i > topIdx) topIdx = i; }
-      });
-      const topLevel = topIdx >= 0 ? LEVELS[topIdx] : '';
-      return { name: name, counts: c, topLevel: topLevel, topIdx: topIdx,
-               topCount: topLevel ? (c[topLevel] || 0) : 0, total: total };
-    });
-    rows.sort(function (a, b) {
-      if (b.topIdx !== a.topIdx) return b.topIdx - a.topIdx;
-      if (b.topCount !== a.topCount) return b.topCount - a.topCount;
-      if (b.total !== a.total) return b.total - a.total;
-      return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
-    });
-    let rank = 0, shown = 0, prevKey = null;
-    rows.forEach(function (r) {
-      if (r.topIdx < 0 && r.total === 0) { r.rank = null; return; }
-      shown++;
-      const key = r.topIdx + '|' + r.topCount + '|' + r.total;
-      if (key !== prevKey) { rank = shown; prevKey = key; }
-      r.rank = rank;
-    });
-    const q = Math.ceil((now.getMonth() + 1) / 3);
-    const y = now.getFullYear();
-    const curSeason = y + '-Q' + q;
-    const prevQ = q === 1 ? 4 : q - 1, prevY = q === 1 ? y - 1 : y;
-    const season = /^\d{4}-Q[1-4]$/.test(reqSeason || '') ? reqSeason : curSeason;
-    if (season !== curSeason) { // 지난 시즌: 목데이터엔 기록 없음 → 전원 rank null
-      rows.forEach(function (r) { r.counts = {}; r.total = 0; r.topIdx = -1; r.topLevel = ''; r.topCount = 0; r.rank = null; });
-    }
-    return { levels: LEVELS.slice(), rows: rows, season: season,
-             seasonLabel: season.slice(0, 4) + ' ' + season.slice(6) + '분기',
-             seasons: [curSeason, prevY + '-Q' + prevQ] };
-  }
-
   window.API_MOCK = {
     handle: function (fn, args) {
       const T = {
@@ -293,47 +243,10 @@
           const n = String(args[0] || '').trim();
           const i = MEMBERS.indexOf(n);
           if (i > -1) {
-            MEMBERS.splice(i, 1); delete DATA.support[n]; delete LEVEL_COUNTS[n];
+            MEMBERS.splice(i, 1); delete DATA.support[n];
             DATA.settlers = DATA.settlers.filter(function (x) { return x !== n; });
           }
           return memberSnap();
-        })(),
-        // 레벨 순위/기록
-        getLevelBoard: levelBoard(args[0]),
-        setLevels: (function () {
-          if (fn !== 'setLevels') return levelBoard();
-          if (Array.isArray(args[0])) {
-            LEVELS = args[0].map(function (s) { return String(s).trim(); }).filter(Boolean);
-          }
-          return levelBoard();
-        })(),
-        setLevelRecord: (function () {
-          if (fn !== 'setLevelRecord') return levelBoard();
-          const nm = String(args[0] || '').trim();
-          const counts = (args[1] && typeof args[1] === 'object') ? args[1] : {};
-          if (MEMBERS.indexOf(nm) > -1) {
-            const c = {};
-            LEVELS.forEach(function (lv) {
-              const v = parseInt(counts[lv], 10);
-              if (!isNaN(v) && v > 0) c[lv] = v;
-            });
-            LEVEL_COUNTS[nm] = c;
-          }
-          return levelBoard();
-        })(),
-        setMyLevelRecord: (function () {
-          if (fn !== 'setMyLevelRecord') return levelBoard();
-          const counts = (args[0] && typeof args[0] === 'object') ? args[0] : {};
-          const nm = String(args[1] || '').trim(); // 본인 이름
-          if (MEMBERS.indexOf(nm) > -1) {
-            const c = {};
-            LEVELS.forEach(function (lv) {
-              const v = parseInt(counts[lv], 10);
-              if (!isNaN(v) && v > 0) c[lv] = v;
-            });
-            LEVEL_COUNTS[nm] = c;
-          }
-          return levelBoard();
         })(),
         runSettle: { ym: args[0], done: 2, total: 4, independent: 1, dormant: 0, canceled: 1, copied: 1, uncovered: ['박도윤'], credited: 10000 },
         getBudget: budgetSnap(),

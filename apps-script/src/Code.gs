@@ -30,8 +30,7 @@ const GET_ACTIONS = {
   getHallArchive:  { cache: true, fn: function (p) { return getHallArchive(); } },          // #23 역대 우승자
   getSettleStatus: { cache: true, fn: function (p) { return getSettleStatus(p.ym || ''); } }, // #21 정산 현황 (월 지정)
   getVenueStats:   { cache: true, fn: function (p) { return getVenueStats(); } },            // 암장별 방문 통계
-  getCompletionLog:{ cache: true, fn: function (p) { return getCompletionLog(Number(p.limit) || 10); } }, // 완료된 모임 최근 기록
-  getLevelBoard:   { cache: true, fn: function (p) { return getLevelBoard(p.season || ''); } }             // 레벨별 완등 순위 (공개, 시즌별)
+  getCompletionLog:{ cache: true, fn: function (p) { return getCompletionLog(Number(p.limit) || 10); } } // 완료된 모임 최근 기록
 };
 
 /* ---------- 인증 조회 / 변경 (POST) ---------- */
@@ -80,9 +79,6 @@ const POST_ACTIONS = {
   setAdmins:         { auth: 'requester', bust: true, fn: function (d) { return setAdmins(d.names, d.requester, d.token); } },                // 관리자(부관리자) 목록 설정 (관리자)
   setDormant:        { auth: 'requester', bust: true, fn: function (d) { return setDormant(d.targetName, d.until, d.requester, d.token); } }, // 휴면 설정/해제 (관리자, 최대 3개월)
   setRole:           { auth: 'requester', bust: true, fn: function (d) { return setRole(d.targetName, d.role, d.requester, d.token); } },     // 직책 변경 (관리자)
-  setLevels:         { auth: 'requester', bust: true, fn: function (d) { return setLevels(d.levels, d.requester, d.token); } },              // 레벨 목록 설정 (관리자)
-  setLevelRecord:    { auth: 'requester', bust: true, fn: function (d) { return setLevelRecord(d.name, d.counts, d.requester, d.token); } }, // 다른 구성원 완등 기록 (관리자)
-  setMyLevelRecord:  { auth: 'name',      bust: true, fn: function (d) { return setMyLevelRecord(d.counts, d.name, d.token); } },           // 본인 완등 기록 (누구나)
   postNotice:        { auth: 'name', bust: true, fn: function (d) { return postNotice(d.text, d.name, d.token); } },   // #24
   deleteNotice:      { auth: 'name', bust: true, fn: function (d) { return deleteNotice(d.row, d.when, d.name, d.token); } }, // #24
   editNotice:        { auth: 'name', bust: true, fn: function (d) { return editNotice(d.row, d.when, d.text, d.name, d.token); } }, // 공지 수정 (관리자)

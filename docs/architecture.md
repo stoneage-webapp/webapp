@@ -21,7 +21,6 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `config.gs` | 전역 상수 `CONFIG` (실제 값은 커밋 금지 — `v3.0.2/Code.local.md` 참고) |
 | `auth.gs` | PIN 로그인, 서명 토큰, 요청 검증, 관리자 판별, PIN 초기화 |
 | `members.gs` | 부족원 명단 관리(관리자) — 추가/이름수정/삭제. 부족원 시트 A열만 조작 |
-| `levels.gs` | 레벨(난이도)별 완등 기록/순위 — 레벨 목록(Script Property)·`레벨완등` 시트, 최고 레벨 우선 순위 |
 | `budget.gs` | 부족 예산 — 정산 적립(자동)·사용 이력. `예산` 시트. 정산 담당자/관리자 전용 |
 | `push.gs` | 푸시 알림(OneSignal) — 공지/번개 즉시 발송, D-1·번개 인증 시간 트리거 |
 | `votes.gs` | 정기공격 고정 일정(관리자 지정, 투표 없음) · 자연재해(번개) 투표 · 참석확정(RSVP) · 완료 처리 |
@@ -58,7 +57,6 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `getSettleStatus` | `ym`(선택, 기본 이번 달) | `{ ym, months:[존재하는 월들], rows:[{name,status}] }` — 인증현황 시트, 지정한 월 한 열만 |
 | `getVenueStats` | — | `{ total:[{loc,count}], thisMonth:[{loc,count}], month }` — 암장별 방문 집계 |
 | `getCompletionLog` | `limit`(기본10) | `{ items:[{when,kind,month,date,loc,people,by}] }` — `완료기록` 시트 최신순. 정기공격 무산 종료는 `date`가 `'(모임 없음)'` |
-| `getLevelBoard` | `season(선택, 예 '2026-Q3')` | `{ levels, rows:[{name,counts,topLevel,topIdx,topCount,total,rank}], season, seasonLabel, seasons:[존재 시즌들] }` — 레벨 완등 순위(공개, **분기 시즌별**, 기본=현재 분기). **최고 레벨 우선** → 그 레벨 완등수 → 총완등 → 이름. 기록 없으면 `rank:null`. `seasons`로 지난 시즌 열람 |
 
 > - `driveApiKey`는 익명 `getInitData`에서 **제거됨** → `loginWithPin`/`changePin` 응답으로 이동.
 > - `certNudge`도 같은 이유로 로그인 응답 전용: "이번 달 완료 처리된 모임에 참여했는데 아직 인증 안 함" 여부를 **본인 것만** 알려준다 (`needsCertNudge_`, votes.gs). 다른 사람의 인증 여부를 노출하지 않기 위해 `getInitData` 등 익명 GET에는 포함하지 않는다.
@@ -107,10 +105,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `getBudget` | `name, token` | `{ balance, credit, spent, perPerson, items:[{when,kind,amount,note,by,month,row}] }` — **정산 담당자/관리자만** |
 | `addExpense` | `amount, note, name, token` | `getBudget()` 결과 — 예산 사용 등록 (정산 담당자/관리자) |
 | `deleteBudgetItem` | `row, when, name, token` | `getBudget()` 결과 — 예산 기록 삭제. `when` 대조 |
-| `setLevels` | `levels(배열, 낮은→높은 순), requester, token` | `getLevelBoard()` 결과 — **누구나(로그인)**. 공용 레벨 목록(Script Property `levels`) 저장 + 시트 열 보강. 홈 "⚙️ 레벨 설정"에서 |
 | `setRsvp` | `month('2026-08'), status('yes'\|'no'\|''), name, token` | `{ rsvp: {월:{이름:상태}} }` — **본인**. 확정 모임 참석 확정. 빈 값=미정(취소) |
-| `setLevelRecord` | `name, counts({레벨:정수}), requester, token` | `getLevelBoard()` — **관리자 전용**(다른 구성원 정정). 완등 수를 `레벨완등` 시트에 기록 |
-| `setMyLevelRecord` | `counts({레벨:정수}), name, token` | `getLevelBoard()` — **누구나(본인)**. 토큰으로 본인 확인 후 자기 완등 수만 기록 |
 | `postNotice` | `text, name, token` | `{ items(전체), home(고정+최신1) }` — 관리자 전용 |
 | `deleteNotice` | `row, when, name, token` | `{ items, home }` — 관리자 전용. `when` 대조로 행 밀림 방지 |
 | `editNotice` | `row, when, text, name, token` | `{ items, home }` — 관리자 전용. 공지 내용(C열) 수정. `when` 대조 |
@@ -148,12 +143,11 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 벽화 갤러리 | `getGallery`(월/사람 필터), `deleteProof` |
 | 명예의전당 | `getHallData`, `getHallArchive`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |
 | 공지 | 홈: `getInitData.notices`(고정 전부 + 최신 1건, 새 공지 뱃지), 더보기(관리자): `getNotices`, `postNotice`/`editNotice`/`deleteNotice`/`pinNotice` |
-| 레벨 순위 (홈, 모두 열람) | `getLevelBoard`(분기 시즌별), 본인 기록 `setMyLevelRecord`·레벨 설정 `setLevels`(둘 다 누구나) |
 | 참석 확정(RSVP) · 번개 인증 리마인더 | 확정 배너 `setRsvp` · 홈 인앱 리마인더(그날 번개 시각 이후) |
 | 홈 새 소식 (최근 24h 벽화/전당) · 모임 D-1 리마인더 | `getInitData.recent` · 확정 모임 D-day |
 | 통계 | `getStats`(관리자 전체/일반 본인) |
 | 완료된 모임 기록 | `getCompletionLog` |
-| 관리 탭 (관리자·정산 담당자만 노출) | `runSettle`, `getSettleStatus`, `cancelSettle`, `resetSettle`, `setSettlers`(관리자), `setSupports`(관리자), `resetPin`(관리자), `addMember`/`renameMember`/`deleteMember`(관리자, 부족원 관리), `setLevels`(관리자, 레벨 목록)·`setLevelRecord`(관리자, 정정) |
+| 관리 탭 (관리자·정산 담당자만 노출) | `runSettle`, `getSettleStatus`, `cancelSettle`, `resetSettle`, `setSettlers`(관리자), `setSupports`(관리자), `resetPin`(관리자), `addMember`/`renameMember`/`deleteMember`(관리자, 부족원 관리) |
 
 ## AS-IS와의 차이 (참고)
 

@@ -22,8 +22,7 @@ const API_GET = {
   getHallArchive:  [],
   getSettleStatus: ['ym'],
   getVenueStats:   [],
-  getCompletionLog: ['limit'],
-  getLevelBoard:   ['season']
+  getCompletionLog: ['limit']
 };
 const API_POST = {
   loginWithPin:      ['name', 'pin'],
@@ -57,9 +56,6 @@ const API_POST = {
   getBudget:         ['name', 'token'],
   addExpense:        ['amount', 'note', 'name', 'token'],
   deleteBudgetItem:  ['row', 'when', 'name', 'token'],
-  setLevels:         ['levels', 'requester', 'token'],
-  setLevelRecord:    ['name', 'counts', 'requester', 'token'],
-  setMyLevelRecord:  ['counts', 'name', 'token'],
   postNotice:        ['text', 'name', 'token'],
   deleteNotice:      ['row', 'when', 'name', 'token'],
   editNotice:        ['row', 'when', 'text', 'name', 'token'],
