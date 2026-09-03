@@ -913,8 +913,8 @@ function renderCalLegend() {
   el.innerHTML =
     '<div class="cal-legend">' +
       '<span><i class="cal-legend-swatch raid"></i>정기공격</span>' +
-      '<span><i class="cal-legend-swatch flash"></i>번개</span>' +
       '<span><i class="cal-legend-swatch open"></i>오픈세션</span>' +
+      '<span><i class="cal-legend-swatch flash"></i>번개</span>' +
     '</div>';
 }
 
@@ -922,11 +922,6 @@ function renderScheduleActions() {
   const box = document.getElementById('scheduleActions');
   if (!box) return;
   box.innerHTML = '';
-  const flashBtn = document.createElement('button');
-  flashBtn.className = 'btn2';
-  flashBtn.textContent = '⚡ 번개 열기';
-  flashBtn.onclick = function () { openFlashPrompt(); };
-  box.appendChild(flashBtn);
   if (canOpenSession_()) {
     const openBtn = document.createElement('button');
     openBtn.className = 'btn2';
@@ -934,10 +929,15 @@ function renderScheduleActions() {
     openBtn.onclick = openOpenSessionDatePicker;
     box.appendChild(openBtn);
   }
+  const flashBtn = document.createElement('button');
+  flashBtn.className = 'btn2';
+  flashBtn.textContent = '⚡ 번개 열기';
+  flashBtn.onclick = function () { openFlashPrompt(); };
+  box.appendChild(flashBtn);
 }
 
 /* ---------- 일정 달력 (#6) ----------
- * 선택 월(없으면 이번 달)의 정기공격 고정일정(꽉찬 원)·번개(sky 테두리)·정기 오픈 세션(moss 점)을 한 캘린더에서 확인.
+ * 선택 월(없으면 이번 달)의 정기공격 고정일정(꽉찬 원)·정기 오픈 세션(sky 점)·번개(gold 테두리)를 한 캘린더에서 확인.
  * 여러 일정이 겹치는 날은 점(cal-dots)이 종류별로 함께 표시된다. 날짜 탭 → 그 날 일정을 모달로.
  */
 function renderCalendar() {
