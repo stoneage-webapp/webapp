@@ -1526,7 +1526,9 @@ const GALLERY_PAGE = 12;
 
 function makeGalleryCard(it) {
   const cell = document.createElement('div');
-  cell.className = 'grid-cell';
+  // 업로더가 휴면 회원이면 인증 내역에서 투명도를 낮춰 시각적으로 구분
+  const dormant = !!(DATA.dormant && DATA.dormant[it.by]);
+  cell.className = 'grid-cell' + (dormant ? ' dormant-entry' : '');
   const img = document.createElement('img');
   img.loading = 'lazy';
   img.src = 'https://drive.google.com/thumbnail?id=' + it.fileId + '&sz=w400';
