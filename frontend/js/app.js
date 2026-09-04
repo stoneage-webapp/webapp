@@ -1065,8 +1065,9 @@ function appendRsvp_(b, month, me) {
   const wrap = document.createElement('div');
   wrap.className = 'rsvp';
   wrap.innerHTML = '<div class="rsvp-count">🙋 참석 <b>' + going.length + '</b>' +
-    (notGoing.length ? ' · 불참 ' + notGoing.length : '') + '</div>' +
-    (going.length ? '<div class="rsvp-list">✅ ' + koSort(going).map(esc).join(' · ') + '</div>' : '');
+    ' · 불참 <b class="no">' + notGoing.length + '</b></div>' +
+    (going.length ? '<div class="rsvp-list">✅ ' + koSort(going).map(esc).join(' · ') + '</div>' : '') +
+    (notGoing.length ? '<div class="rsvp-list no">❌ ' + koSort(notGoing).map(esc).join(' · ') + '</div>' : '');
   if (me) {
     const row = document.createElement('div');
     row.className = 'rsvp-btns';

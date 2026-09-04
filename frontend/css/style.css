@@ -340,7 +340,9 @@ textarea:focus { outline: none; border-color: var(--ember); }
 .rsvp { margin: 8px 0 2px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.08); }
 .rsvp-count { font-size: 13px; color: var(--ink); }
 .rsvp-count b { color: var(--moss); font-size: 15px; }
+.rsvp-count b.no { color: #d98a8a; }
 .rsvp-list { font-size: 12px; color: var(--ink-dim); margin-top: 3px; }
+.rsvp-list.no { color: #d98a8a; }
 .rsvp-btns { display: flex; gap: 8px; margin-top: 8px; }
 .rsvp-btn {
   flex: 1; padding: 8px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 700;
