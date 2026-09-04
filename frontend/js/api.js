@@ -58,6 +58,7 @@ const API_POST = {
   addOpenSession:    ['dates', 'loc', 'note', 'requester', 'token'],
   editOpenSession:   ['id', 'date', 'loc', 'note', 'requester', 'token'],
   toggleOpenSessionVote: ['id', 'voter', 'token'],
+  completeOpenSession: ['id', 'requester', 'token'],
   deleteOpenSession: ['id', 'requester', 'token'],
   setOpenSessionRoles: ['roles', 'requester', 'token'],
   setFlashRoles:     ['roles', 'requester', 'token'],

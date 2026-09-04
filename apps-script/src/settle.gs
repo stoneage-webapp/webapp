@@ -333,11 +333,39 @@ function resetSettle(ym, requester, authToken) {
  *   months : 데이터가 있는 월 목록 (정렬)
  *   members: [{name, supported}]  — supported=false 면 지원(정산) 제외 (J열)
  *   cert   : { ym: { 이름: true } } — 해당 월 사진 인증자
- *   votes  : { ym: { 이름: true } } — 해당 월 정기공격 투표 참여자
+ *   votes  : { ym: { 이름: true } } — 해당 월 정기공격 참석확정(RSVP 'yes')자
+ *   opensessions : { ym: { 이름: true } } — 해당 월 오픈세션 참여자(진행중+완료 합산)
  * }
  * 요청자는 라우터에서 name+token 검증 완료 후 전달된다.
  * 관리자는 전체, 일반 회원은 본인의 이름과 월별 기록만 반환한다.
  */
+// 오픈세션 참여 이력(출석 통계용): 아직 완료 처리 안 된 건 '오픈세션' 시트에서, 완료된 건 '완료기록'에서 합쳐 읽는다.
+// (완료 처리 시 '오픈세션' 시트 행 자체가 사라지므로 두 소스를 합쳐야 전체 기간이 나온다.)
+function getOpenSessionAttendance_(canSeeAll, requester) {
+  const out = {};
+  function add(ym, name) {
+    name = String(name || '').trim();
+    if (!ym || !name || !(canSeeAll || name === requester)) return;
+    if (!out[ym]) out[ym] = {};
+    out[ym][name] = true;
+  }
+  (getOpenSessionsRaw_() || []).forEach(function (s) {
+    const info = dateInfo_(s.date, String(s.date || '').slice(0, 7));
+    const ym = info ? info.ym : '';
+    (s.voters || []).forEach(function (n) { add(ym, n); });
+  });
+  const sh = ss_().getSheetByName(CONFIG.SHEETS.completion);
+  if (sh && sh.getLastRow() > 1) {
+    const vals = sh.getDataRange().getDisplayValues();
+    for (let i = 1; i < vals.length; i++) {
+      if (String(vals[i][1]).trim() !== '오픈세션') continue; // B=종류
+      const ym = String(vals[i][2]).trim(); // C=월
+      String(vals[i][5] || '').split(',').forEach(function (n) { add(ym, n); }); // F=참여인원
+    }
+  }
+  return out;
+}
+
 function getStats(requester) {
   requester = String(requester || '').trim();
   const canSeeAll = isAdmin_(requester);
@@ -382,10 +410,13 @@ function getStats(requester) {
     });
   });
 
+  const opensessions = getOpenSessionAttendance_(canSeeAll, requester);
+
   const seen = {};
   Object.keys(cert).forEach(function (m) { seen[m] = true; });
   Object.keys(votes).forEach(function (m) { seen[m] = true; });
-  return { months: Object.keys(seen).sort(), members: members, cert: cert, votes: votes };
+  Object.keys(opensessions).forEach(function (m) { seen[m] = true; });
+  return { months: Object.keys(seen).sort(), members: members, cert: cert, votes: votes, opensessions: opensessions };
 }
 
 /* ---------- 정산 현황 웹 조회 (#21) ----------

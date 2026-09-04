@@ -131,11 +131,16 @@
             : (['이희주', '박도윤'].indexOf(requester) > -1
               ? (function () { const o = {}; o[requester] = true; return o; })()
               : {});
+          const opensessions = {};
+          opensessions[ym] = requester === '김광훈'
+            ? { '이희주': true }
+            : (requester === '이희주' ? { '이희주': true } : {});
           return {
             months: ['2026-06', ym],
             members: names.map(function (m) { return { name: m, supported: DATA.support[m] !== false }; }),
             cert: cert,
-            votes: votes
+            votes: votes,
+            opensessions: opensessions
           };
         })(),
         // getSettleStatus(ym): 열=월 누적 스키마 — 상태만(장소/링크 없음)
@@ -336,6 +341,11 @@
         })(),
         deleteOpenSession: (function () {
           if (fn !== 'deleteOpenSession') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+          DATA.openSessions = DATA.openSessions.filter(function (x) { return x.id !== args[0]; });
+          return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+        })(),
+        completeOpenSession: (function () {
+          if (fn !== 'completeOpenSession') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
           DATA.openSessions = DATA.openSessions.filter(function (x) { return x.id !== args[0]; });
           return { items: DATA.openSessions, roles: DATA.openSessionRoles };
         })(),
