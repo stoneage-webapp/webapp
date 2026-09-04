@@ -79,7 +79,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 |---|---|---|
 | `loginWithPin` | `name, pin` | `{ name, token, isAdmin, driveApiKey, certNudge, firstSet? }` — 실패 5회 → 10분 잠금 |
 | `changePin` | `name, oldPin, newPin, token` | `{ name, token, isAdmin, driveApiKey, certNudge }` |
-| `getStats` | `name, token` | `{ months, members:[{name,supported}], cert:{ym:{이름:true}}, votes:{ym:{이름:true}} }` — 관리자는 전체, 일반 회원은 본인 통계만. `votes`는 정기공격 **참석확정(RSVP 'yes')** 집계(정기공격이 고정 일정으로 바뀌며 투표 참여 대신 RSVP로 대체됨) |
+| `getStats` | `name, token` | `{ months, members:[{name,supported}], cert:{ym:{이름:true}}, votes:{ym:{이름:true}}, opensessions:{ym:{이름:true}} }` — 관리자는 전체, 일반 회원은 본인 통계만. `votes`는 정기공격 **참석확정(RSVP 'yes')** 집계. `opensessions`는 오픈세션 참여(진행중 시트 + 완료기록 합산) |
 | `getNotices` | `limit`(기본20), `name, token` | `{ items:[{when,by,text,row}] }` — 관리자 전용 전체 목록 |
 | `toggleVote` | `dateText, voter, token` | `{ date, voters }` — 자연재해(번개) 전용 |
 | `addFlash` | `dateText, loc, creator, token` | 자연재해 투표 배열 — `flash_roles`에 포함된 직책(기본 전체=제한 없음) 또는 관리자만 |
@@ -109,6 +109,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `editOpenSession` | `id, date, loc, note, requester, token` | `getOpenSessions()` 결과 — 개설자 또는 관리자만 |
 | `deleteOpenSession` | `id, requester, token` | `getOpenSessions()` 결과 — 개설자 또는 관리자만 |
 | `toggleOpenSessionVote` | `id, voter, token` | `{ id, voters }` — 로그인한 누구나. 개설자는 자동으로 첫 참여자(번개와 동일 관례) |
+| `completeOpenSession` | `id, requester, token` | `getOpenSessions()` 결과 — 개설자 또는 관리자만. `완료기록` 시트에 기록 후 목록에서 제외(번개와 동일) |
 | `setOpenSessionRoles` | `roles(배열), requester, token` | `getOpenSessions()` 결과 — 관리자 전용. 오픈 세션 개설 가능 직책 설정(Script Property `open_session_roles`) |
 | `setFlashRoles` | `roles(배열), requester, token` | `{ roles }` — 관리자 전용. 번개 개설 가능 직책 설정(Script Property `flash_roles`, 기본값=전체) |
 | `getBudget` | `name, token` | `{ balance, credit, spent, perPerson, items:[{when,kind,amount,note,by,month,row}] }` — **정산 담당자/관리자만** |
@@ -148,7 +149,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 로그인 | `loginWithPin`, `changePin` |
 | 정기공격(고정 일정) | `setRaidDate`(관리자), `setRsvp`(참석확정), `completeRaid`(관리자) |
 | 번개(자연재해 투표) | `toggleVote`, `addFlash`, `deleteFlash`, `editFlash`, `completeFlash`. 개설 가능 직책 설정은 관리 탭의 `setFlashRoles`(관리자) |
-| 정기 오픈 세션 (날짜+장소, 캘린더에서 여러 날짜 선택해 등록) | `getOpenSessions`, `addOpenSession`/`editOpenSession`/`deleteOpenSession`(개설자·관리자), `toggleOpenSessionVote`(참여의사, 누구나). 개설 가능 직책 설정은 관리 탭의 `setOpenSessionRoles`(관리자) |
+| 정기 오픈 세션 (날짜+장소, 캘린더에서 여러 날짜 선택해 등록) | `getOpenSessions`, `addOpenSession`/`editOpenSession`/`deleteOpenSession`/`completeOpenSession`(개설자·관리자), `toggleOpenSessionVote`(참여의사, 누구나). 개설 가능 직책 설정은 관리 탭의 `setOpenSessionRoles`(관리자) |
 | 사진 인증 | `startUpload` → `uploadChunk`/`checkUploadStatus` → `finalizeProof` |
 | 벽화 갤러리 | `getGallery`(월/사람 필터), `deleteProof` |
 | 명예의전당 | `getHallData`, `getHallArchive`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |

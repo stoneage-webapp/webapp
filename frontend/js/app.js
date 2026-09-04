@@ -1289,6 +1289,11 @@ function buildOpenSessionCard_(s) {
     ed.textContent = '✏️ 수정';
     ed.onclick = function (e) { e.stopPropagation(); editOpenSessionPrompt(s); };
     card.appendChild(ed);
+    const done = document.createElement('button');
+    done.className = 'mini-btn';
+    done.textContent = '✅ 완료 처리';
+    done.onclick = function (e) { e.stopPropagation(); doCompleteOpenSession(s.id); };
+    card.appendChild(done);
     const del = document.createElement('button');
     del.className = 'mini-btn';
     del.textContent = '🗑️ 삭제';
@@ -1324,6 +1329,20 @@ async function deleteOpenSessionClick(id) {
     const res = await run('deleteOpenSession', id, getMe(), ME.token);
     DATA.openSessions = res.items;
     renderVotes();
+  } catch (e) {
+    toast(e.message || e);
+  }
+}
+
+// 완료 처리: 개설자 또는 관리자. 완료 후 목록에서 사라지고 완료기록·출석 통계에 반영된다.
+async function doCompleteOpenSession(id) {
+  if (!(await modalConfirm('이 오픈 세션을 완료 처리할까요?\n완료 후 목록에서 사라지고 출석 통계에 반영돼요.',
+    { title: '✅ 완료 처리', confirmText: '완료 처리' }))) return;
+  try {
+    const res = await run('completeOpenSession', id, getMe(), ME.token);
+    DATA.openSessions = res.items;
+    renderVotes();
+    toast('✅ 완료 처리했어요.', true);
   } catch (e) {
     toast(e.message || e);
   }
@@ -2320,11 +2339,12 @@ async function loadStats() {
       months.forEach(function (m) {
         const c = s.cert[m] && s.cert[m][mb.name];
         const v = s.votes[m] && s.votes[m][mb.name];
-        html += '<td>' + (c ? '📸' : '') + (v ? '🗳️' : '') + (!c && !v ? '·' : '') + '</td>';
+        const o = s.opensessions && s.opensessions[m] && s.opensessions[m][mb.name];
+        html += '<td>' + (c ? '📸' : '') + (v ? '🗳️' : '') + (o ? '🧭' : '') + (!c && !v && !o ? '·' : '') + '</td>';
       });
       html += '</tr>';
     });
-    html += '</tbody></table></div><div class="dim" style="font-size:11.5px;margin-top:6px">📸 사진 인증 · 🗳️ 참석 확정(RSVP) (최근 6개월)</div>';
+    html += '</tbody></table></div><div class="dim" style="font-size:11.5px;margin-top:6px">📸 사진 인증 · 🗳️ 참석 확정(RSVP) · 🧭 오픈세션 참여 (최근 6개월)</div>';
     box.innerHTML = html;
   } catch (e) {
     box.textContent = '불러오기 실패: ' + (e.message || e);
@@ -2367,7 +2387,8 @@ async function loadCompletionLog() {
     res.items.forEach(function (it) {
       const c = document.createElement('div');
       c.className = 'notice-card';
-      const label = (it.kind === '자연재해' ? '🌋 ' : '⚔️ ') + esc(it.date) +
+      const kindIcon = it.kind === '자연재해' ? '🌋 ' : it.kind === '오픈세션' ? '🧭 ' : '⚔️ ';
+      const label = kindIcon + esc(it.date) +
         (it.loc ? ' @ ' + esc(it.loc) : '');
       c.innerHTML = '<div class="nc-text">' + label + '</div>' +
         '<div class="nc-meta">' + esc(it.by) + ' · ' + esc(it.when) +
