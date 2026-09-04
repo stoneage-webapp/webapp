@@ -55,7 +55,7 @@
     dormant: { '박도윤': '2026-11-30' }, // { 이름: 'yyyy-MM-dd' } — 휴면 중 (K열). 갤러리 투명도 미리보기용
     roles: { '김광훈': '고인돌', '박도윤': '조약돌', '이희주': '팀장', '정민재': '부족심사중', '최서연': '조약돌' },
     roleList: ['부족심사중', '조약돌', '간석기', '고인돌', '팀장'],
-    rsvp: { '2026-06': { '김광훈': 'yes', '이희주': 'no' } }, // 확정 6월 모임 참석 확정 (목)
+    rsvp: { '2026-06': { '김광훈': 'yes', '이희주': 'no' }, [ym]: { '이희주': 'yes', '박도윤': 'no', '최서연': 'no' } },
     flashOwners: { '7/19 14:00 @ 클라이밍파크': '최서연' },
     // 정기 오픈 세션 (특정 날짜+장소, 캘린더에서 여러 날짜 선택해 등록)
     openSessions: [
@@ -131,11 +131,16 @@
             : (['이희주', '박도윤'].indexOf(requester) > -1
               ? (function () { const o = {}; o[requester] = true; return o; })()
               : {});
+          const opensessions = {};
+          opensessions[ym] = requester === '김광훈'
+            ? { '이희주': true }
+            : (requester === '이희주' ? { '이희주': true } : {});
           return {
             months: ['2026-06', ym],
             members: names.map(function (m) { return { name: m, supported: DATA.support[m] !== false }; }),
             cert: cert,
-            votes: votes
+            votes: votes,
+            opensessions: opensessions
           };
         })(),
         // getSettleStatus(ym): 열=월 누적 스키마 — 상태만(장소/링크 없음)
@@ -336,6 +341,11 @@
         })(),
         deleteOpenSession: (function () {
           if (fn !== 'deleteOpenSession') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+          DATA.openSessions = DATA.openSessions.filter(function (x) { return x.id !== args[0]; });
+          return { items: DATA.openSessions, roles: DATA.openSessionRoles };
+        })(),
+        completeOpenSession: (function () {
+          if (fn !== 'completeOpenSession') return { items: DATA.openSessions, roles: DATA.openSessionRoles };
           DATA.openSessions = DATA.openSessions.filter(function (x) { return x.id !== args[0]; });
           return { items: DATA.openSessions, roles: DATA.openSessionRoles };
         })(),

@@ -158,6 +158,32 @@ function deleteOpenSession(id, requester, authToken) {
   }
 }
 
+// 완료 처리 — 개설자 또는 관리자. 번개(completeFlash)와 동일하게 완료기록에 남기고 목록에서 제거.
+// 참여자(G열)가 출석 통계(getStats)에 반영되도록 완료기록 F열(참여인원)에 그대로 옮겨 적는다.
+function completeOpenSession(id, requester, authToken) {
+  requester = verify_(requester, authToken);
+  id = String(id || '').trim();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = openSessionSheet_();
+    const row = findOpenSessionRow_(sh, id);
+    if (!row) throw new Error('해당 오픈 세션을 찾을 수 없습니다.');
+    const vals = sh.getRange(row, 1, 1, 7).getDisplayValues()[0];
+    const date = vals[1], loc = vals[2], createdBy = vals[4];
+    if (createdBy !== requester && !isAdmin_(requester)) {
+      throw new Error('본인이 연 오픈 세션만 완료 처리할 수 있습니다.');
+    }
+    const voters = String(vals[6] || '').split(',').map(function (n) { return n.trim(); }).filter(Boolean);
+    const info = dateInfo_(date, String(date || '').slice(0, 7));
+    logCompletion_('오픈세션', info ? info.ym : '', date, loc, voters, requester);
+    sh.deleteRow(row);
+    return getOpenSessions();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // 참여의사 토글 — 번개(toggleVote)와 동일하게 로그인한 누구나
 function toggleOpenSessionVote(id, voter, authToken) {
   voter = verify_(voter, authToken);

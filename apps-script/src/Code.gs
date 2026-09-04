@@ -86,6 +86,7 @@ const POST_ACTIONS = {
   addOpenSession:    { auth: 'requester', bust: true, fn: function (d) { return addOpenSession(d.dates, d.loc, d.note, d.requester, d.token); } },
   editOpenSession:   { auth: 'requester', bust: true, fn: function (d) { return editOpenSession(d.id, d.date, d.loc, d.note, d.requester, d.token); } },
   toggleOpenSessionVote: { auth: 'voter', bust: true, fn: function (d) { return toggleOpenSessionVote(d.id, d.voter, d.token); } },
+  completeOpenSession: { auth: 'requester', bust: true, fn: function (d) { return completeOpenSession(d.id, d.requester, d.token); } },
   deleteOpenSession: { auth: 'requester', bust: true, fn: function (d) { return deleteOpenSession(d.id, d.requester, d.token); } },
   setOpenSessionRoles: { auth: 'requester', bust: true, fn: function (d) { return setOpenSessionRoles(d.roles, d.requester, d.token); } }, // 관리자 전용
   setFlashRoles:     { auth: 'requester', bust: true, fn: function (d) { return setFlashRoles(d.roles, d.requester, d.token); } }, // 관리자 전용
