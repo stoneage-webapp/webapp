@@ -434,6 +434,7 @@ async function softRefresh() {
   // 로그인 상태: DATA 의존 화면 다시 그리기 (applyLogin 의 렌더부와 동일, ME/탭은 유지)
   buildChips('photoChips');
   buildDateSelect('photo');
+  buildDateSelect('sphoto');
   buildMonthFilter();
   buildGalleryFilters();
   applyAdminUI();
@@ -448,6 +449,7 @@ async function softRefresh() {
   else if (currentTab === 'more') loadMore();
   else if (currentTab === 'admin') await loadAdmin();
   else if (currentTab === 'photo') renderMyProofs();
+  else if (currentTab === 'sphoto') await loadSettlePhotos();
 }
 
 window.addEventListener('load', async function() {
@@ -516,6 +518,7 @@ function applyLogin(session) {
 
   buildChips('photoChips');
   buildDateSelect('photo');
+  buildDateSelect('sphoto');
   buildMonthFilter();
   buildGalleryFilters();
   applyAdminUI();
@@ -593,7 +596,7 @@ function changePinPrompt() {
 /* ---------- 탭 ---------- */
 function setTab(t) {
   currentTab = t;
-  ['home','schedule','photo','gallery','hall','more','admin'].forEach(function(k) {
+  ['home','schedule','photo','sphoto','gallery','hall','more','admin'].forEach(function(k) {
     document.getElementById('tab-' + k).classList.toggle('on', k === t);
     document.getElementById('nav-' + k).classList.toggle('on', k === t);
   });
@@ -602,6 +605,7 @@ function setTab(t) {
   if (t === 'more' && !moreLoaded) loadMore();
   if (t === 'admin' && !adminLoaded) loadAdmin();
   if (t === 'photo') renderMyProofs(); // 내 인증 목록(취소용) 갱신
+  if (t === 'sphoto') loadSettlePhotos(); // 정산 사진 현황 + 내 정산 사진 목록 갱신
   if (t === 'home') markNoticesSeen();  // 홈을 보면 공지 뱃지 해제 (#5)
 }
 
@@ -615,43 +619,101 @@ async function renderMyProofs() {
   try {
     const res = await run('getGallery', 30, 0, DATA.month, getMe());
     const mine = res.items.filter(function (it) { return it.by === getMe(); });
-    box.innerHTML = '';
-    if (!mine.length) return;
-    const head = document.createElement('div');
-    head.className = 'myproof-head';
-    head.textContent = '🧾 내가 올린 이번 달 인증 — 잘못 올렸으면 취소';
-    box.appendChild(head);
-    mine.forEach(function (it) {
-      const row = document.createElement('div');
-      row.className = 'myproof-row';
-      const txt = document.createElement('span');
-      txt.className = 'mp-txt';
-      txt.textContent = (it.actDate || it.when) + ' · 📍 ' + it.loc + ' · 🧗 ' + koSortStr(it.people);
-      row.appendChild(txt);
-      const del = document.createElement('button');
-      del.className = 'mini-btn';
-      del.style.margin = '0';
-      del.textContent = '취소';
-      del.onclick = async function () {
-        if (!(await modalConfirm('이 인증을 취소할까요?\n' + (it.actDate || '') + ' @ ' + it.loc +
-          '\n\n사진과 기록이 삭제되고, 함께 태그된 참여자의 인증에서도 빠집니다.',
-          { title: '🧾 인증 취소', confirmText: '취소하기' }))) return;
-        del.disabled = true;
-        try {
-          await run('deleteProof', it.fileId, getMe(), ME.token);
-          toast('인증을 취소했어요.', true);
-          galleryLoaded = false;
-          refreshCertified();
-          renderMyProofs();
-        } catch (e) {
-          del.disabled = false;
-          toast(e.message || e);
-        }
-      };
-      row.appendChild(del);
-      box.appendChild(row);
+    renderProofRows_(box, mine, {
+      head: '🧾 내가 올린 이번 달 인증 — 잘못 올렸으면 취소',
+      title: '🧾 인증 취소',
+      confirm: '이 인증을 취소할까요?',
+      warn: '사진과 기록이 삭제되고, 함께 태그된 참여자의 인증에서도 빠집니다.',
+      action: 'deleteProof',
+      done: '인증을 취소했어요.',
+      after: function () {
+        galleryLoaded = false;
+        refreshCertified();
+        renderMyProofs();
+      }
     });
   } catch (e) { /* 목록 실패는 조용히 — 인증 제출 기능엔 영향 없음 */ }
+}
+
+// 내가 올린 사진 목록 + 취소 버튼 (인증 탭·정산 사진 탭 공용).
+// items: [{actDate, when, loc, people, fileId}], o: { head, title, confirm, warn, action(삭제 API), done(토스트), after() }
+function renderProofRows_(box, items, o) {
+  box.innerHTML = '';
+  if (!items.length) return;
+  const head = document.createElement('div');
+  head.className = 'myproof-head';
+  head.textContent = o.head;
+  box.appendChild(head);
+  items.forEach(function (it) {
+    const row = document.createElement('div');
+    row.className = 'myproof-row';
+    const txt = document.createElement('span');
+    txt.className = 'mp-txt';
+    txt.textContent = (it.actDate || it.when) + ' · 📍 ' + it.loc + ' · 🧗 ' + koSortStr(it.people);
+    row.appendChild(txt);
+    const del = document.createElement('button');
+    del.className = 'mini-btn';
+    del.style.margin = '0';
+    del.textContent = '취소';
+    del.onclick = async function () {
+      if (!(await modalConfirm(o.confirm + '\n' + (it.actDate || '') + ' @ ' + it.loc + '\n\n' + o.warn,
+        { title: o.title, confirmText: '취소하기' }))) return;
+      del.disabled = true;
+      try {
+        await run(o.action, it.fileId, getMe(), ME.token);
+        toast(o.done, true);
+        o.after();
+      } catch (e) {
+        del.disabled = false;
+        toast(e.message || e);
+      }
+    };
+    row.appendChild(del);
+    box.appendChild(row);
+  });
+}
+
+/* ---------- 정산 사진 탭 (정산 지급 대상자 전용) ----------
+ * 인증 탭과 같은 폼(submitProof('sphoto'))이지만 저장소가 분리돼 있고, 월별 정산은 여기 올린 사진만 근거로 한다.
+ * 탭 노출은 편의일 뿐 — 백엔드가 모든 action 에서 대상자 여부를 다시 확인한다.
+ */
+let SETTLE_PHOTOS = null; // getSettlePhotos 응답 { ym, targets, certified, mine, shareUrl }
+
+// 정산 지급 대상자: 지원 대상(J열)이면서 휴면 아님 (백엔드 isSettleTarget_ 와 같은 기준)
+function isSettleTargetMe() {
+  const me = getMe();
+  return !!me && !(DATA.support && DATA.support[me] === false) && !(DATA.dormant && DATA.dormant[me]);
+}
+
+async function loadSettlePhotos() {
+  if (!isSettleTargetMe()) return;
+  try {
+    SETTLE_PHOTOS = await run('getSettlePhotos', getMe(), ME.token);
+  } catch (e) {
+    document.getElementById('sphotoCertLine').textContent = '불러오기 실패: ' + (e.message || e);
+    return;
+  }
+  const sp = SETTLE_PHOTOS;
+  buildChips('sphotoChips', sp.targets, sp.certified);
+  const done = sp.targets.filter(function (m) { return sp.certified[m]; });
+  const mm = parseInt((sp.ym || '').split('-')[1], 10);
+  document.getElementById('sphotoCertLine').innerHTML = '💰 ' + mm + '월 정산 사진: <b>' + done.length + '</b> / ' +
+    sp.targets.length + '명 완료' +
+    (done.length ? '<br>✓ ' + done.map(esc).join(' · ') : '');
+  renderProofRows_(document.getElementById('sphotoMine'), sp.mine, {
+    head: '🧾 내가 올린 정산 사진 — 잘못 올렸으면 취소',
+    title: '🧾 정산 사진 취소',
+    confirm: '이 정산 사진을 취소할까요?',
+    warn: '사진과 기록이 삭제되고, 함께 태그된 참여자의 정산 인증에서도 빠집니다.',
+    action: 'deleteSettleProof',
+    done: '정산 사진을 취소했어요.',
+    after: loadSettlePhotos
+  });
+}
+
+function openSettleAlbum() {
+  if (SETTLE_PHOTOS && SETTLE_PHOTOS.shareUrl) window.open(SETTLE_PHOTOS.shareUrl, '_blank');
+  else toast('정산 사진 앨범 링크가 아직 설정되지 않았어요. 추장에게 문의!');
 }
 
 // 인증 취소/추가 후 서버 기준으로 인증 현황 재동기화
@@ -2019,13 +2081,18 @@ function getActivityDate(kind) {
 }
 
 /* ---------- 인증 (사진/영상 공통) ---------- */
-function buildChips(id) {
+// names/certified 생략 시 전체 부족원 + 이번 달 벽화 인증 기준. 정산 사진 탭은 대상자 명단/정산 인증 현황을 넘긴다.
+function buildChips(id, names, certified) {
+  names = names || DATA.members;
+  certified = certified || DATA.certified;
   const box = document.getElementById(id);
+  const picked = {}; // 다시 그려도 고르던 참여자 선택은 유지
+  box.querySelectorAll('.chip.on').forEach(function(c) { picked[c.dataset.name] = true; });
   box.innerHTML = '';
-  DATA.members.forEach(function(m) {
+  names.forEach(function(m) {
     const c = document.createElement('span');
-    const done = !!(DATA.certified && DATA.certified[m]);
-    c.className = 'chip' + (done ? ' done' : '');
+    const done = !!(certified && certified[m]);
+    c.className = 'chip' + (done ? ' done' : '') + (picked[m] ? ' on' : '');
     c.dataset.name = m;
     c.textContent = done ? m + ' ✓' : m;
     c.onclick = function() { c.classList.toggle('on'); };
@@ -2050,21 +2117,23 @@ function openAlbum() {
   }
 }
 
-(function() {
-  const input = document.getElementById('photoFile');
+['photo', 'sphoto'].forEach(function(kind) { // 인증 탭 · 정산 사진 탭 (같은 폼 구조, id 접두어만 다름)
+  const input = document.getElementById(kind + 'File');
   input.addEventListener('change', function() {
     const f = input.files[0];
     if (!f) return;
-    document.getElementById('photoDrop').style.display = 'none';
-    document.getElementById('photoThumb').src = URL.createObjectURL(f);
-    document.getElementById('photoName').textContent = f.name;
-    document.getElementById('photoSub').textContent =
+    document.getElementById(kind + 'Drop').style.display = 'none';
+    document.getElementById(kind + 'Thumb').src = URL.createObjectURL(f);
+    document.getElementById(kind + 'Name').textContent = f.name;
+    document.getElementById(kind + 'Sub').textContent =
       (f.size / 1048576).toFixed(1) + 'MB · 탭하면 다시 선택';
-    document.getElementById('photoSel').style.display = 'flex';
+    document.getElementById(kind + 'Sel').style.display = 'flex';
   });
-})();
+});
 
+// kind: 'photo'(벽화 인증) | 'sphoto'(정산 사진 — 정산 지급 대상자 전용 저장소)
 async function submitProof(kind) {
+  const settle = kind === 'sphoto';
   const me = getMe();
   const file = document.getElementById(kind + 'File').files[0];
   const loc = document.getElementById(kind + 'Loc').value.trim();
@@ -2087,11 +2156,11 @@ async function submitProof(kind) {
   upShow();
   try {
     const mime = file.type || 'application/octet-stream';
-    const fileId = await uploadFileSmart('startUpload',
+    const fileId = await uploadFileSmart(settle ? 'startSettleUpload' : 'startUpload',
       [file.name, mime, file.size, act.ym], file);
-    upProgress(96, '벽화에 새기는 중…');
-    const result = await run('finalizeProof', fileId, {
-      kind: kind === 'photo' ? '사진' : '영상',
+    upProgress(96, settle ? '정산 사진을 기록하는 중…' : '벽화에 새기는 중…');
+    const result = await run(settle ? 'finalizeSettleProof' : 'finalizeProof', fileId, {
+      kind: (kind === 'photo' || settle) ? '사진' : '영상',
       mimeType: mime, fileSize: file.size,
       participants: chips, location: loc, uploader: me,
       activityLabel: act.label
@@ -2099,7 +2168,13 @@ async function submitProof(kind) {
     upProgress(100, '완료!');
     setTimeout(upHide, 400);
     // Photos 앨범 연동 안 됐어도 Drive 저장은 성공 → 사용자에겐 깔끔하게
-    toast(result.photos === '완료' ? '✓ 벽화에 새겼어요! (Drive + 포토 앨범)' : '✓ 벽화에 새겼어요! (Drive 저장 완료)', true);
+    const what = settle ? '✓ 정산 사진을 올렸어요!' : '✓ 벽화에 새겼어요!';
+    toast(what + (result.photos === '완료' ? ' (Drive + 포토 앨범)' : ' (Drive 저장 완료)'), true);
+    if (settle) {
+      resetForm(kind);          // 칩 선택을 먼저 비운 뒤 현황을 다시 그린다 (buildChips 가 선택을 유지하므로)
+      await loadSettlePhotos(); // 정산 인증 현황 + 방금 올린 사진이 취소 목록에 바로 보이게
+      return;
+    }
     if (kind === 'photo') {
       galleryLoaded = false;
       // 활동월이 이번 달이 아닐 수도 있으므로(예: 지난달 활동을 뒤늦게 인증) 무조건 "이번 달 완료"로
@@ -2122,8 +2197,8 @@ function resetForm(kind) {
   document.getElementById(kind + 'Date').value = '';
   document.getElementById(kind + 'DateCustom').value = '';
   document.getElementById(kind + 'DateCustom').style.display = 'none';
-  document.getElementById('photoSel').style.display = 'none';
-  document.getElementById('photoDrop').style.display = 'block';
+  document.getElementById(kind + 'Sel').style.display = 'none';
+  document.getElementById(kind + 'Drop').style.display = 'block';
   document.querySelectorAll('#' + kind + 'Chips .chip.on').forEach(function(c) { c.classList.remove('on'); });
 }
 
@@ -2177,6 +2252,9 @@ function applyAdminUI() {
   // 관리 탭: 관리자 또는 정산 담당자에게만 노출
   document.getElementById('nav-admin').style.display =
     (ME.isAdmin || canSettleMe()) ? '' : 'none';
+  // 정산 사진 탭: 정산 지급 대상자에게만 노출 (대상에서 빠진 채 그 탭을 보고 있었다면 홈으로)
+  document.getElementById('nav-sphoto').style.display = isSettleTargetMe() ? '' : 'none';
+  if (currentTab === 'sphoto' && !isSettleTargetMe()) setTab('home');
 }
 
 function loadMore() {
@@ -2501,6 +2579,7 @@ function applyMemberData(res) {
   fillNameSelects();
   buildChips('photoChips');   // 인증 참여자 선택
   buildGalleryFilters();      // 벽화 인물 필터
+  applyAdminUI();             // 정산 사진 탭 노출 (지원여부·휴면 변경 반영)
   if (ME.isAdmin) {
     buildSupportChips();
     buildSettlerChips();
@@ -2729,6 +2808,8 @@ function loadAdmin() {
   const ymSel = document.getElementById('settleYm');
   ymSel.value = now.getFullYear() + '-' + pad2(now.getMonth() + 1);
   ymSel.onchange = function () { loadSettle(); }; // 월 변경 시 그 달 정산 현황으로 갱신
+  document.getElementById('settleFromNote').textContent = DATA.settlePhotoFrom
+    ? '(' + DATA.settlePhotoFrom + ' 이전 달은 기존 벽화 인증 기준)' : '';
   loadSettle();
   loadBudget(); // 부족 예산 (정산 담당자/관리자만 접근 가능한 탭이라 별도 가드 불필요)
   if (ME.isAdmin) {
@@ -2928,6 +3009,7 @@ async function saveSupports() {
   try {
     const res = await run('setSupports', names, getMe(), ME.token);
     DATA.support = res.support;
+    applyAdminUI(); // 정산 사진 탭 노출 (본인 지원여부가 바뀌었을 수 있음)
     busyHide();
     st.className = 'status ok';
     st.textContent = '✓ 저장됨 — 지원 ' + names.length + '명 / 제외 ' + (DATA.members.length - names.length) + '명';
@@ -2944,7 +3026,12 @@ async function runSettleClick() {
   const st = document.getElementById('settleRunStatus');
   const btn = document.getElementById('settleRunBtn');
   if (!ym) return toast('정산할 월을 선택하세요.');
-  if (!(await modalConfirm(ym + ' 정산을 실행할까요?\n인증현황 시트가 갱신되고 정산 폴더에 사진이 복사됩니다.'))) return;
+  // 전환 월(settlePhotoFrom)부터는 정산 탭 사진만, 그 이전 달은 기존 벽화 인증 기준 (백엔드 settleSourceSheet_)
+  const legacy = DATA.settlePhotoFrom && ym < DATA.settlePhotoFrom;
+  if (!(await modalConfirm(ym + ' 정산을 실행할까요?\n' +
+    (legacy ? '전환(' + DATA.settlePhotoFrom + ') 이전 달이라 기존 벽화 인증 기준으로 집계해 '
+            : '정산 탭에 올린 사진만 집계해 ') +
+    '인증현황 시트를 갱신하고, 정산 폴더에 사진을 복사합니다.'))) return;
   btn.disabled = true;
   st.textContent = '';
   busyShow(ym + ' 정산 실행 중… (사진 수에 따라 수십 초 걸릴 수 있어요)');

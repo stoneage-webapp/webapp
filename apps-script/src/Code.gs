@@ -3,7 +3,7 @@
  * Front(Netlify) → Back(Apps Script) → DB(Sheet/Drive/Photos)
  *
  * 이 파일은 웹앱 진입점(doGet/doPost)과 action 레지스트리만 담당한다.
- * 실제 로직은 auth.gs / votes.gs / opensessions.gs / photos.gs / hall.gs / settle.gs / notices.gs 에 있다.
+ * 실제 로직은 auth.gs / votes.gs / opensessions.gs / photos.gs / settlephotos.gs / hall.gs / settle.gs / notices.gs 에 있다.
  * (Apps Script는 모든 .gs가 전역 스코프를 공유하므로 파일 분리는 순수 정리 목적이다.)
  *
  * ── 통신 규약 (docs/architecture.md 의 API 명세와 일치) ──
@@ -72,6 +72,12 @@ const POST_ACTIONS = {
   deleteProof:       { auth: 'requester', bust: true, fn: function (d) { return deleteProof(d.fileId, d.requester, d.token); } },
   deleteHallEntry:   { auth: 'requester', bust: true, fn: function (d) { return deleteHallEntry(d.fileId, d.requester, d.token); } },
   voteHall:          { auth: 'voter',     bust: true, fn: function (d) { return voteHall(d.fileId, d.voter, d.token); } },
+
+  // 정산 사진 탭 (정산 지급 대상자 전용 — 대상자 여부는 각 함수가 재확인. 청크 전송은 위 uploadChunk/checkUploadStatus 공용)
+  getSettlePhotos:     { auth: 'name', fn: function (d) { return getSettlePhotos(d.name); } },
+  startSettleUpload:   { auth: 'name', fn: function (d) { return startSettleUpload(d.fileName, d.mimeType, d.fileSize, d.ym, d.name); } },
+  finalizeSettleProof: { fn: function (d) { return finalizeSettleProof(d.fileId, d.meta, d.token); } }, // meta.uploader를 내부에서 verify_
+  deleteSettleProof:   { auth: 'requester', fn: function (d) { return deleteSettleProof(d.fileId, d.requester, d.token); } },
 
   // 관리자 기능
   resetPin:          { auth: 'requester', fn: function (d) { return resetPin(d.targetName, d.requester, d.token); } }, // #18 (관리자 검증은 함수 내부)
@@ -242,6 +248,7 @@ function getInitData() {
     confirmed: votes.confirmed,    // { disaster: {date,loc}|null }
     admins: CONFIG.ADMINS,
     settlers: getSettlers_(),      // 정산 담당자 (관리자 페이지 노출 판단용)
+    settlePhotoFrom: CONFIG.SETTLE_PHOTO_FROM, // 'yyyy-MM' — 이 달부터 정산은 정산 탭 사진만 근거 (관리 탭 안내용)
     notices: getHomeNotices_(),    // 홈 노출: 고정 공지 전부 + 최신 1건
     recent: getRecentActivity_(),  // 최근 24시간 벽화/전당 (홈 "새 소식")
     rsvp: getRsvp_(),              // 확정 모임 참석 확정 { 월: {이름: 'yes'|'no'} }

@@ -12,7 +12,11 @@
 |---|---|---|---|
 | `SPREADSHEET_ID` | 공용 Google Sheet ID | 시트 URL `/d/<ID>/edit` | ✅ |
 | `DRIVE_FOLDER_ID` | 인증 사진/영상 저장 폴더 ID | Drive 폴더 URL | ✅ |
-| `SETTLE_FOLDER_ID` | 월별 정산 사진 수집 폴더 ID (별도) | Drive 폴더 URL | ✅ |
+| `SETTLE_FOLDER_ID` | 월별 정산 사진 수집 폴더 ID (별도) — 정산 실행 시 최소 사진 묶음이 `yyyy-MM/`로 **복사**되는 곳 | Drive 폴더 URL | ✅ |
+| `SETTLE_PHOTO_FOLDER_ID` | **정산 사진 탭** 업로드 원본 저장 폴더 ID (하위에 `yyyy/MM` 자동 생성). 벽화 폴더·`SETTLE_FOLDER_ID`와 다른 폴더 | Drive 폴더 URL | ✅ (없으면 정산 사진 업로드가 오류) |
+| `SETTLE_PHOTOS_ALBUM_ID` | 정산 사진 전용 Google Photos 앨범 ID | `setupSettlePhotosAlbum()` 실행 후 로그 | 선택 (비우면 Photos 업로드 생략, Drive만 저장) |
+| `SETTLE_PHOTOS_SHARE_URL` | 정산 사진 앨범 공유 링크 (정산 탭 버튼용, 대상자에게만 전달) | 구글 포토에서 수동 공유 | 선택 |
+| `settle_photo_from` | 정산 사진 전환 월 `yyyy-MM`. 이 달부터 정산은 `정산사진` 시트만 근거, 그 이전 달은 기존 `벽화` 기준 | 직접 정함 | 선택 (기본 `2026-10`) |
 | `PHOTOS_ALBUM_ID` | Google Photos 앨범 ID | `setupPhotosAlbum()` 실행 후 로그 | 선택 (비우면 Photos 업로드 생략) |
 | `PHOTOS_SHARE_URL` | Photos 앨범 공유 링크 | 구글 포토에서 수동 공유 | 선택 |
 | `NOTION_URL` | 부족 안내문 링크 | — | 선택 |
@@ -24,6 +28,9 @@
 | `flash_owners` / `confirmed_raid_months` / `confirmed_disaster` / `completed_raid_months` | 앱이 자동 관리 | 자동 | 자동 |
 
 > - 값 수정 후에는 **재배포 필요 없음** — Script Properties는 실행 시마다 읽힌다.
+> - ⚠️ **Photos 앨범은 앱이 만든 것만 업로드 가능**(스코프 `photoslibrary.appendonly`). 구글 포토에서 손으로 만든 앨범의
+>   공유 링크만으로는 올릴 수 없다 — 반드시 `setupPhotosAlbum()` / `setupSettlePhotosAlbum()`으로 앨범을 만들고 그 ID를 넣는다.
+>   앱이 만든 앨범 목록은 `listAlbums()` 로그로 확인.
 > - `DRIVE_API_KEY`는 브라우저에 노출되므로 **[사람] GCP에서 HTTP 리퍼러 제한(Netlify 도메인) 필수**.
 > - ⚠️ clasp 특성: `clasp push`는 원격 파일을 **전체 교체**한다. push 목록에서 파일을 빼면 원격에서 삭제되므로,
 >   비밀값을 코드 파일에 두는 방식은 쓰지 않는다 (그래서 Script Properties 방식).

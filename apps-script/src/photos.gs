@@ -8,7 +8,11 @@
 
 function startUpload(fileName, mimeType, fileSize, ym) {
   // ym: '2026-07' → 루트폴더/2026/07/ 아래에 저장 (폴더 없으면 자동 생성)
-  const folderId = resolveMonthFolder_(ym);
+  return startResumable_(fileName, mimeType, fileSize, resolveMonthFolder_(ym));
+}
+
+// Drive resumable 업로드 세션을 열고 업로드 URL 반환 (벽화·정산 사진 공용)
+function startResumable_(fileName, mimeType, fileSize, folderId) {
   const res = UrlFetchApp.fetch(
     'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true', {
       method: 'post',
@@ -23,10 +27,12 @@ function startUpload(fileName, mimeType, fileSize, ym) {
   return res.getHeaders()['Location'];
 }
 
-function resolveMonthFolder_(ym) {
-  if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return CONFIG.DRIVE_FOLDER_ID;
+// rootId 생략 시 벽화 폴더. 정산 사진은 CONFIG.SETTLE_PHOTO_FOLDER_ID 를 넘긴다.
+function resolveMonthFolder_(ym, rootId) {
+  rootId = rootId || CONFIG.DRIVE_FOLDER_ID;
+  if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return rootId;
   const parts = ym.split('-');
-  const root = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+  const root = DriveApp.getFolderById(rootId);
   const yearFolder = getOrCreateFolder_(root, parts[0]);
   const monthFolder = getOrCreateFolder_(yearFolder, parts[1]);
   return monthFolder.getId();
@@ -72,30 +78,40 @@ function checkUploadStatus(uploadUrl, total) {
 function finalizeProof(fileId, meta, authToken) {
   // meta: { kind: '사진'|'영상', mimeType, fileSize, participants: [], location, uploader, activityLabel }
   meta.uploader = verify_(meta.uploader, authToken);
+  return recordProof_(fileId, meta,
+    { sheet: CONFIG.SHEETS.mural, albumId: CONFIG.PHOTOS_ALBUM_ID, publicLink: true });
+}
+
+// 업로드된 Drive 파일을 Photos 앨범에 올리고 시트에 한 행 기록 (벽화·정산 사진 공용).
+// dest: { sheet: 기록할 시트 이름, albumId: Photos 앨범 ID(빈 값이면 생략), publicLink: 링크 공개 여부 }
+function recordProof_(fileId, meta, dest) {
   const token = ScriptApp.getOAuthToken();
   const info = JSON.parse(UrlFetchApp.fetch(
     'https://www.googleapis.com/drive/v3/files/' + fileId +
     '?fields=webViewLink,name&supportsAllDrives=true',
     { headers: { Authorization: 'Bearer ' + token } }).getContentText());
 
-  // 갤러리 썸네일 표시를 위해 링크 공개(보기) 권한 부여
-  UrlFetchApp.fetch(
-    'https://www.googleapis.com/drive/v3/files/' + fileId + '/permissions?supportsAllDrives=true', {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { Authorization: 'Bearer ' + token },
-      payload: JSON.stringify({ role: 'reader', type: 'anyone' }),
-      muteHttpExceptions: true
-    });
+  // 갤러리 썸네일 표시를 위해 링크 공개(보기) 권한 부여 (정산 사진은 갤러리가 없으므로 공개하지 않는다)
+  if (dest.publicLink) {
+    UrlFetchApp.fetch(
+      'https://www.googleapis.com/drive/v3/files/' + fileId + '/permissions?supportsAllDrives=true', {
+        method: 'post',
+        contentType: 'application/json',
+        headers: { Authorization: 'Bearer ' + token },
+        payload: JSON.stringify({ role: 'reader', type: 'anyone' }),
+        muteHttpExceptions: true
+      });
+  }
 
   let photosStatus = 'Photos 미설정';
-  if (CONFIG.PHOTOS_ALBUM_ID) {
+  if (dest.albumId) {
     photosStatus = meta.fileSize <= CONFIG.PHOTOS_MAX_BYTES
-      ? uploadToPhotos_(fileId, info.name, meta.mimeType, token)
+      ? uploadToPhotos_(fileId, info.name, meta.mimeType, token, dest.albumId)
       : '용량 초과 (Drive만 저장)';
   }
 
-  const sh = ss_().getSheetByName(CONFIG.SHEETS.mural);
+  const s = ss_();
+  const sh = s.getSheetByName(dest.sheet) || s.insertSheet(dest.sheet);
   if (sh.getLastRow() === 0) {
     sh.appendRow(['인증일시', '활동일자', '종류', '장소', '참여자', '업로더', 'Drive 링크', 'Photos']);
   }
@@ -107,7 +123,7 @@ function finalizeProof(fileId, meta, authToken) {
   return { link: info.webViewLink, photos: photosStatus };
 }
 
-function uploadToPhotos_(fileId, name, mimeType, token) {
+function uploadToPhotos_(fileId, name, mimeType, token, albumId) {
   try {
     const blob = UrlFetchApp.fetch(
       'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media&supportsAllDrives=true',
@@ -133,7 +149,7 @@ function uploadToPhotos_(fileId, name, mimeType, token) {
       contentType: 'application/json',
       headers: { Authorization: 'Bearer ' + token },
       payload: JSON.stringify({
-        albumId: CONFIG.PHOTOS_ALBUM_ID,
+        albumId: albumId,
         newMediaItems: [{ description: name, simpleMediaItem: { uploadToken: uploadToken, fileName: name } }]
       }),
       muteHttpExceptions: true
@@ -203,10 +219,16 @@ function trashDriveFile_(link) {
 // 벽화(사진) 삭제: fileId로 행 찾아 업로더 확인 → Drive 파일 + 시트 행 삭제
 function deleteProof(fileId, requester, authToken) {
   requester = verify_(requester, authToken);
+  return deleteProofFrom_(CONFIG.SHEETS.mural, fileId, requester);
+}
+
+// 지정한 시트에서 fileId 행을 찾아 삭제 (벽화·정산 사진 공용). requester 는 검증이 끝난 이름.
+function deleteProofFrom_(sheetName, fileId, requester) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const sh = ss_().getSheetByName(CONFIG.SHEETS.mural);
+    const sh = ss_().getSheetByName(sheetName);
+    if (!sh) throw new Error('해당 사진을 찾을 수 없습니다.');
     const vals = sh.getDataRange().getDisplayValues();
     for (let i = 1; i < vals.length; i++) {
       const m = String(vals[i][6]).match(/\/d\/([-\w]+)/); // G열 = Drive 링크
@@ -229,14 +251,17 @@ function deleteProof(fileId, requester, authToken) {
  * Photos API는 "앱이 생성한 앨범"에만 업로드 가능.
  * 앨범 공유 API는 2025.3 폐지됨 → 앨범 생성 후 구글 포토 앱/웹에서 수동으로 공유하면 됨.
  */
-function setupPhotosAlbum() {
-  const token = ScriptApp.getOAuthToken();
-  const album = JSON.parse(UrlFetchApp.fetch('https://photoslibrary.googleapis.com/v1/albums', {
+function createPhotosAlbum_(title) {
+  return JSON.parse(UrlFetchApp.fetch('https://photoslibrary.googleapis.com/v1/albums', {
     method: 'post',
     contentType: 'application/json',
-    headers: { Authorization: 'Bearer ' + token },
-    payload: JSON.stringify({ album: { title: '석기시대🔥' } })
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    payload: JSON.stringify({ album: { title: title } })
   }).getContentText());
+}
+
+function setupPhotosAlbum() {
+  const album = createPhotosAlbum_('석기시대🔥');
   Logger.log('ALBUM_ID: ' + album.id);
   Logger.log('→ 이 값을 CONFIG.PHOTOS_ALBUM_ID에 넣고 재배포.');
   Logger.log('→ 공유는 구글 포토에서 "석기시대 벽화" 앨범을 열어 수동으로 링크 공유.');

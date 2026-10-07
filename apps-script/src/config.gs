@@ -17,6 +17,10 @@ const CONFIG = {
   SETTLE_FOLDER_ID: prop_('SETTLE_FOLDER_ID'), // 정산 사진 수집 폴더 (별도)
   PHOTOS_ALBUM_ID: prop_('PHOTOS_ALBUM_ID'),   // setupPhotosAlbum() 로그의 ID. 비우면 Photos 업로드 생략
   PHOTOS_SHARE_URL: prop_('PHOTOS_SHARE_URL'), // Photos 앨범 공유 링크 (영상 탭 버튼용)
+  // 정산 사진 탭 (정산 지급 대상자 전용) — 벽화와 분리된 저장소. settlephotos.gs 참고
+  SETTLE_PHOTO_FOLDER_ID: prop_('SETTLE_PHOTO_FOLDER_ID'),   // 정산 사진 원본 저장 폴더 (하위에 yyyy/MM 자동 생성)
+  SETTLE_PHOTOS_ALBUM_ID: prop_('SETTLE_PHOTOS_ALBUM_ID'),   // setupSettlePhotosAlbum() 로그의 ID. 비우면 Photos 업로드 생략
+  SETTLE_PHOTOS_SHARE_URL: prop_('SETTLE_PHOTOS_SHARE_URL'), // 정산 사진 앨범 공유 링크 (대상자에게만 전달 — getInitData 에 싣지 않는다)
   NOTION_URL: prop_('NOTION_URL'),             // 부족 안내문 링크 (없으면 홈 버튼이 안내만 띄움)
   OPENCHAT_URL: prop_('OPENCHAT_URL', 'https://open.kakao.com/o/g5IQRRBi'), // 오픈카톡방
   DRIVE_API_KEY: prop_('DRIVE_API_KEY'),       // 전당 영상 인앱 재생용 API 키 (GCP)
@@ -32,7 +36,8 @@ const CONFIG = {
     completion: '완료기록', // 정기공격/자연재해 완료 처리 기록 (첫 완료 처리 시 앱이 자동 생성)
     errorlog: '오류로그',   // 예기치 못한 백엔드 오류 로그 (첫 오류 시 앱이 자동 생성)
     budget: '예산',         // 부족 예산 — 정산 적립 / 사용 이력 (첫 기록 시 앱이 자동 생성)
-    opensessions: '오픈세션' // 정기 오픈 세션 (첫 개설 시 앱이 자동 생성)
+    opensessions: '오픈세션', // 정기 오픈 세션 (첫 개설 시 앱이 자동 생성)
+    settlePhotos: '정산사진'  // 정산 사진 탭 업로드 로그 — 벽화와 같은 열 구조 (첫 업로드 시 앱이 자동 생성)
   },
   PHOTOS_MAX_BYTES: 45 * 1024 * 1024,  // 45MB 초과 파일은 Drive에만 저장 (Apps Script 응답 한도)
 
@@ -59,5 +64,10 @@ const CONFIG = {
   SITE_URL: prop_('SITE_URL', 'https://stoneage202605.netlify.app'),  // 알림 클릭 시 열 주소
 
   // 예산: 정산 1회당 **인당** 적립액 (스크립트 속성 budget_per_person 으로 변경 가능)
-  BUDGET_PER_PERSON: Number(prop_('budget_per_person', '5000')) || 5000
+  BUDGET_PER_PERSON: Number(prop_('budget_per_person', '5000')) || 5000,
+
+  // 정산 사진 전환 월 ('yyyy-MM', 스크립트 속성 settle_photo_from 으로 변경 가능).
+  // 이 달부터 정산은 '정산사진' 시트(정산 탭 업로드)만 근거로 한다. 그 이전 달은 기존대로 '벽화' 사진 인증 기준
+  // — 과거 달을 재정산/정산 취소해도 인증현황·예산 적립이 전부 X/0원으로 덮어써지지 않게 하는 보호 장치.
+  SETTLE_PHOTO_FROM: prop_('settle_photo_from', '2026-10')
 };

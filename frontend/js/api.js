@@ -48,7 +48,11 @@ const API_POST = {
   deleteProof:       ['fileId', 'requester', 'token'],
   deleteHallEntry:   ['fileId', 'requester', 'token'],
   voteHall:          ['fileId', 'voter', 'token'],
-  resetPin:          ['targetName', 'requester', 'token'],
+  getSettlePhotos:     ['name', 'token'],
+  startSettleUpload:   ['fileName', 'mimeType', 'fileSize', 'ym'],
+  finalizeSettleProof: ['fileId', 'meta', 'token'],
+  deleteSettleProof:   ['fileId', 'requester', 'token'],
+  resetPin:         ['targetName', 'requester', 'token'],
   addMember:         ['newName', 'requester', 'token'],
   renameMember:      ['oldName', 'newName', 'requester', 'token'],
   deleteMember:      ['targetName', 'requester', 'token'],
@@ -76,7 +80,7 @@ const API_POST = {
   resetSettle:       ['ym', 'requester', 'token']
 };
 // 업로드 계열은 파라미터에 토큰이 없으므로 세션의 name/token 을 자동 주입 (백엔드가 검증)
-const API_NEEDS_SESSION = { startUpload: 1, startHallUpload: 1, uploadChunk: 1, checkUploadStatus: 1 };
+const API_NEEDS_SESSION = { startUpload: 1, startHallUpload: 1, startSettleUpload: 1, uploadChunk: 1, checkUploadStatus: 1 };
 
 let API_SESSION = { name: '', token: '' };
 function apiSetSession(s) {

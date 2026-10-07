@@ -177,6 +177,38 @@
     <div class="status" id="photoStatus"></div>
   </section>
 
+  <!-- 정산 사진 (정산 지급 대상자에게만 노출 — 백엔드도 대상자만 허용). 인증 탭과 같은 폼, 저장소만 분리 -->
+  <section id="tab-sphoto" class="tab">
+    <div class="cert-line" id="sphotoCertLine">정산 사진을 불러오는 중…</div>
+    <p class="dim" style="font-size:12.5px; margin-bottom:12px">
+      월별 정산(지원금)은 <b>이 탭에 올린 사진만</b> 인정돼요. 벽화 인증과는 따로 올려주세요.
+    </p>
+    <div id="sphotoMine"></div>
+    <div class="field">
+      <label class="drop" id="sphotoDrop">
+        💰 정산 사진 선택 / 촬영
+        <input type="file" id="sphotoFile" accept="image/*">
+      </label>
+      <div class="sel-row" id="sphotoSel" onclick="document.getElementById('sphotoFile').click()">
+        <img id="sphotoThumb" alt="">
+        <div class="sel-meta">
+          <div class="sel-name" id="sphotoName"></div>
+          <div class="sel-sub" id="sphotoSub"></div>
+        </div>
+      </div>
+    </div>
+    <div class="field"><span>언제 참여했나?</span>
+      <select id="sphotoDate"></select>
+      <input type="date" id="sphotoDateCustom" style="display:none">
+    </div>
+    <div class="field"><span>어디에서? (암장/장소)</span><input type="text" id="sphotoLoc" placeholder="예: 더클라임 강남"></div>
+    <div class="field"><span>누가 참여했나? (정산 대상자 · 탭해서 선택)</span><div class="chips" id="sphotoChips"></div></div>
+    <button class="btn" id="sphotoBtn" onclick="submitProof('sphoto')">정산 사진 올리기</button>
+    <div class="bar" id="sphotoBar"><i></i></div>
+    <div class="status" id="sphotoStatus"></div>
+    <button class="btn2" onclick="openSettleAlbum()">💰 정산 사진 앨범 (구글 포토)</button>
+  </section>
+
   <!-- 더보기: (관리자) 공지 · 통계 · 역대 우승자 -->
   <section id="tab-more" class="tab">
 
@@ -210,8 +242,9 @@
 
     <div class="month-head">💰 월별 정산 실행</div>
     <p class="dim" style="font-size:12.5px; margin-bottom:8px">
-      해당 월 사진 인증을 집계해 <b>인증현황</b> 시트를 갱신하고,<br>
-      정산 폴더에 최소 사진 묶음을 복사합니다.
+      해당 월 <b>정산 사진</b>(정산 탭에 올린 사진)을 집계해 <b>인증현황</b> 시트를 갱신하고,<br>
+      정산 폴더에 최소 사진 묶음을 복사합니다. 벽화 인증은 정산에 반영되지 않아요.
+      <span id="settleFromNote"></span>
     </p>
     <div class="field"><span>정산할 월</span><input type="month" id="settleYm"></div>
     <button class="btn" id="settleRunBtn" onclick="runSettleClick()">💰 정산 실행</button>
@@ -314,6 +347,7 @@
   <button id="nav-home" class="on" onclick="setTab('home')"><span class="ico">🗿</span>홈<span id="homeNoticeDot" class="nav-dot" style="display:none"></span></button>
   <button id="nav-schedule" onclick="setTab('schedule')"><span class="ico">📅</span>일정</button>
   <button id="nav-photo" onclick="setTab('photo')"><span class="ico">📸</span>인증</button>
+  <button id="nav-sphoto" style="display:none" onclick="setTab('sphoto')"><span class="ico">💰</span>정산</button>
   <button id="nav-gallery" onclick="setTab('gallery')"><span class="ico">🖼️</span>벽화</button>
   <button id="nav-hall" onclick="setTab('hall')"><span class="ico">🏆</span>전당</button>
   <button id="nav-more" onclick="setTab('more')"><span class="ico">📋</span>더보기</button>

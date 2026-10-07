@@ -58,9 +58,17 @@ function getCertified_(s) {
  * 웹 관리 탭(runSettle) 또는 시트 메뉴에서 실행.
  * - 부족원 시트 J열 '지원여부'가 FALSE 면 지원(정산) 제외. 빈칸/TRUE = 지원 대상.
  *   (지원여부는 웹 관리자 페이지에서 설정)
+ * - 근거 사진은 **정산 사진 탭에 올린 사진('정산사진' 시트)만** — 벽화 인증은 정산에 쓰지 않는다
+ *   (전환 월 이전 달만 예외, settleSourceSheet_ 참고)
  * - 사람마다 해당 월 첫 사진 1장을 [정산/yyyy-MM] 폴더에 이름으로 복사
  * - 인증현황 시트도 함께 갱신
  */
+
+// 그 달 정산의 근거 사진 시트. 전환 월(CONFIG.SETTLE_PHOTO_FROM)부터는 '정산사진', 그 이전 달은 기존 '벽화'.
+// 두 시트는 열 구조가 같아 읽는 쪽 코드는 동일하다. (시트가 아직 없으면 null — 업로드 0건)
+function settleSourceSheet_(s, ym) {
+  return s.getSheetByName(ym >= CONFIG.SETTLE_PHOTO_FROM ? CONFIG.SHEETS.settlePhotos : CONFIG.SHEETS.mural);
+}
 
 // 이름 배열을 오름차순(가나다순)으로. 한글 완성형은 코드값 비교가 자모 순서와 일치.
 function sortNames_(arr) {
@@ -148,7 +156,7 @@ function settleMonth(ym, by) {
   // 해당 월 '사진' 인증 행 수집 (참여자 목록 + 링크)
   const photos = []; // { people:[정산대상만], allPeople:[전체], link, date, loc }
   const firstCertRow = {}; // 인증여부 판정용: 이름 → 첫 인증 정보
-  const sh = s.getSheetByName(CONFIG.SHEETS.mural);
+  const sh = settleSourceSheet_(s, ym);
   if (sh && sh.getLastRow() > 1) {
     const vals = sh.getDataRange().getValues();
     for (let i = 1; i < vals.length; i++) {
