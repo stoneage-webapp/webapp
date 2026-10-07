@@ -561,9 +561,9 @@ body > header { flex-shrink: 0; }
 /* 번개 위치 줄 (날짜 아래) */
 .vote-card .vloc { margin-top: 6px; font-size: 13.5px; font-weight: 600; }
 
-/* 내가 올린 이번 달 인증 (인증 탭) */
-#myProofs:not(:empty) { margin-bottom: 16px; }
-#myProofs .myproof-head {
+/* 내가 올린 이번 달 인증 (인증 탭 · 정산 사진 탭) */
+#myProofs:not(:empty), #sphotoMine:not(:empty) { margin-bottom: 16px; }
+.myproof-head {
   font-size: 13px; font-weight: 800; color: var(--ember);
   margin: 2px 2px 8px; letter-spacing: 1px;
 }

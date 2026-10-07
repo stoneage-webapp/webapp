@@ -46,6 +46,7 @@
     confirmed: { disaster: null },
     admins: ['김광훈'],
     settlers: ['이희주'],
+    settlePhotoFrom: ym, // 이 달부터 정산은 정산 탭 사진만 근거
     support: { '김광훈': true, '박도윤': true, '이희주': true, '정민재': false, '최서연': true },
     notices: homeNotices(),
     recent: { // 최근 24h 벽화/전당 (홈 "새 소식")
@@ -368,7 +369,20 @@
         deleteProof: { ok: true },
         startUpload: 'mock://upload', startHallUpload: 'mock://upload',
         uploadChunk: { done: true, fileId: 'mock' }, checkUploadStatus: { done: false },
-        finalizeProof: { link: '#', photos: '완료' }
+        finalizeProof: { link: '#', photos: '완료' },
+        // 정산 사진 탭 — 대상자 = 지원 대상이면서 휴면 아님 (정민재=지원 제외, 박도윤=휴면 은 탭 자체가 안 보임)
+        getSettlePhotos: {
+          ym: ym,
+          targets: MEMBERS.filter(function (m) { return DATA.support[m] !== false && !(DATA.dormant && DATA.dormant[m]); }),
+          certified: { '김광훈': true },
+          mine: args[0] === '김광훈'
+            ? [{ when: ym + '-03', actDate: ym + '-03', loc: '더클라임 강남', people: '김광훈', fileId: 'sp1' }]
+            : [],
+          shareUrl: ''
+        },
+        startSettleUpload: 'mock://upload',
+        finalizeSettleProof: { link: '#', photos: '완료' },
+        deleteSettleProof: { ok: true }
       };
       if (fn in T) return Promise.resolve(T[fn]);
       return Promise.reject(new Error('mock 미구현: ' + fn));

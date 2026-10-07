@@ -12,6 +12,7 @@
 | `src/auth.gs` | PIN 로그인/토큰/검증 |
 | `src/votes.gs` | 투표/번개/확정 |
 | `src/photos.gs` | 업로드/갤러리/삭제 |
+| `src/settlephotos.gs` | 정산 사진 탭 (정산 지급 대상자 전용 업로드/조회/취소) |
 | `src/hall.gs` | 명예의전당 |
 | `src/settle.gs` | 월별 정산 |
 | `src/notion.gs` | 노션 기록 (Phase 6에서 제거 예정) |

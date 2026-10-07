@@ -25,9 +25,10 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `push.gs` | 푸시 알림(OneSignal) — 공지/번개 즉시 발송, D-1·번개 인증 시간 트리거 |
 | `votes.gs` | 정기공격 고정 일정(관리자 지정, 투표 없음) · 자연재해(번개) 투표 · 참석확정(RSVP) · 완료 처리 |
 | `opensessions.gs` | 정기 오픈 세션(특정 날짜+장소) — 개설/수정/삭제, 개설 가능 직책 설정(관리자). `오픈세션` 시트에 저장 |
-| `photos.gs` | Drive 업로드(청크), Photos 업로드, 벽화 갤러리, 사진 삭제 |
+| `photos.gs` | Drive 업로드(청크), Photos 업로드, 벽화 갤러리, 사진 삭제. 업로드/기록/삭제 공용 헬퍼(`startResumable_`·`recordProof_`·`deleteProofFrom_`)는 정산 사진도 함께 쓴다 |
+| `settlephotos.gs` | **정산 사진 탭**(정산 지급 대상자 전용) — 업로드/조회/취소. 벽화와 분리된 Drive 폴더·Photos 앨범·`정산사진` 시트. 모든 action 이 대상자 여부를 서버에서 재확인 |
 | `hall.gs` | 명예의전당 출품/투표/영상 삭제 |
-| `settle.gs` | 월별 인증 정산(시트 메뉴/웹), 월 파싱, 인증현황 집계(열=월 누적)·정산 취소·출석 통계(`getStats`), 부족원 오름차순 정렬(`sortNames_`) |
+| `settle.gs` | 월별 인증 정산(시트 메뉴/웹) — **근거는 `정산사진` 시트만**(전환 월 이전 달은 `벽화`, `settleSourceSheet_`). 월 파싱, 인증현황 집계(열=월 누적)·정산 취소·출석 통계(`getStats`), 부족원 오름차순 정렬(`sortNames_`) |
 | `notices.gs` | 공지사항 — 목록/등록/삭제 (관리자). '공지' 시트 자동 생성 |
 
 > Notion API 연동(`notion.gs`)은 2026-07 사용자 결정으로 **완전 제거됨** (#7). 안내문 링크(`NOTION_URL`)는 단순 링크라 유지.
@@ -50,7 +51,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 
 | action | params | 반환(data) |
 |---|---|---|
-| `getInitData` | — | `{ members, support, months, raidSchedule, disaster, certified, month, shareUrl, notionUrl, openchatUrl, confirmed, admins, settlers, notices, flashOwners, openSessions, openSessionRoles, flashRoles, raidLocations }` |
+| `getInitData` | — | `{ members, support, months, raidSchedule, disaster, certified, month, shareUrl, notionUrl, openchatUrl, confirmed, admins, settlers, settlePhotoFrom, notices, flashOwners, openSessions, openSessionRoles, flashRoles, raidLocations }` |
 | `getVotes` | `month`(선택, `'2026-07'`) | `{ months, raidSchedule, disaster, confirmed, flashOwners }` — month 지정 시 해당 월만 |
 | `getGallery` | `limit`(기본12), `offset`(기본0), `month`(선택), `person`(선택) | `{ items:[{when,actDate,loc,people,by,fileId,link}], hasMore }` — 필터 후 페이징 |
 | `getHallData` | — | `{ ym, entries:[...], winner, winnerMonth }` |
@@ -64,6 +65,8 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 > - `certNudge`도 같은 이유로 로그인 응답 전용: "이번 달 완료 처리된 모임에 참여했는데 아직 인증 안 함" 여부를 **본인 것만** 알려준다 (`needsCertNudge_`, votes.gs). 다른 사람의 인증 여부를 노출하지 않기 위해 `getInitData` 등 익명 GET에는 포함하지 않는다.
 > - **부족원 목록은 항상 이름 오름차순**(`sortNames_`, settle.gs) — `members`, `getStats.members`, `getSettleStatus.rows` 등 목록을 반환하는 모든 곳에 일괄 적용.
 > - `getInitData.notices`는 최신 공지 3건(홈 화면 노출용). 전체 목록은 관리자가 인증된 `getNotices` POST로만 조회한다.
+> - **정산 사진 데이터는 익명 GET 어디에도 없다.** `getInitData`에는 전환 월(`settlePhotoFrom`, 관리 탭 안내용)만 실리고,
+>   정산 사진 목록·인증 현황·앨범 공유 링크는 대상자가 인증된 `getSettlePhotos` POST로만 받는다.
 > - 투표 항목에는 `dateInfo` 필드가 붙는다:
 >   `{ iso:'2026-07-16', ym:'2026-07', weekday:'목', time:'20:00'|null, display:'2026-07-16 (목) 20:00' }`
 >   파싱 실패 시 `null` — 프론트는 원본 `date` 라벨로 폴백. 표기는 `dateInfo.display` 우선.
@@ -98,6 +101,10 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `deleteProof` | `fileId, requester, token` | `{ ok:true }` |
 | `deleteHallEntry` | `fileId, requester, token` | `getHallData()` 결과 |
 | `voteHall` | `fileId, voter, token` | `getHallData()` 결과 |
+| `getSettlePhotos` | `name, token` | `{ ym, targets:[대상자], certified:{이름:true}, mine:[{when,actDate,loc,people,fileId}], shareUrl }` — **정산 지급 대상자만**(지원 대상이면서 휴면 아님). `certified`는 이번 달, `mine`은 내가 올린 이번 달+지난달 정산 사진 |
+| `startSettleUpload` | `fileName, mimeType, fileSize, ym, **name, token**` | Drive resumable 업로드 URL(문자열) — 대상자만. `SETTLE_PHOTO_FOLDER_ID/yyyy/MM`에 저장. 청크 전송은 `uploadChunk`/`checkUploadStatus` 공용 |
+| `finalizeSettleProof` | `fileId, meta, token` | `{ link, photos }` — 대상자만. 정산 사진 앨범 + `정산사진` 시트 기록. 벽화와 달리 **Drive 링크를 공개하지 않는다** |
+| `deleteSettleProof` | `fileId, requester, token` | `{ ok:true }` — 업로더 본인 또는 관리자 |
 | `resetPin` | `targetName, requester, token` | `{ name, reset:true }` — 관리자 전용. 대상자는 다음 로그인에서 새 PIN 설정 |
 | `addMember` | `newName, requester, token` | `{ members, support, settlers }` — 관리자 전용. 부족원 시트 A열에 이름 추가 |
 | `renameMember` | `oldName, newName, requester, token` | `{ members, support, settlers }` — 관리자 전용. A열 이름만 변경(PIN·지원여부 유지). 관리자 이름은 불가 |
@@ -120,7 +127,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | `deleteNotice` | `row, when, name, token` | `{ items, home }` — 관리자 전용. `when` 대조로 행 밀림 방지 |
 | `editNotice` | `row, when, text, name, token` | `{ items, home }` — 관리자 전용. 공지 내용(C열) 수정. `when` 대조 |
 | `pinNotice` | `row, when, pinned(bool), name, token` | `{ items, home }` — 관리자 전용. 공지 시트 **D열(고정)** 설정. 홈은 고정 공지 전부 + 최신 1건만 노출 |
-| `runSettle` | `ym('2026-07'), requester, token` | `{ ym, done, total, independent, copied, uncovered }` — **관리자 또는 정산 담당자** |
+| `runSettle` | `ym('2026-07'), requester, token` | `{ ym, done, total, independent, copied, uncovered }` — **관리자 또는 정산 담당자**. 인증 판정·복사 사진 모두 **정산 사진 탭에 올린 사진만** 근거(전환 월 `settle_photo_from` 이전 달은 기존 벽화 기준) |
 | `setSettlers` | `names(배열), requester, token` | `{ settlers }` — 관리자 전용. Script Properties `settlers`에 저장 |
 | `setSupports` | `names(지원 대상 배열), requester, token` | `{ support: {이름:bool} }` — 관리자 전용. 부족원 시트 **J열(지원여부)** 기록 |
 | `cancelSettle` | `ym, targetName, requester, token` | `getSettleStatus(ym)` — 인원별 해당 월 정산 취소/복구 토글 (관리자·담당자) |
@@ -151,6 +158,7 @@ PWA 아이콘/manifest         투표/PIN/사진/정산 로직
 | 번개(자연재해 투표) | `toggleVote`, `addFlash`, `deleteFlash`, `editFlash`, `completeFlash`. 개설 가능 직책 설정은 관리 탭의 `setFlashRoles`(관리자) |
 | 정기 오픈 세션 (날짜+장소, 캘린더에서 여러 날짜 선택해 등록) | `getOpenSessions`, `addOpenSession`/`editOpenSession`/`deleteOpenSession`/`completeOpenSession`(개설자·관리자), `toggleOpenSessionVote`(참여의사, 누구나). 개설 가능 직책 설정은 관리 탭의 `setOpenSessionRoles`(관리자) |
 | 사진 인증 | `startUpload` → `uploadChunk`/`checkUploadStatus` → `finalizeProof` |
+| 정산 사진 (**정산 지급 대상자에게만 노출** — `support`/`dormant`로 프론트가 탭을 숨기고, 백엔드가 재확인) | `getSettlePhotos`, `startSettleUpload` → `uploadChunk`/`checkUploadStatus` → `finalizeSettleProof`, `deleteSettleProof` |
 | 벽화 갤러리 | `getGallery`(월/사람 필터), `deleteProof` |
 | 명예의전당 | `getHallData`, `getHallArchive`, `startHallUpload` → `finalizeHallEntry`, `voteHall`, `deleteHallEntry` |
 | 공지 | 홈: `getInitData.notices`(고정 전부 + 최신 1건, 새 공지 뱃지), 더보기(관리자): `getNotices`, `postNotice`/`editNotice`/`deleteNotice`/`pinNotice` |
